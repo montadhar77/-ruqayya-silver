@@ -1,0 +1,105 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>معرض رقية (عليها السلام) — فضيات وأحجار كريمة · كربلاء</title>
+<meta name="description" content="خواتم فضة رجالية ونسائية، أحجار كريمة، مسابح، ساعات، عطور وبخور، سجاد صلاة وهدايا العتبات المقدسة. توصيل لجميع محافظات العراق.">
+<meta name="theme-color" content="#0d4a3a">
+<meta property="og:type" content="website">
+<meta property="og:title" content="معرض رقية (عليها السلام)">
+<meta property="og:description" content="فضيات وأحجار كريمة وهدايا العتبات المقدسة · كربلاء المقدسة">
+<link rel="icon" id="favicon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Noto+Naskh+Arabic:wght@400;500;600&family=Marcellus&display=swap">
+<link rel="stylesheet" href="assets/css/site.css">
+<script>document.documentElement.classList.add("js");</script>
+</head>
+<body>
+
+<!-- opening: logo-reveal video (uploaded from the dashboard) or animated logo -->
+<div class="intro" id="intro">
+  <div class="intro-mark" id="introMark">
+    <svg class="intro-arch" viewBox="0 0 200 250" id="introArch">
+      <path d="M20 250V110A80 80 0 0 1 180 110V250"/>
+      <path d="M36 250V114A64 64 0 0 1 164 114V250"/>
+      <path d="M100 18l6 14 14 6-14 6-6 14-6-14-14-6 14-6z"/>
+    </svg>
+    <img class="intro-logo" id="introLogo" alt="" hidden>
+    <div class="intro-name" id="introName">معرض رقية</div>
+    <div class="intro-sub" id="introSub"></div>
+  </div>
+  <button class="intro-skip" id="introSkip" type="button">تخطّي</button>
+</div>
+<div class="curtain" id="curtain"></div>
+
+<div class="topbar" id="topbar" hidden><div class="track" id="topTrack"></div></div>
+
+<nav class="nav" id="nav" aria-label="القائمة الرئيسية">
+  <div class="wrap">
+    <div class="nav-links">
+      <a href="#/" data-link="home">الرئيسية</a>
+      <a href="#/shop" data-link="shop">المتجر</a>
+      <a href="#/?to=departments">الأقسام</a>
+      <a href="#/?to=visit">تواصل معنا</a>
+    </div>
+    <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="فتح القائمة"></button>
+    <a class="brand" href="#/" id="brand" aria-label="الرئيسية">
+      <img id="brandLogo" alt="" hidden>
+      <span class="brand-txt"><b id="brandName">معرض رقية</b><small id="brandSub">عليها السلام</small></span>
+    </a>
+    <div class="nav-actions">
+      <button class="icon-btn" id="searchBtn" type="button" aria-label="بحث"></button>
+      <button class="icon-btn" id="cartBtn" type="button" aria-label="السلة"><span class="badge-count" id="cartCount" hidden>0</span></button>
+    </div>
+  </div>
+</nav>
+
+<main id="app"></main>
+
+<footer class="site" id="footer"></footer>
+
+<!-- mobile menu -->
+<div class="drawer-bg" id="menuBg"></div>
+<aside class="drawer left" id="menu" aria-label="القائمة" aria-hidden="true">
+  <div class="drawer-head"><h3>القائمة</h3><button class="icon-btn" type="button" data-close="menu" aria-label="إغلاق"></button></div>
+  <div class="drawer-body"><div class="menu-list" id="menuList"></div></div>
+</aside>
+
+<!-- cart -->
+<div class="drawer-bg" id="cartBg"></div>
+<aside class="drawer" id="cart" aria-label="سلة التسوق" aria-hidden="true">
+  <div class="drawer-head"><h3>السلة</h3><button class="icon-btn" type="button" data-close="cart" aria-label="إغلاق"></button></div>
+  <div class="drawer-body" id="cartBody"></div>
+  <div class="drawer-foot" id="cartFoot"></div>
+</aside>
+
+<!-- checkout -->
+<div class="modal-bg" id="checkoutBg">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="coTitle" id="checkout"></div>
+</div>
+
+<!-- search -->
+<div class="search-bg" id="search" aria-hidden="true">
+  <div class="wrap">
+    <div class="search-box">
+      <input id="searchInput" type="search" placeholder="ابحث عن خاتم، مسبحة، عطر…" aria-label="بحث في المنتجات" autocomplete="off">
+      <button class="icon-btn" type="button" id="searchClose" aria-label="إغلاق البحث"></button>
+    </div>
+    <div class="search-res" id="searchRes"></div>
+  </div>
+</div>
+
+<a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="راسلنا على واتساب" hidden></a>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/vendor/gsap.min.js"></script>
+<script src="assets/vendor/ScrollTrigger.min.js"></script>
+<script src="assets/vendor/supabase.min.js"></script>
+<script src="assets/js/config.js"></script>
+<script src="assets/js/defaults.js"></script>
+<script src="assets/js/art.js"></script>
+<script src="assets/js/site.js"></script>
+</body>
+</html>
