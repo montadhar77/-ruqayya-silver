@@ -101,25 +101,71 @@
   /* large corner ornament (arabesque flower) used in the hero */
   const ornament = `<svg viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width=".8">${Array.from({ length: 12 }, (_, k) => `<ellipse cx="100" cy="58" rx="16" ry="42" transform="rotate(${k * 30} 100 100)"/>`).join("")}${Array.from({ length: 8 }, (_, k) => `<ellipse cx="100" cy="76" rx="8" ry="24" transform="rotate(${k * 45 + 22.5} 100 100)"/>`).join("")}<circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="12"/></svg>`;
 
-  /* white jasmine (ياسمين): five soft petals, a honey centre, buds and leaves */
+  /* white jasmine (ياسمين): drawn, never animated — veined petals, gold stamens,
+     blush buds on slender calyces, glossy pinnate leaves on a curved stem */
   let jid = 0;
+  const f1 = (n) => +n.toFixed(1);
   function jasmine(kind = "sprig") {
-    const i = ++jid;
-    const defs = `<defs><radialGradient id="jp${i}" cx=".5" cy=".95" r="1"><stop offset="0" stop-color="#f3efd9"/><stop offset=".35" stop-color="#ffffff"/><stop offset="1" stop-color="#fbfbf6"/></radialGradient>
-      <linearGradient id="jb${i}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f1d9de"/></linearGradient>
-      <linearGradient id="jl${i}" x1="0" x2="1"><stop offset="0" stop-color="#2f7a52"/><stop offset="1" stop-color="#5aa877"/></linearGradient></defs>`;
-    const flower = (cx, cy, r, rot = 0) => `<g transform="translate(${cx} ${cy}) rotate(${rot})">${Array.from({ length: 5 }, (_, k) =>
-      `<path transform="rotate(${k * 72})" d="M0 0C${(r * .46).toFixed(1)} ${(-r * .28).toFixed(1)} ${(r * .4).toFixed(1)} ${(-r * .92).toFixed(1)} 0 ${-r}C${(-r * .4).toFixed(1)} ${(-r * .92).toFixed(1)} ${(-r * .46).toFixed(1)} ${(-r * .28).toFixed(1)} 0 0Z" fill="url(#jp${i})" stroke="#d6dfd2" stroke-width=".7"/>`).join("")}
-      <circle r="${(r * .17).toFixed(1)}" fill="#e7d27c"/><circle r="${(r * .07).toFixed(1)}" fill="#b89a3c"/></g>`;
-    const bud = (x, y, rot, s = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})"><path d="M0 0C4 -6 4.4 -17 0 -24C-4.4 -17 -4 -6 0 0Z" fill="url(#jb${i})" stroke="#e0d2d5" stroke-width=".6"/><path d="M-3 2 0 -5 3 2Z" fill="#4c9467"/></g>`;
-    const leaf = (x, y, rot, s = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})"><path d="M0 0C10 -7 28 -7 40 0C28 7 10 7 0 0Z" fill="url(#jl${i})"/><path d="M2 0H36" stroke="#9fd3b1" stroke-width=".7" opacity=".7"/></g>`;
-    if (kind === "flower") return `<svg viewBox="-30 -30 60 60" aria-hidden="true">${defs}${flower(0, 0, 26, 18)}</svg>`;
-    return `<svg viewBox="0 0 220 200" aria-hidden="true">${defs}
-      <path d="M14 192C60 150 92 120 120 92S176 40 206 22" fill="none" stroke="#4f8f63" stroke-width="2.2" stroke-linecap="round"/>
-      <path d="M120 92C112 70 98 58 84 52M160 58C170 46 186 40 200 40" fill="none" stroke="#4f8f63" stroke-width="1.6" stroke-linecap="round"/>
-      ${leaf(40, 168, -40, 1.1)}${leaf(70, 140, 200, 1)}${leaf(132, 82, -70, .9)}${leaf(150, 70, 170, .85)}
-      ${bud(200, 40, 70, 1)}${bud(206, 22, 50, .8)}${bud(84, 52, -40, .9)}
-      ${flower(160, 58, 24, 10)}${flower(104, 108, 20, -14)}${flower(66, 150, 15, 30)}</svg>`;
+    const i = ++jid, P = `j${i}`;
+    const defs = `<defs>
+      <radialGradient id="${P}p" cx=".5" cy="1" r="1.05"><stop offset="0" stop-color="#f1e7c6"/><stop offset=".28" stop-color="#fbf8ee"/><stop offset=".7" stop-color="#ffffff"/><stop offset="1" stop-color="#f6f6f1"/></radialGradient>
+      <linearGradient id="${P}s" x1="0" x2="1"><stop offset="0" stop-color="#b9ae8a" stop-opacity=".22"/><stop offset=".55" stop-color="#b9ae8a" stop-opacity="0"/></linearGradient>
+      <radialGradient id="${P}c" cx=".45" cy=".4" r=".7"><stop offset="0" stop-color="#f3df8a"/><stop offset=".6" stop-color="#d8b94e"/><stop offset="1" stop-color="#a98a2c"/></radialGradient>
+      <linearGradient id="${P}b" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#fffdf7"/><stop offset=".55" stop-color="#fbf1f0"/><stop offset="1" stop-color="#e9b9c2"/></linearGradient>
+      <linearGradient id="${P}l" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1c5638"/><stop offset=".55" stop-color="#2f7a51"/><stop offset="1" stop-color="#4f9a6c"/></linearGradient>
+      <linearGradient id="${P}h" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#ffffff" stop-opacity=".35"/><stop offset="1" stop-color="#ffffff" stop-opacity="0"/></linearGradient>
+      <linearGradient id="${P}t" x1="0" x2="1"><stop offset="0" stop-color="#2c6a47"/><stop offset=".5" stop-color="#4b8a5f"/><stop offset="1" stop-color="#2c6a47"/></linearGradient>
+    </defs>`;
+    // one petal: pointed, slightly twisted oval with a soft fold shadow and a fine vein
+    const petal = (r, k) => {
+      const w = r * 0.42;
+      const d = `M0 0C${f1(w * .95)} ${f1(-r * .16)} ${f1(w * 1.08)} ${f1(-r * .74)} 0 ${f1(-r)}C${f1(-w * .78)} ${f1(-r * .8)} ${f1(-w * .9)} ${f1(-r * .2)} 0 0Z`;
+      return `<g transform="rotate(${k * 72})"><path d="${d}" fill="url(#${P}p)" stroke="#e3dccb" stroke-width=".55"/><path d="${d}" fill="url(#${P}s)"/>
+        <path d="M0 ${f1(-r * .1)}Q${f1(w * .1)} ${f1(-r * .52)} ${f1(-w * .04)} ${f1(-r * .9)}" fill="none" stroke="#e2dcc6" stroke-width=".55" stroke-linecap="round"/></g>`;
+    };
+    // open flower; tilt < 1 squashes it into a three-quarter view
+    const flower = (x, y, r, rot = 0, tilt = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(1 ${tilt})">
+        ${Array.from({ length: 5 }, (_, k) => `<path transform="rotate(${k * 72 + 36})" d="M0 0L${f1(r * .05)} ${f1(-r * .5)}L0 ${f1(-r * .62)}L${f1(-r * .05)} ${f1(-r * .5)}Z" fill="#3d7f57" opacity=".85"/>`).join("")}
+        ${Array.from({ length: 5 }, (_, k) => petal(r, k)).join("")}
+        <circle r="${f1(r * .16)}" fill="#efe3b4"/><circle r="${f1(r * .1)}" fill="url(#${P}c)"/>
+        <ellipse cx="${f1(r * .05)}" cy="${f1(-r * .06)}" rx="${f1(r * .035)}" ry="${f1(r * .07)}" fill="#b8902e"/><ellipse cx="${f1(-r * .055)}" cy="${f1(r * .02)}" rx="${f1(r * .035)}" ry="${f1(r * .07)}" fill="#b8902e" transform="rotate(30)"/></g>`;
+    // closed bud on a thin calyx
+    const bud = (x, y, rot, sc = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})">
+        <path d="M0 6C-.6 2 -.6 -2 0 -5" stroke="#3d7f57" stroke-width="1.4" fill="none"/>
+        <path d="M0 -4C5.4 -10 5.6 -24 0 -33C-5.6 -24 -5.4 -10 0 -4Z" fill="url(#${P}b)" stroke="#e6cdd1" stroke-width=".6"/>
+        <path d="M0 -6C1.6 -14 1.6 -24 0 -31" stroke="#f3dfe2" stroke-width=".8" fill="none"/>
+        <path d="M0 -3L-4 -9M0 -3L4 -9M0 -3L-2 -10M0 -3L2 -10" stroke="#3d7f57" stroke-width=".7" stroke-linecap="round"/></g>`;
+    // flower seen from the side: long blush tube, petals foreshortened on top
+    const profile = (x, y, rot, sc = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})">
+        <path d="M-1.5 0C-1.2 -7 -1.3 -14 -.9 -20H.9C1.3 -14 1.2 -7 1.5 0Z" fill="url(#${P}b)" stroke="#e6cdd1" stroke-width=".5"/>
+        <path d="M0 2L-3 -4M0 2L3 -4" stroke="#3d7f57" stroke-width=".7" stroke-linecap="round"/>
+        ${flower(0, -21, 13, 0, .34)}</g>`;
+    // glossy lance leaflet with veins
+    const leaflet = (x, y, rot, len = 30) => {
+      const w = len * .26;
+      return `<g transform="translate(${x} ${y}) rotate(${rot})">
+        <path d="M0 0C${f1(len * .25)} ${f1(-w)} ${f1(len * .7)} ${f1(-w * .9)} ${len} 0C${f1(len * .7)} ${f1(w * .9)} ${f1(len * .25)} ${f1(w)} 0 0Z" fill="url(#${P}l)"/>
+        <path d="M${f1(len * .08)} ${f1(-w * .2)}C${f1(len * .35)} ${f1(-w * .8)} ${f1(len * .7)} ${f1(-w * .7)} ${f1(len * .92)} ${f1(-w * .1)}" fill="none" stroke="url(#${P}h)" stroke-width="${f1(w * .5)}" stroke-linecap="round" opacity=".6"/>
+        <path d="M1 0L${len - 1} 0" stroke="#a8d7b6" stroke-width=".6" opacity=".75"/>
+        ${[.25, .45, .65].map((t) => `<path d="M${f1(len * t)} 0L${f1(len * (t + .12))} ${f1(-w * .62)}M${f1(len * t)} 0L${f1(len * (t + .12))} ${f1(w * .62)}" stroke="#8fc6a2" stroke-width=".4" opacity=".55"/>`).join("")}</g>`;
+    };
+    // compound leaf: pairs of leaflets along a rachis plus a terminal one
+    const leaf = (x, y, rot, sc = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${sc})">
+        <path d="M0 0C14 -1 30 -3 46 -2" stroke="#3d7f57" stroke-width="1" fill="none"/>
+        ${leaflet(12, -.6, -58, 20)}${leaflet(12, -.6, 58, 20)}${leaflet(27, -1.8, -50, 23)}${leaflet(27, -1.8, 50, 23)}${leaflet(46, -2, -4, 30)}</g>`;
+
+    if (kind === "flower") {
+      return `<svg viewBox="-34 -34 68 68" aria-hidden="true">${defs}${leaflet(-4, 8, 150, 26)}${leaflet(4, 8, 30, 26)}${flower(0, 0, 25, 14)}</svg>`;
+    }
+    return `<svg viewBox="-20 -20 290 270" aria-hidden="true">${defs}
+      <path d="M8 226C46 196 78 168 104 140S150 84 184 58 226 24 246 10" fill="none" stroke="url(#${P}t)" stroke-width="2.8" stroke-linecap="round"/>
+      <path d="M8 226C46 196 78 168 104 140S150 84 184 58 226 24 246 10" fill="none" stroke="#e3bd72" stroke-width=".55" stroke-linecap="round" opacity=".7"/>
+      <path d="M104 140C94 122 82 110 68 102M184 58C176 44 166 36 154 32M150 94C164 86 180 84 196 86M50 190C40 178 34 168 32 156" fill="none" stroke="url(#${P}t)" stroke-width="1.5" stroke-linecap="round"/>
+      ${leaf(20, 214, 200, .85)}${leaf(42, 196, -34, 1.1)}${leaf(80, 166, 206, 1)}${leaf(128, 118, -72, .9)}${leaf(150, 94, 12, .85)}${leaf(196, 48, 168, .78)}${leaf(222, 28, -40, .6)}
+      ${bud(32, 156, -20, .7)}${bud(68, 102, -46, .85)}${bud(154, 32, -70, .75)}${bud(196, 86, 100, .7)}${bud(246, 10, 64, .72)}${bud(232, 34, 96, .62)}
+      ${profile(128, 112, 22, .85)}
+      ${flower(58, 182, 16, 30, .95)}${flower(86, 120, 16, 10, .72)}${flower(110, 136, 23, -18, .86)}
+      ${flower(160, 42, 17, -20, .72)}${flower(214, 38, 20, 30, .8)}${flower(182, 62, 28, 8, .94)}</svg>`;
   }
 
   window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, jasmine };

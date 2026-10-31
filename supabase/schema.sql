@@ -194,3 +194,8 @@ create policy media_admin_insert on storage.objects for insert to authenticated 
 create policy media_admin_update on storage.objects for update to authenticated using (bucket_id = 'media' and (select private.is_admin()));
 create policy media_admin_delete on storage.objects for delete to authenticated using (bucket_id = 'media' and (select private.is_admin()));
 create policy media_admin_select on storage.objects for select to authenticated using (bucket_id = 'media' and (select private.is_admin()));
+
+-- worldwide shipping (applied as migration worldwide_shipping): orders.country column and
+-- place_order() charges shop.delivery_fee inside Iraq and shop.intl_delivery_fee elsewhere
+-- (0 = shipping confirmed with the customer; returned as shipping_tbd).
+alter table public.orders add column if not exists country text not null default 'العراق';

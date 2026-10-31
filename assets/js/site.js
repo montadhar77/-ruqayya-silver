@@ -305,11 +305,9 @@
     const s = state.s, sec = s.sections;
     const slides = heroSlides();
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
-    if (state.cats.length) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
+    if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
 
-    const petals = [[12, 0, 15, -50], [34, 4, 19, 40], [58, 7, 17, -70], [80, 2, 21, 30], [92, 9, 16, -40]].map(([x, d, dur, dx]) =>
-      `<span class="petal" style="left:${x}%;animation-delay:${d}s;animation-duration:${dur}s;--dx:${dx}px">${A.jasmine("flower")}</span>`).join("");
-    let html = `<header class="hero" id="top">${petals}<div class="wrap hero-grid">
+    let html = `<header class="hero" id="top"><div class="wrap hero-grid">
         <div class="hero-txt">
           <div class="pill" data-hero><span class="dot"></span>${esc(s.hero.eyebrow)}</div>
           <h1>${splitWords(s.hero.title1)}<span class="line2">${splitWords(s.hero.title2, "grad")}</span></h1>
@@ -331,7 +329,7 @@
             <div class="gloss"></div>
           </div>
           <div class="float-chip glass a" data-float>${A.ui.shield}<div><b>فضة ٩٢٥ أصلية</b><span>مدموغة ومضمونة</span></div></div>
-          <div class="float-chip glass b" data-float>${A.ui.truck}<div><b>توصيل لكل العراق</b><span>الدفع عند الاستلام</span></div></div>
+          <div class="float-chip glass b" data-float>${A.ui.truck}<div><b>${s.shop.intl_enabled ? "شحن لكل دول العالم" : "توصيل لكل العراق"}</b><span>${s.shop.intl_enabled ? "ومن كربلاء إلى بابك" : "الدفع عند الاستلام"}</span></div></div>
           ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
         </div>
       </div></header>`;
@@ -408,7 +406,7 @@
           <div class="values" data-stagger>
             <div class="glass">${A.ui.shield}<span><b>أصالة مضمونة</b>فضة ٩٢٥ مدموغة وأحجار طبيعية</span></div>
             <div class="glass">${A.ui.gift}<span><b>تغليف فاخر</b>جاهز للإهداء</span></div>
-            <div class="glass">${A.ui.truck}<span><b>توصيل لكل العراق</b>والدفع عند الاستلام</span></div>
+            <div class="glass">${A.ui.truck}<span><b>${s.shop.intl_enabled ? "من كربلاء إلى العالم" : "توصيل لكل العراق"}</b>${s.shop.intl_enabled ? "توصيل داخل العراق وشحن دولي" : "والدفع عند الاستلام"}</span></div>
           </div>
           <div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>تصفّح المتجر ${A.ui.arrow}</a></div></div>
       </div></section>`;
@@ -569,7 +567,7 @@
         </div>
         <div class="buy-row" data-rv><button class="btn glass-btn block" type="button" id="buyNow">اطلب الآن</button></div>`}
         ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv>${A.ui.whatsapp} اسأل عنه على واتساب</a>` : ""}
-        <div class="assure" data-rv><div class="glass">${A.ui.shield}فضة أصلية مضمونة</div><div class="glass">${A.ui.truck}توصيل لكل المحافظات</div><div class="glass">${A.ui.gift}تغليف هدايا</div></div>
+        <div class="assure" data-rv><div class="glass">${A.ui.shield}فضة أصلية مضمونة</div><div class="glass">${A.ui.truck}${state.s.shop.intl_enabled ? "شحن لكل دول العالم" : "توصيل لكل المحافظات"}</div><div class="glass">${A.ui.gift}تغليف هدايا</div></div>
       </div></div>
       ${related.length ? `<section class="block" style="padding-top:20px">${titleBlock("", "قد يعجبك أيضاً", "")}${grid(related)}</section>` : ""}
     </div>`;
@@ -612,12 +610,18 @@
   function readCart() { return safeLS(() => JSON.parse(localStorage.getItem("rq_cart") || "[]"), []).filter((x) => x && x.id && x.qty > 0); }
   function saveCart() { safeLS(() => localStorage.setItem("rq_cart", JSON.stringify(state.cart))); updateCartCount(); }
   function cartLines() { return state.cart.map((l) => ({ ...l, p: findProd(l.id) })).filter((l) => l.p && inStock(l.p)); }
-  function totals() {
+  const LOCAL = "العراق";
+  function totals(country) {
+    const sh = state.s.shop, intl = !!country && country !== LOCAL;
     const sub = cartLines().reduce((a, l) => a + l.p.price * l.qty, 0);
-    const fee = Number(state.s.shop.delivery_fee) || 0, free = Number(state.s.shop.free_delivery_over) || 0;
-    const delivery = sub === 0 ? 0 : free && sub >= free ? 0 : fee;
-    return { sub, delivery, total: sub + delivery, free };
+    const fee = Number(intl ? sh.intl_delivery_fee : sh.delivery_fee) || 0;
+    const free = Number(intl ? sh.intl_free_over : sh.free_delivery_over) || 0;
+    const freed = !!free && sub >= free;
+    const delivery = sub === 0 || freed ? 0 : fee;
+    const tbd = intl && !freed && fee === 0;
+    return { sub, delivery, total: sub + delivery, free, intl, tbd };
   }
+  const feeLabel = (t) => t.tbd ? "يُحدَّد حسب الدولة" : t.delivery ? money(t.delivery) : "مجاني";
   function updateCartCount() {
     const n = cartLines().reduce((a, l) => a + l.qty, 0);
     const b = $("#cartCount");
@@ -655,8 +659,9 @@
         <div class="qty"><button type="button" data-q="${l.id}" data-d="-1" aria-label="إنقاص">−</button><span>${num(l.qty)}</span><button type="button" data-q="${l.id}" data-d="1" aria-label="زيادة">+</button></div></div>
       <button class="rm" type="button" data-rm="${l.id}">حذف</button></div>`).join("");
     foot.innerHTML = `<div class="sum"><span>المجموع الفرعي</span><span>${money(t.sub)}</span></div>
-      <div class="sum"><span>التوصيل</span><span>${t.delivery ? money(t.delivery) : "مجاني"}</span></div>
-      ${t.free && t.sub < t.free ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>أضف ${money(t.free - t.sub)} للحصول على توصيل مجاني</span></div>` : ""}
+      <div class="sum"><span>التوصيل داخل العراق</span><span>${feeLabel(t)}</span></div>
+      ${t.free && t.sub < t.free ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>أضف ${money(t.free - t.sub)} للحصول على توصيل مجاني داخل العراق</span></div>` : ""}
+      ${state.s.shop.intl_enabled ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>نشحن أيضاً لكل دول العالم — اختر دولتك عند إتمام الطلب</span></div>` : ""}
       <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}</span></div>
       <button class="btn shine block" type="button" id="toCheckout" style="margin-top:12px">إتمام الطلب</button>
       <p style="text-align:center;color:var(--soft);font-size:13px;margin:8px 0 0">${esc(state.s.shop.payment_note)}</p>`;
@@ -692,38 +697,61 @@
   /* ---------- checkout ---------- */
   function openCheckout() {
     closePanel("cart");
-    const lines = cartLines(), t = totals(), s = state.s;
+    const lines = cartLines(), s = state.s, sh = s.shop;
     if (!lines.length) { toast("السلة فارغة"); return; }
+    const countries = sh.intl_enabled ? (sh.countries || []).filter((c) => c && c !== LOCAL) : [];
     $("#checkout").innerHTML = `<button class="icon-btn x" type="button" id="coClose" aria-label="إغلاق">${A.ui.close}</button>
-      <h3 id="coTitle">إتمام الطلب</h3><p style="color:var(--soft);margin-top:0">${num(lines.reduce((a, l) => a + l.qty, 0))} قطعة · الإجمالي <b class="price">${money(t.total)}</b></p>
+      <h3 id="coTitle">إتمام الطلب</h3><p style="color:var(--soft);margin-top:0" id="coLead"></p>
       <form id="coForm" novalidate>
         <div class="field"><label for="coName">الاسم الكامل</label><input id="coName" name="name" required maxlength="120" autocomplete="name"></div>
-        <div class="field"><label for="coPhone">رقم الهاتف</label><input id="coPhone" name="phone" type="tel" inputmode="tel" required maxlength="30" dir="ltr" placeholder="07XX XXX XXXX" autocomplete="tel"></div>
+        <div class="field"><label for="coPhone">رقم الهاتف (واتساب)</label><input id="coPhone" name="phone" type="tel" inputmode="tel" required maxlength="30" dir="ltr" placeholder="07XX XXX XXXX" autocomplete="tel"></div>
+        ${countries.length ? `<div class="field"><label for="coCountry">الدولة</label><select id="coCountry" name="country" autocomplete="country-name">
+          <option value="${LOCAL}">${LOCAL}</option>${countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}<option value="__other">دولة أخرى…</option></select></div>
+          <div class="field" id="coOtherWrap" hidden><label for="coOther">اسم الدولة</label><input id="coOther" name="other" maxlength="60" autocomplete="country-name"></div>` : ""}
         <div class="two">
-          <div class="field"><label for="coCity">المحافظة</label><select id="coCity" name="city">${(s.shop.cities || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
-          <div class="field"><label for="coAddr">العنوان</label><input id="coAddr" name="address" maxlength="300" placeholder="المنطقة، أقرب نقطة دالة" autocomplete="street-address"></div>
+          <div class="field" id="coCityWrap"><label for="coCity">المحافظة</label><select id="coCity" name="city">${(sh.cities || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+          <div class="field" id="coCityIntlWrap" hidden><label for="coCityIntl">المدينة</label><input id="coCityIntl" name="cityIntl" maxlength="80" autocomplete="address-level2"></div>
+          <div class="field"><label for="coAddr" id="coAddrLbl">العنوان</label><input id="coAddr" name="address" maxlength="300" placeholder="المنطقة، أقرب نقطة دالة" autocomplete="street-address"></div>
         </div>
         <div class="field"><label for="coNotes">ملاحظات (اختياري)</label><textarea id="coNotes" name="notes" maxlength="1000" style="min-height:80px" placeholder="مقاس الخاتم، تغليف هدية…"></textarea></div>
-        <div class="sum"><span>المجموع</span><span>${money(t.sub)}</span></div>
-        <div class="sum"><span>التوصيل</span><span>${t.delivery ? money(t.delivery) : "مجاني"}</span></div>
-        <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}</span></div>
-        <p style="color:var(--soft);font-size:13px">${esc(s.shop.payment_note)}</p>
+        <div id="coSum"></div>
         <button class="btn shine block" type="submit">تأكيد الطلب</button>
       </form>`;
+    const f = $("#coForm");
+    const country = () => { const v = f.country ? f.country.value : LOCAL; return v === "__other" ? (f.other.value.trim() || "دولة أخرى") : v; };
+    const refresh = () => {
+      const c = country(), t = totals(c), intl = t.intl;
+      $("#coCityWrap").hidden = intl; $("#coCityIntlWrap").hidden = !intl;
+      if (f.country) $("#coOtherWrap").hidden = f.country.value !== "__other";
+      f.address.placeholder = intl ? "الشارع، رقم المبنى، الرمز البريدي" : "المنطقة، أقرب نقطة دالة";
+      $("#coAddrLbl").textContent = intl ? "العنوان الكامل" : "العنوان";
+      f.phone.placeholder = intl ? "+00 000 000 0000" : "07XX XXX XXXX";
+      $("#coLead").innerHTML = `${num(lines.reduce((a, l) => a + l.qty, 0))} قطعة · الإجمالي <b class="price">${money(t.total)}</b>${t.tbd ? " + الشحن" : ""}`;
+      $("#coSum").innerHTML = `<div class="sum"><span>المجموع</span><span>${money(t.sub)}</span></div>
+        <div class="sum"><span>${intl ? "الشحن الدولي" : "التوصيل"}</span><span>${feeLabel(t)}</span></div>
+        <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}${t.tbd ? ` <small style="font-weight:400;color:var(--soft)">+ الشحن</small>` : ""}</span></div>
+        <p style="color:var(--soft);font-size:13px">${esc(intl ? [t.tbd ? sh.intl_note : "", sh.intl_payment_note].filter(Boolean).join(" · ") : sh.payment_note)}</p>`;
+    };
+    if (f.country) { f.country.addEventListener("change", refresh); f.other.addEventListener("input", refresh); }
+    refresh();
     $("#checkoutBg").classList.add("open"); lock(true);
     setTimeout(() => $("#coName").focus(), 100);
     $("#coClose").addEventListener("click", closeCheckout);
-    $("#coForm").addEventListener("submit", submitOrder);
+    f.addEventListener("submit", (e) => submitOrder(e, country));
   }
   function closeCheckout() { $("#checkoutBg").classList.remove("open"); lock(false); }
   $("#checkoutBg").addEventListener("click", (e) => { if (e.target.id === "checkoutBg") closeCheckout(); });
 
-  async function submitOrder(e) {
+  async function submitOrder(e, getCountry) {
     e.preventDefault();
     const f = e.target;
-    const cust = { name: f.name.value.trim(), phone: f.phone.value.trim(), city: f.city.value, address: f.address.value.trim(), notes: f.notes.value.trim() };
+    const country = getCountry(), intl = country !== LOCAL;
+    const cust = { name: f.name.value.trim(), phone: f.phone.value.trim(), country, city: intl ? f.cityIntl.value.trim() : f.city.value, address: f.address.value.trim(), notes: f.notes.value.trim() };
     if (cust.name.length < 2) { toast("يرجى كتابة الاسم"); f.name.focus(); return; }
     if (toLatin(cust.phone).replace(/\D/g, "").length < 7) { toast("يرجى كتابة رقم هاتف صحيح"); f.phone.focus(); return; }
+    if (intl && f.country.value === "__other" && !f.other.value.trim()) { toast("يرجى كتابة اسم الدولة"); f.other.focus(); return; }
+    if (intl && !cust.city) { toast("يرجى كتابة المدينة"); f.cityIntl.focus(); return; }
+    if (intl && cust.address.length < 6) { toast("يرجى كتابة العنوان الكامل للشحن"); f.address.focus(); return; }
     const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = "جارٍ إرسال الطلب…";
     const items = cartLines().map((l) => ({ id: l.id, qty: l.qty }));
     const { data, error } = await db.rpc("place_order", { p_customer: cust, p_items: items });
@@ -734,14 +762,15 @@
       return;
     }
     const s = state.s;
-    const msg = [`السلام عليكم، طلب جديد من موقع ${s.brand.full}`, `رقم الطلب: #${data.order_no}`, `الاسم: ${cust.name}`, `الهاتف: ${cust.phone}`, `المحافظة: ${cust.city}${cust.address ? " — " + cust.address : ""}`, "", "المنتجات:",
+    const msg = [`السلام عليكم، طلب جديد من موقع ${s.brand.full}`, `رقم الطلب: #${data.order_no}`, `الاسم: ${cust.name}`, `الهاتف: ${cust.phone}`, intl ? `الدولة: ${country} — ${cust.city}${cust.address ? " — " + cust.address : ""}` : `المحافظة: ${cust.city}${cust.address ? " — " + cust.address : ""}`, "", "المنتجات:",
       ...data.items.map((i) => `• ${i.name} × ${i.qty} — ${num(i.price * i.qty)} ${s.shop.currency}`), "",
-      `التوصيل: ${data.delivery ? num(data.delivery) + " " + s.shop.currency : "مجاني"}`, `الإجمالي: ${num(data.total)} ${s.shop.currency}`, cust.notes ? `ملاحظات: ${cust.notes}` : ""].filter((x) => x !== undefined).join("\n");
+      `${intl ? "الشحن الدولي" : "التوصيل"}: ${data.shipping_tbd ? "يُحدَّد حسب الدولة" : data.delivery ? num(data.delivery) + " " + s.shop.currency : "مجاني"}`, `الإجمالي: ${num(data.total)} ${s.shop.currency}${data.shipping_tbd ? " + الشحن" : ""}`, cust.notes ? `ملاحظات: ${cust.notes}` : ""].filter((x) => x !== undefined).join("\n");
     const wa = s.shop.whatsapp_orders ? waLink(msg) : "";
     state.cart = []; saveCart(); renderCart();
     $("#checkout").innerHTML = `<div class="success"><div class="ok">${A.ui.check}</div>
       <h3>تمّ استلام طلبك</h3><p style="color:var(--soft)">شكراً لك يا ${esc(cust.name)}، سنتواصل معك قريباً لتأكيد الطلب.</p>
-      <div class="no">#${esc(data.order_no)}</div><p style="margin-top:0;color:var(--soft)">رقم طلبك · الإجمالي ${money(data.total)}</p>
+      <div class="no">#${esc(data.order_no)}</div><p style="margin-top:0;color:var(--soft)">رقم طلبك · الإجمالي ${money(data.total)}${data.shipping_tbd ? " + الشحن" : ""}</p>
+      ${data.shipping_tbd ? `<p style="color:var(--soft);font-size:14px">${esc(s.shop.intl_note)}</p>` : ""}
       ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" style="margin-bottom:10px">${A.ui.whatsapp} أرسل تفاصيل الطلب على واتساب</a>` : ""}
       <button class="btn glass-btn block" type="button" id="coDone">متابعة التسوق</button></div>`;
     $("#coDone").addEventListener("click", () => { closeCheckout(); location.hash = "#/"; });

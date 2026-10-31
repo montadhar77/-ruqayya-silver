@@ -483,7 +483,7 @@
     return `<div class="row click" data-oid="${o.id}" style="grid-template-columns:auto 1fr auto">
       <div style="font-family:Georgia,serif;font-size:18px;color:var(--em);direction:ltr">#${o.order_no}</div>
       <div><h3>${esc(o.customer_name)} <span class="status s-${o.status}">${STATUS[o.status]}</span></h3>
-        <div class="meta"><span dir="ltr">${esc(o.phone)}</span><span>${esc(o.city)}</span><span>${num(n)} قطعة</span><span>${when(o.created_at)}</span></div></div>
+        <div class="meta"><span dir="ltr">${esc(o.phone)}</span><span>${o.country && o.country !== "العراق" ? `${esc(o.country)} · ` : ""}${esc(o.city)}</span><span>${num(n)} قطعة</span><span>${when(o.created_at)}</span></div></div>
       <div class="price">${money(o.total)}</div></div>`;
   }
   function bindOrderRows() { $$("[data-oid]").forEach((r) => r.addEventListener("click", () => openOrder(state.orders.find((o) => o.id === r.dataset.oid)))); }
@@ -496,7 +496,7 @@
       <div class="rows" id="oList"></div>`;
     const draw = () => {
       const qy = toLatin(f.q.trim());
-      const list = state.orders.filter((o) => (!f.st || o.status === f.st) && (!qy || [o.customer_name, toLatin(o.phone), String(o.order_no), o.city].join(" ").includes(qy)));
+      const list = state.orders.filter((o) => (!f.st || o.status === f.st) && (!qy || [o.customer_name, toLatin(o.phone), String(o.order_no), o.city, o.country].join(" ").includes(qy)));
       $("#oList").innerHTML = list.length ? list.map(orderRow).join("") : `<div class="empty">لا توجد طلبات هنا.</div>`;
       bindOrderRows();
     };
@@ -508,14 +508,15 @@
   function openOrder(o) {
     if (!o) return;
     const s = state.s;
-    const wa = waNumber(o.phone);
+    const intlOrder = o.country && o.country !== "العراق";
+    const wa = intlOrder ? toLatin(o.phone).replace(/\D/g, "").replace(/^00/, "") : waNumber(o.phone);
     const waText = `مرحباً ${o.customer_name}، معكم ${s.brand.full}.\nبخصوص طلبكم رقم #${o.order_no} بقيمة ${num(o.total)} ${s.shop.currency}.`;
     const m = modal(`<div class="modal-h"><h2>طلب <span dir="ltr">#${o.order_no}</span></h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
       <div class="modal-b">
         <div class="field no-print"><span class="lbl">حالة الطلب</span><div class="status-btns" id="oStatus">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-set="${k}" class="s-${k} ${o.status === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
-        <dl class="kv"><dt>الزبون</dt><dd>${esc(o.customer_name)}</dd><dt>الهاتف</dt><dd dir="ltr" style="text-align:right">${esc(o.phone)}</dd><dt>المحافظة</dt><dd>${esc(o.city)}</dd><dt>العنوان</dt><dd>${esc(o.address) || "—"}</dd>${o.notes ? `<dt>ملاحظات</dt><dd>${esc(o.notes)}</dd>` : ""}<dt>التاريخ</dt><dd>${when(o.created_at)}</dd></dl>
+        <dl class="kv"><dt>الزبون</dt><dd>${esc(o.customer_name)}</dd><dt>الهاتف</dt><dd dir="ltr" style="text-align:right">${esc(o.phone)}</dd><dt>الدولة</dt><dd>${esc(o.country || "العراق")}</dd><dt>${o.country && o.country !== "العراق" ? "المدينة" : "المحافظة"}</dt><dd>${esc(o.city)}</dd><dt>العنوان</dt><dd>${esc(o.address) || "—"}</dd>${o.notes ? `<dt>ملاحظات</dt><dd>${esc(o.notes)}</dd>` : ""}<dt>التاريخ</dt><dd>${when(o.created_at)}</dd></dl>
         <div class="o-items">${(o.items || []).map((i) => `<div class="o-item"><div class="th">${i.image ? `<img src="${esc(i.image)}" alt="">` : ""}</div><div><b>${esc(i.name)}</b><div style="color:var(--soft);font-size:13px">${money(i.price)} × ${num(i.qty)}</div></div><div class="price">${money(i.price * i.qty)}</div></div>`).join("")}</div>
-        <dl class="kv"><dt>المجموع</dt><dd>${money(o.subtotal)}</dd><dt>التوصيل</dt><dd>${o.delivery ? money(o.delivery) : "مجاني"}</dd><dt><b>الإجمالي</b></dt><dd class="price">${money(o.total)}</dd></dl>
+        <dl class="kv"><dt>المجموع</dt><dd>${money(o.subtotal)}</dd><dt>${o.country && o.country !== "العراق" ? "الشحن الدولي" : "التوصيل"}</dt><dd>${o.delivery ? money(o.delivery) : o.country && o.country !== "العراق" ? "يُحدَّد مع الزبون" : "مجاني"}</dd><dt><b>الإجمالي</b></dt><dd class="price">${money(o.total)}</dd></dl>
         <div class="field no-print"><label for="oNote">ملاحظة داخلية (لا يراها الزبون)</label><textarea id="oNote" style="min-height:70px">${esc(o.admin_note)}</textarea></div>
       </div>
       <div class="modal-f">
@@ -621,7 +622,15 @@
       groups: [
         { title: "معلومات التواصل", fields: [SH("contact.whatsapp", "رقم واتساب", { dir: "ltr", hint: "مثال: 07701234567 — تصلك عليه تفاصيل الطلبات ويظهر زر واتساب في الموقع." }), SH("contact.phone", "رقم الهاتف", { dir: "ltr" }), SH("contact.address", "العنوان"), SH("contact.hours", "أوقات الدوام", { hint: "مثال: يومياً من ١٠ صباحاً إلى ١١ ليلاً" }), SH("contact.map_url", "رابط الموقع على خرائط Google", { dir: "ltr" }), SH("contact.email", "البريد الإلكتروني", { dir: "ltr" })] },
         { title: "حسابات التواصل الاجتماعي", fields: [SH("contact.instagram", "انستغرام (الرابط كاملاً)", { dir: "ltr" }), SH("contact.facebook", "فيسبوك", { dir: "ltr" }), SH("contact.tiktok", "تيك توك", { dir: "ltr" }), SH("contact.telegram", "تيليغرام", { dir: "ltr" }), SH("contact.snapchat", "سناب شات", { dir: "ltr" })] },
-        { title: "المتجر والتوصيل والدفع", fields: [SH("shop.currency", "العملة"), SH("shop.delivery_fee", "أجرة التوصيل", { t: "number" }), SH("shop.free_delivery_over", "توصيل مجاني للطلبات فوق (٠ = لا يوجد)", { t: "number" }), SH("shop.payment_note", "ملاحظة الدفع"), SH("shop.whatsapp_orders", "بعد الطلب، اعرض زر «أرسل الطلب على واتساب» للزبون", { t: "toggle" }), SH("shop.cities", "المحافظات في نموذج الطلب", { t: "strings", add: "إضافة محافظة" })] }
+        { title: "التوصيل داخل العراق", fields: [SH("shop.currency", "العملة"), SH("shop.delivery_fee", "أجرة التوصيل داخل العراق", { t: "number" }), SH("shop.free_delivery_over", "توصيل مجاني للطلبات فوق (٠ = لا يوجد)", { t: "number" }), SH("shop.payment_note", "ملاحظة الدفع"), SH("shop.whatsapp_orders", "بعد الطلب، اعرض زر «أرسل الطلب على واتساب» للزبون", { t: "toggle" }), SH("shop.cities", "المحافظات في نموذج الطلب", { t: "strings", add: "إضافة محافظة" })] },
+        { title: "الشحن الدولي", fields: [
+          SH("shop.intl_enabled", "استقبال طلبات من خارج العراق", { t: "toggle" }),
+          SH("shop.intl_delivery_fee", "أجرة الشحن الدولي (٠ = تُحدَّد لكل طلب وتتواصل مع الزبون)", { t: "number" }),
+          SH("shop.intl_free_over", "شحن دولي مجاني للطلبات فوق (٠ = لا يوجد)", { t: "number" }),
+          SH("shop.intl_note", "ملاحظة الشحن الدولي (تظهر عند اختيار دولة أخرى)", { t: "textarea" }),
+          SH("shop.intl_payment_note", "ملاحظة الدفع للطلبات الدولية"),
+          SH("shop.countries", "الدول في نموذج الطلب", { t: "strings", add: "إضافة دولة", hint: "العراق يظهر أولاً دائماً، ويستطيع الزبون اختيار «دولة أخرى» وكتابة اسمها." })
+        ] }
       ]
     }
   };
