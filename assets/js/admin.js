@@ -601,7 +601,7 @@
           SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو تظهر حركة رسم القوس والاسم." }),
           SH("intro.subtitle", "السطر تحت الاسم (في الحركة بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
         ] },
-        { title: "ألوان الموقع", fields: [{ p: "theme", t: "colors" }, SH("theme.floral", "زخارف الورود الناعمة في الخلفية", { t: "toggle" })] },
+        { title: "ألوان الموقع", fields: [{ p: "theme", t: "colors" }, SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" })] },
         { title: "التذييل أسفل الموقع", fields: [SH("footer.text", "النص التعريفي", { t: "textarea" }), SH("footer.copyright", "سطر الحقوق")] },
         { title: "الظهور في Google وعند مشاركة الرابط", fields: [SH("seo.title", "عنوان الموقع"), SH("seo.description", "الوصف", { t: "textarea" })] }
       ]
@@ -615,7 +615,7 @@
       ]
     }
   };
-  const COLOR_LABELS = { emerald: ["الأخضر الكربلائي", "الأزرار والعناوين"], deep: ["الأخضر الداكن", "الشريط العلوي والتذييل"], pearl: ["لون الخلفية", "اللؤلؤي"], paper: ["لون البطاقات", ""], silver: ["الفضّي", "النصوص الصغيرة"], accent: ["اللون الذهبي", "الزخارف والشارات"], ink: ["لون النص", ""] };
+  const COLOR_LABELS = { deep: ["لون الخلفية", ""], emerald: ["لون التوهّج (الزمرّدي)", ""], accent: ["اللون الذهبي", ""], paper: ["لون البطاقات الزجاجية", ""], pearl: ["الخلفية الثانية", ""], silver: ["الفضّي", ""], ink: ["لون النص", ""] };
 
   function fieldHTML(f, d) {
     const v = getPath(d, f.p);
@@ -649,7 +649,7 @@
       case "colors": {
         const t = getPath(d, "theme") || {};
         return `<div data-fp="theme-colors"><div class="colors">${Object.keys(COLOR_LABELS).map((k) => `<label class="color"><input type="color" data-p="theme.${k}" value="${esc(t[k] || DEF.theme[k])}" aria-label="${COLOR_LABELS[k][0]}"><div><b>${COLOR_LABELS[k][0]}</b><input type="text" data-p="theme.${k}" value="${esc(t[k] || DEF.theme[k])}" aria-label="رمز ${COLOR_LABELS[k][0]}"></div></label>`).join("")}</div>
-          <div class="preview-strip" aria-hidden="true">${["deep", "emerald", "accent", "silver", "pearl", "paper"].map((k) => `<div style="background:${esc(t[k] || DEF.theme[k])}"></div>`).join("")}</div>
+          <div class="preview-strip" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc(t[k] || DEF.theme[k])}"></div>`).join("")}</div>
           <button class="btn ghost sm" type="button" id="resetColors" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
       }
       default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""}>${hint}</div>`;
@@ -700,7 +700,7 @@
       setPath(d, p, v); dirty();
       if (/^theme\./.test(p) && el.type !== "checkbox") {
         $$(`[data-p="${p}"]`, pg).forEach((x) => { if (x !== el && (/^#[0-9a-f]{6}$/i.test(v) || x.type !== "color")) x.value = v; });
-        const strip = pg.querySelector(".preview-strip"); if (strip) strip.innerHTML = ["deep", "emerald", "accent", "silver", "pearl", "paper"].map((k) => `<div style="background:${esc(d.theme[k])}"></div>`).join("");
+        const strip = pg.querySelector(".preview-strip"); if (strip) strip.innerHTML = ["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc(d.theme[k])}"></div>`).join("");
       }
     };
     pg.addEventListener("input", onInput);

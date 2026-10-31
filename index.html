@@ -5,29 +5,35 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>معرض رقية (عليها السلام) — فضيات وأحجار كريمة · كربلاء</title>
 <meta name="description" content="خواتم فضة رجالية ونسائية، أحجار كريمة، مسابح، ساعات، عطور وبخور، سجاد صلاة وهدايا العتبات المقدسة. توصيل لجميع محافظات العراق.">
-<meta name="theme-color" content="#0d4a3a">
+<meta name="theme-color" content="#020f0b">
+<meta name="color-scheme" content="dark">
 <meta property="og:type" content="website">
 <meta property="og:title" content="معرض رقية (عليها السلام)">
 <meta property="og:description" content="فضيات وأحجار كريمة وهدايا العتبات المقدسة · كربلاء المقدسة">
 <link rel="icon" id="favicon" href="assets/img/favicon.svg" type="image/svg+xml">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Aref+Ruqaa:wght@400;700&family=Noto+Naskh+Arabic:wght@400;500;600&family=Marcellus&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Cormorant+Garamond:ital,wght@1,500&display=swap">
 <link rel="stylesheet" href="assets/css/site.css">
 <script>document.documentElement.classList.add("js");</script>
 </head>
 <body>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
+<div class="grain" aria-hidden="true"></div>
+<canvas id="sparkles" aria-hidden="true"></canvas>
+<div class="cursor-light" id="cursorLight" aria-hidden="true"></div>
 
 <!-- opening: logo-reveal video (uploaded from the dashboard) or animated logo -->
 <div class="intro" id="intro">
+  <div class="bloom" id="introBloom"></div>
   <div class="intro-mark" id="introMark">
-    <svg class="intro-arch" viewBox="0 0 200 250" id="introArch">
-      <path d="M20 250V110A80 80 0 0 1 180 110V250"/>
-      <path d="M36 250V114A64 64 0 0 1 164 114V250"/>
-      <path d="M100 18l6 14 14 6-14 6-6 14-6-14-14-6 14-6z"/>
+    <svg class="intro-ring" viewBox="0 0 200 200" id="introArch">
+      <circle cx="100" cy="100" r="92"/>
+      <circle cx="100" cy="100" r="74"/>
+      <path d="M100 52l10 26 26 10-26 10-10 26-10-26-26-10 26-10z"/>
     </svg>
     <img class="intro-logo" id="introLogo" alt="" hidden>
-    <div class="intro-name" id="introName">معرض رقية</div>
+    <div class="intro-name grad" id="introName">معرض رقية</div>
     <div class="intro-sub" id="introSub"></div>
   </div>
   <button class="intro-skip" id="introSkip" type="button">تخطّي</button>

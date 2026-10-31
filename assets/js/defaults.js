@@ -17,13 +17,13 @@ window.RQ_DEFAULTS = {
     subtitle: "فضيات وأحجار كريمة · كربلاء المقدسة"
   },
   theme: {
-    pearl: "#eef1ef",
-    paper: "#f8faf8",
-    emerald: "#0d4a3a",
-    deep: "#072d24",
-    silver: "#8e999b",
-    accent: "#b08d57",
-    ink: "#17221e",
+    deep: "#020f0b",
+    pearl: "#06201a",
+    paper: "#0c2c23",
+    emerald: "#34e3a8",
+    silver: "#c7d3cf",
+    accent: "#e3bd72",
+    ink: "#ecf6f2",
     floral: true
   },
   announcement: {

@@ -100,10 +100,10 @@
   function applySettings() {
     const s = state.s, root = document.documentElement.style, t = s.theme;
     ["pearl", "paper", "emerald", "deep", "silver", "accent", "ink"].forEach((k) => { if (t[k]) root.setProperty(`--${k}`, t[k]); });
-    root.setProperty("--floral", t.floral === false ? "none" : A.floral(t.emerald));
+    document.body.classList.toggle("no-aurora", t.floral === false);
     document.title = s.seo.title || s.brand.full;
     const md = $('meta[name="description"]'); if (md) md.setAttribute("content", s.seo.description || "");
-    const tc = $('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", t.emerald);
+    const tc = $('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", t.deep);
     if (s.brand.favicon || s.brand.logo) $("#favicon").href = s.brand.favicon || s.brand.logo;
 
     // brand
@@ -147,8 +147,9 @@
   function renderFooter() {
     const s = state.s;
     $("#footer").innerHTML = `<div class="wrap">
+      <p class="mark grad" aria-hidden="true">${esc(s.brand.name)}</p>
       <div class="cols">
-        <div class="f-brand">${s.brand.logo ? `<img src="${esc(s.brand.logo)}" alt="${esc(s.brand.full)}">` : ""}<b>${esc(s.brand.full)}</b><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
+        <div>${s.brand.logo ? `<img class="f-logo" src="${esc(s.brand.logo)}" alt="${esc(s.brand.full)}">` : ""}<h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
         <div><h4>الأقسام</h4><ul>${state.cats.slice(0, 6).map((c) => `<li><a href="#/c/${esc(c.slug)}">${esc(c.name)}</a></li>`).join("")}</ul></div>
         <div><h4>تواصل</h4><ul>
           ${s.contact.address ? `<li>${esc(s.contact.address)}</li>` : ""}
@@ -157,7 +158,7 @@
           <li><a href="#/shop">المتجر</a></li>
         </ul></div>
       </div>
-      <div class="copy">© ${num(new Date().getFullYear()).replace(/٬/g, "")} — ${esc(s.footer.copyright)}</div>
+      <div class="copy">© ${new Date().getFullYear().toLocaleString("ar-IQ", { useGrouping: false })} — ${esc(s.footer.copyright)}</div>
     </div>`;
   }
 
@@ -171,23 +172,24 @@
       const finish = () => {
         if (done) return; done = true;
         safeLS(() => sessionStorage.setItem("rq_intro", "1"));
-        if (G) G.to(el, { yPercent: -100, duration: 1.1, ease: "expo.inOut", onComplete: () => { el.remove(); } });
+        if (G) G.to(el, { clipPath: "circle(0% at 50% 50%)", duration: 1.1, ease: "expo.inOut", onComplete: () => el.remove() });
         else el.remove();
-        setTimeout(resolve, G ? 450 : 0);
+        setTimeout(resolve, G ? 500 : 0);
       };
       if (!s.enabled || (seen && !s.every_visit)) { el.remove(); resolve(); return; }
+      if (G) G.set(el, { clipPath: "circle(150% at 50% 50%)" });
       $("#introSkip").addEventListener("click", finish);
       const max = Math.max(3, Math.min(30, Number(s.max_seconds) || 9)) * 1000;
-
       if (s.video) {
         $("#introMark").hidden = true;
         const v = document.createElement("video");
         Object.assign(v, { src: s.video, muted: true, playsInline: true, autoplay: true, preload: "auto" });
         v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
+        const fallback = () => { v.remove(); $("#introMark").hidden = false; logoReveal(finish); };
         v.addEventListener("ended", finish);
-        v.addEventListener("error", () => { v.remove(); $("#introMark").hidden = false; logoReveal(finish); });
+        v.addEventListener("error", fallback);
         el.prepend(v);
-        const p = v.play(); if (p && p.catch) p.catch(() => { v.remove(); $("#introMark").hidden = false; logoReveal(finish); });
+        const p = v.play(); if (p && p.catch) p.catch(fallback);
         setTimeout(finish, max);
         return;
       }
@@ -202,20 +204,22 @@
     $("#introSub").textContent = s.intro.subtitle || s.brand.tagline;
     if (s.brand.logo) { logo.src = s.brand.logo; logo.hidden = false; $("#introArch").style.display = "none"; }
     if (!G) { $$("#introMark > *").forEach((e) => (e.style.opacity = 1)); setTimeout(finish, 1200); return; }
-    const paths = $$("#introArch path");
+    const paths = $$("#introArch circle, #introArch path");
     paths.forEach((p) => { const l = p.getTotalLength(); p.style.strokeDasharray = l; p.style.strokeDashoffset = l; });
-    const tl = G.timeline({ onComplete: () => setTimeout(finish, 500) });
-    if (!s.brand.logo) tl.to(paths, { strokeDashoffset: 0, duration: 1.6, ease: "power2.inOut", stagger: 0.15 });
-    else tl.fromTo(logo, { opacity: 0, scale: 0.7, filter: "blur(12px) brightness(2)" }, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)", duration: 1.6, ease: "expo.out" });
-    tl.fromTo("#introName", { opacity: 0, y: 30, filter: "blur(10px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.1, ease: "expo.out" }, "-=0.7")
-      .fromTo("#introSub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.6");
+    const tl = G.timeline({ onComplete: () => setTimeout(finish, 450) });
+    tl.to("#introBloom", { scale: 1, duration: 2.4, ease: "expo.out" }, 0);
+    if (!s.brand.logo) tl.to(paths, { strokeDashoffset: 0, duration: 1.5, ease: "power2.inOut", stagger: 0.18 }, 0.1)
+      .to("#introArch", { rotate: 45, duration: 2.4, ease: "expo.inOut" }, 0.2);
+    else tl.fromTo(logo, { opacity: 0, scale: 0.6, filter: "blur(16px) brightness(2.2)" }, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)", duration: 1.6, ease: "expo.out" }, 0.2);
+    tl.fromTo("#introName", { opacity: 0, y: 40, filter: "blur(14px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.2, ease: "expo.out" }, "-=1.1")
+      .fromTo("#introSub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.7");
   }
 
   /* ---------- small renderers ---------- */
-  function media(p, cls = "") {
+  function media(p) {
     const imgs = (p.images || []).filter(Boolean);
     if (imgs.length) {
-      return `<img class="main ${cls}" src="${esc(imgs[0])}" alt="${esc(p.name)}" loading="lazy" decoding="async">` +
+      return `<img class="main" src="${esc(imgs[0])}" alt="${esc(p.name)}" loading="lazy" decoding="async">` +
         (imgs[1] ? `<img class="alt" src="${esc(imgs[1])}" alt="" loading="lazy" decoding="async">` : "");
     }
     return A.productArt(p, iconOf(p));
@@ -226,7 +230,7 @@
   function card(p) {
     const c = catOf(p);
     const out = !inStock(p);
-    return `<article class="card" data-card>
+    return `<article class="card glass spot edge" data-card>
       <div class="ph">${out ? `<span class="tag out">نفدت الكمية</span>` : p.badge ? `<span class="tag">${esc(p.badge)}</span>` : ""}${media(p)}</div>
       <h4>${esc(p.name)}</h4>
       <div class="meta">${esc([c && c.name, p.stone || p.metal].filter(Boolean).join(" · "))}</div>
@@ -242,9 +246,13 @@
     return esc(text).split(/\s+/).filter(Boolean).map((w) => `<span class="wl"><span class="w ${wordCls}">${w}</span></span>`).join(" ");
   }
   function titleBlock(eb, title, text) {
-    return `<div class="title">${eb ? `<div class="orn" data-rv>${eyebrow(eb)}</div>` : `<div class="orn" data-rv>✦</div>`}
+    return `<div class="title">${eb ? `<div data-rv>${eyebrow(eb)}</div>` : ""}
       <h2 data-split>${splitWords(title)}</h2>${text ? `<p data-rv>${esc(text)}</p>` : ""}</div>`;
   }
+  const orbitSVG = () => `<svg viewBox="0 0 500 500" aria-hidden="true">
+      <circle class="o" cx="250" cy="250" r="246"/><circle class="o" cx="250" cy="250" r="196" stroke-dasharray="2 6"/><circle class="o" cx="250" cy="250" r="150"/>
+      <g class="g1"><circle class="sat" cx="250" cy="4" r="4"/><circle class="sat gold" cx="496" cy="250" r="3"/></g>
+      <g class="g2"><circle class="sat" cx="250" cy="446" r="3"/><circle class="sat" cx="54" cy="250" r="2.5"/></g></svg>`;
 
   /* ---------- home ---------- */
   function heroSlides() {
@@ -256,14 +264,12 @@
       slides = pool.map((p) => ({ img: p.images[0], title: p.name, cap: p.stone || p.metal || (catOf(p) || {}).name, link: `#/p/${p.id}` }));
     }
     if (!slides.length) {
-      const pool = (state.prods.filter((p) => p.featured).length ? state.prods.filter((p) => p.featured) : state.prods).slice(0, 4);
-      slides = pool.map((p) => ({ art: A.productArt(p, iconOf(p)), title: p.name, cap: p.stone || p.metal, link: `#/p/${p.id}` }));
+      const feat = state.prods.filter((p) => p.featured);
+      const pool = (feat.length > 1 ? feat : state.prods).slice(0, 4);
+      slides = pool.map((p) => ({ art: A.productArt(p, iconOf(p)), title: p.name, cap: [p.stone, p.metal].filter(Boolean).join(" · "), link: `#/p/${p.id}` }));
     }
     if (!slides.length) slides = [{ art: A.depIcon("star"), title: state.s.brand.name, cap: state.s.brand.tagline }];
     return slides;
-  }
-  function stat(v) {
-    return `<div><b data-count="${esc(v.value)}">${esc(v.value)}</b><span>${esc(v.label)}</span></div>`;
   }
 
   function renderHome(scrollTo) {
@@ -272,59 +278,73 @@
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
     if (state.cats.length) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
 
-    let html = `<header class="hero" id="top">
-      <div class="hero-orn a" data-orn>${A.ornament}</div><div class="hero-orn b" data-orn>${A.ornament}</div>
-      <div class="wrap hero-grid">
+    let html = `<header class="hero" id="top"><div class="wrap hero-grid">
         <div class="hero-txt">
-          <div data-hero>${eyebrow(s.hero.eyebrow)}</div>
-          <h1>${splitWords(s.hero.title1)}<span class="line2">${splitWords(s.hero.title2, "silver-text")}</span></h1>
+          <div class="pill" data-hero><span class="dot"></span>${esc(s.hero.eyebrow)}</div>
+          <h1>${splitWords(s.hero.title1)}<span class="line2">${splitWords(s.hero.title2, "grad")}</span></h1>
           <p class="lead" data-hero>${esc(s.hero.text)}</p>
           <div class="cta" data-hero>
-            <a class="btn" href="#/shop" data-magnet>${esc(s.hero.cta1)} ${A.ui.arrow}</a>
-            <a class="btn ghost" href="#/?to=departments" data-magnet>${esc(s.hero.cta2)}</a>
+            <a class="btn shine" href="#/shop" data-magnet>${esc(s.hero.cta1)} ${A.ui.arrow}</a>
+            <a class="btn glass-btn" href="#/?to=departments" data-magnet>${esc(s.hero.cta2)}</a>
           </div>
-          ${stats.length ? `<div class="hero-stats" data-hero>${stats.map(stat).join("")}</div>` : ""}
+          ${stats.length ? `<div class="hero-stats" data-hero>${stats.map((v) => `<div class="glass"><b data-count="${esc(v.value)}">${esc(v.value)}</b><span>${esc(v.label)}</span></div>`).join("")}</div>` : ""}
         </div>
-        <div class="arch-col" data-hero-arch>
-          <div class="arch" id="heroArch" style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
+        <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
+          <div class="orbit" data-orbit>${orbitSVG()}</div>
+          <div class="show-card" id="showCard" data-tilt>
+            <div class="stage"></div>
             ${slides.map((sl, i) => `<a class="slide${i === 0 ? " on" : ""}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
               ${sl.img ? `<img src="${esc(sl.img)}" alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
-              ${sl.title ? `<div class="cap">${esc(sl.title)}${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}</a>`).join("")}
+              ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}</a>`).join("")}
+            <div class="gloss"></div>
           </div>
-          ${slides.length > 1 ? `<div class="arch-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
+          <div class="float-chip glass a" data-float>${A.ui.shield}<div><b>فضة ٩٢٥ أصلية</b><span>مدموغة ومضمونة</span></div></div>
+          <div class="float-chip glass b" data-float>${A.ui.truck}<div><b>توصيل لكل العراق</b><span>الدفع عند الاستلام</span></div></div>
+          ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
         </div>
-      </div>
-    </header>`;
+      </div></header>`;
 
     if (sec.departments.show && state.cats.length) {
+      const n = state.cats.length;
+      const w = (4 - ((n + 3) % 4)) % 4, wides = new Set();
+      if (w && n > 6) wides.add(5);
+      for (let k = n - 1; wides.size < w && k > 0; k--) if (k !== 5) wides.add(k);
       html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text)}
-        <div class="niches" data-stagger>${state.cats.map((c) => `<a href="#/c/${esc(c.slug)}" class="niche">
-          <div class="n-arch">${c.image_url ? `<img src="${esc(c.image_url)}" alt="" loading="lazy">` : A.depIcon(c.icon)}</div>
-          <h3>${esc(c.name)}</h3><span>${esc(c.subtitle)}</span></a>`).join("")}</div></div></section>`;
+        <div class="bento" data-stagger>${state.cats.map((c, i) => {
+          const count = state.prods.filter((p) => p.category_id === c.id).length;
+          const cls = i === 0 ? "big" : wides.has(i) ? "wide" : "";
+          return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge ${cls}">
+            ${c.image_url ? `<div class="t-img"><img src="${esc(c.image_url)}" alt="" loading="lazy"></div>` : ""}
+            <div class="t-art">${A.depIcon(c.icon)}</div>
+            <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? `${num(count)} قطعة` : "قريباً"}</span></div>
+            <div><h3>${esc(c.name)}</h3><p>${esc(c.subtitle)}</p></div>
+            <span class="t-go">${A.ui.arrowL}</span></a>`;
+        }).join("")}</div></div></section>`;
     }
 
     const fp = findProd(sec.featured.product_id) || state.prods.find((p) => p.featured && p.badge) || state.prods.find((p) => p.featured) || state.prods[0];
     if (sec.featured.show && fp) {
       const c = catOf(fp);
-      const spec = [["القسم", c && c.name], ["المعدن", fp.metal], ["الحجر", fp.stone], ["الوزن", fp.weight], ["السعر", money(fp.price)]].filter((x) => x[1]);
-      html += `<section class="block" style="padding-top:0"><div class="wrap"><div class="feature" data-feature>
+      const spec = [["القسم", c && c.name], ["المعدن", fp.metal], ["الحجر", fp.stone], ["الوزن", fp.weight]].filter((x) => x[1]);
+      html += `<section class="block" style="padding-top:0"><div class="wrap"><div class="feature glass edge lit" data-feature>
         <div class="txt"><div>${eyebrow(sec.featured.eyebrow)}</div>
           <h2 data-split>${splitWords(fp.name)}</h2>
-          <p data-rv>${esc((fp.description || "").split("\n")[0])}</p>
-          <dl class="spec" data-rv>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${k === "السعر" ? v : esc(v)}</dd>`).join("")}</dl>
-          <div class="cta" data-rv><a class="btn light" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
-          ${inStock(fp) ? `<button class="btn light" type="button" data-add="${fp.id}" style="background:transparent;color:#eef5f1">${A.ui.cart} أضف للسلة</button>` : ""}</div>
+          ${fp.description ? `<p data-rv>${esc(fp.description.split("\n")[0])}</p>` : ""}
+          <div class="chips-spec" data-rv>${spec.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>
+          <div class="price-big" data-rv>${money(fp.price)}${fp.old_price && fp.old_price > fp.price ? `<s>${num(fp.old_price)}</s>` : ""}</div>
+          <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
+          ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} أضف للسلة</button>` : ""}</div>
         </div>
-        <div class="pic" data-feature-pic>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
+        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
       </div></div></section>`;
     }
 
     if (sec.collection.show) {
       const usedCats = state.cats.filter((c) => state.prods.some((p) => p.category_id === c.id));
       html += `<section class="block" id="collection" style="padding-top:0"><div class="wrap">${titleBlock(sec.collection.eyebrow, sec.collection.title, sec.collection.text)}
-        ${usedCats.length > 1 ? `<div class="chips" data-rv role="group" aria-label="تصفية حسب القسم"><button class="chip on" type="button" data-filter="">الكل</button>${usedCats.map((c) => `<button class="chip" type="button" data-filter="${c.id}">${esc(c.name)}</button>`).join("")}</div>` : ""}
+        ${usedCats.length > 1 ? `<div class="seg" data-rv role="group" aria-label="تصفية حسب القسم"><button class="chip on" type="button" data-filter="">الكل</button>${usedCats.map((c) => `<button class="chip" type="button" data-filter="${c.id}">${esc(c.name)}</button>`).join("")}</div>` : ""}
         <div id="homeGrid">${grid(state.prods.slice(0, Number(sec.collection.count) || 8), "ستُعرض المنتجات هنا فور إضافتها من لوحة التحكم.")}</div>
-        ${state.prods.length ? `<div class="more" data-rv><a class="btn ghost" href="#/shop" data-magnet>عرض كل المنتجات (${num(state.prods.length)})</a></div>` : ""}
+        ${state.prods.length ? `<div class="more" data-rv><a class="btn glass-btn" href="#/shop" data-magnet>عرض كل المنتجات (${num(state.prods.length)}) ${A.ui.arrow}</a></div>` : ""}
       </div></section>`;
     }
 
@@ -336,16 +356,21 @@
 
     if (sec.about.show) {
       html += `<section class="block" id="about"><div class="wrap about">
-        <div class="arch rv-clip" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="slide-art" style="color:#cfe3da;top:22%">${A.ornament.replace('stroke-opacity=".14"', 'stroke-opacity=".6"')}</div>`}</div>
+        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="art">${A.ornament.replace('stroke-opacity=".14"', 'stroke-opacity=".55"')}</div>`}</div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p data-rv>${esc(sec.about.text)}</p>
-        <div class="cta" data-rv style="margin-top:24px"><a class="btn" href="#/shop" data-magnet>تصفّح المتجر</a></div></div>
+          <div class="values" data-stagger>
+            <div class="glass">${A.ui.shield}<span><b>أصالة مضمونة</b>فضة ٩٢٥ مدموغة وأحجار طبيعية</span></div>
+            <div class="glass">${A.ui.gift}<span><b>تغليف فاخر</b>جاهز للإهداء</span></div>
+            <div class="glass">${A.ui.truck}<span><b>توصيل لكل العراق</b>والدفع عند الاستلام</span></div>
+          </div>
+          <div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>تصفّح المتجر ${A.ui.arrow}</a></div></div>
       </div></section>`;
     }
 
     const quotes = (sec.testimonials.items || []).filter((q) => q && q.text);
     if (sec.testimonials.show && quotes.length) {
       html += `<section class="block" style="padding-top:0"><div class="wrap">${titleBlock("", sec.testimonials.title, "")}
-        <div class="quotes" data-stagger>${quotes.map((q) => `<figure class="quote" style="margin:0"><p>${esc(q.text)}</p><b>${esc(q.name)}</b>${q.city ? `<span>${esc(q.city)}</span>` : ""}</figure>`).join("")}</div></div></section>`;
+        <div class="quotes" data-stagger>${quotes.map((q) => `<figure class="quote glass spot"><p>${esc(q.text)}</p><b>${esc(q.name)}</b>${q.city ? `<span>${esc(q.city)}</span>` : ""}</figure>`).join("")}</div></div></section>`;
     }
 
     if (sec.visit.show) html += visitSection();
@@ -365,29 +390,29 @@
       c.whatsapp && [A.ui.whatsapp, "واتساب", `<a href="${esc(waLink("السلام عليكم"))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
       c.email && [A.ui.mail, "البريد", `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`]
     ].filter(Boolean);
-    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit", sec.title, "")}
+    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "")}
       <div class="visit">
-        <div class="visit-card" data-rv><h3>${esc(s.brand.full)}</h3>
-          ${rows.map(([ic, k, v]) => `<div class="info-row">${ic}<div><small>${k}</small>${v}</div></div>`).join("")}
+        <div class="visit-card glass spot" data-rv><h3>${esc(s.brand.full)}</h3>
+          ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
           <div class="socials">${socialLinks()}</div>
         </div>
-        <form class="visit-card" id="contactForm" data-rv novalidate>
+        <form class="visit-card glass spot" id="contactForm" data-rv novalidate>
           <h3>${esc(sec.form_title)}</h3><p style="color:var(--soft);margin-top:-8px">${esc(sec.form_text)}</p>
           <div class="two"><div class="field"><label for="cfName">الاسم</label><input id="cfName" name="name" required maxlength="120" autocomplete="name"></div>
           <div class="field"><label for="cfPhone">رقم الهاتف</label><input id="cfPhone" name="phone" type="tel" inputmode="tel" maxlength="30" dir="ltr" autocomplete="tel"></div></div>
           <div class="field"><label for="cfBody">رسالتك</label><textarea id="cfBody" name="body" required maxlength="3000"></textarea></div>
-          <button class="btn block" type="submit">إرسال الرسالة</button>
+          <button class="btn shine block" type="submit">إرسال الرسالة</button>
         </form>
       </div></div></section>`;
   }
 
   function bindHome() {
-    // slideshow
-    const arch = $("#heroArch");
-    if (arch) {
-      const slides = $$(".slide", arch), dots = $$("[data-dot]");
+    const cardEl = $("#showCard");
+    if (cardEl) {
+      const slides = $$(".slide", cardEl), dots = $$("[data-dot]");
       let i = 0, timer;
       const ms = Math.round((Number(state.s.hero.slide_seconds) || 5.5) * 1000);
+      const kb = (sl) => { const img = $("img", sl); if (img && G) G.fromTo(img, { scale: 1.25 }, { scale: 1.04, duration: ms / 1000 + 1.4, ease: "none" }); const art = $(".slide-art", sl); if (art && G) G.fromTo(art, { y: 30, rotate: -8, scale: .9 }, { y: 0, rotate: 0, scale: 1, duration: 1.6, ease: "expo.out" }); };
       const show = (n) => {
         const prev = slides[i];
         i = (n + slides.length) % slides.length;
@@ -395,26 +420,28 @@
         dots.forEach((d, k) => { d.classList.remove("on"); void d.offsetWidth; d.classList.toggle("on", k === i); });
         if (prev === cur) return;
         if (G) {
-          G.set(cur, { zIndex: 2, opacity: 1, clipPath: "circle(0% at 50% 100%)" });
+          G.set(cur, { zIndex: 2, opacity: 1, clipPath: "circle(0% at 50% 50%)" });
           G.set(prev, { zIndex: 1 });
-          G.to(cur, { clipPath: "circle(150% at 50% 100%)", duration: 1.4, ease: "expo.inOut", onComplete: () => { prev.classList.remove("on"); G.set(prev, { opacity: 0 }); cur.classList.add("on"); } });
-          const img = $("img", cur); if (img) G.fromTo(img, { scale: 1.25 }, { scale: 1.04, duration: ms / 1000 + 1.4, ease: "none" });
-          const cap = $(".cap", cur); if (cap) G.fromTo(cap, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, delay: 0.6, ease: "expo.out" });
+          G.to(cur, { clipPath: "circle(75% at 50% 50%)", duration: 1.3, ease: "expo.inOut", onComplete: () => { prev.classList.remove("on"); G.set(prev, { opacity: 0 }); G.set(cur, { clearProps: "clipPath" }); cur.classList.add("on"); } });
+          kb(cur);
+          const cap = $(".cap", cur); if (cap) G.fromTo(cap, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, delay: 0.5, ease: "expo.out" });
         } else { prev.classList.remove("on"); cur.classList.add("on"); }
       };
       const play = () => { clearInterval(timer); if (slides.length > 1) timer = setInterval(() => show(i + 1), ms); };
       dots.forEach((d) => d.addEventListener("click", () => { show(+d.dataset.dot); play(); }));
       if (slides.length > 1) { dots[0].classList.add("on"); play(); }
-      if (G) { const img = $(".slide.on img", arch); if (img) G.fromTo(img, { scale: 1.25 }, { scale: 1.04, duration: ms / 1000 + 1.4, ease: "none" }); }
+      kb(slides[0]);
+      let sx = null;
+      cardEl.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
+      cardEl.addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) { show(i + (dx > 0 ? 1 : -1)); play(); } sx = null; });
       cleanups.push(() => clearInterval(timer));
     }
-    // filter chips
     $$("[data-filter]").forEach((b) => b.addEventListener("click", () => {
       $$("[data-filter]").forEach((x) => x.classList.toggle("on", x === b));
       const id = b.dataset.filter, n = Number(state.s.sections.collection.count) || 8;
       const list = (id ? state.prods.filter((p) => p.category_id === id) : state.prods).slice(0, n);
       const box = $("#homeGrid");
-      const swap = () => { box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.06, ease: "expo.out" }); ScrollTrigger && window.ScrollTrigger.refresh(); };
+      const swap = () => { box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.94, filter: "blur(6px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.9, stagger: 0.06, ease: "expo.out" }); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); };
       if (G) G.to($$(".card", box), { opacity: 0, y: -20, duration: 0.25, stagger: 0.02, onComplete: swap }); else swap();
     }));
     bindContactForm();
@@ -450,9 +477,9 @@
         <h1 data-split>${splitWords(cat ? cat.name : "كل المنتجات")}</h1>
         <p data-rv>${esc(cat ? cat.subtitle : state.s.brand.tagline)}</p></div></div>
       <section style="padding-bottom:40px"><div class="wrap">
-        <div class="chips" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">الكل</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
+        <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">الكل</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
         <div class="toolbar" data-rv><span class="count">${num(list.length)} منتج</span>
-          <label><span class="latin" style="letter-spacing:.05em;margin-inline-end:8px;font-family:var(--body);text-transform:none">ترتيب</span>
+          <label>ترتيب
           <select id="sortSel" aria-label="ترتيب المنتجات">
             <option value="default">المقترح</option><option value="new">الأحدث</option><option value="low">السعر: من الأقل</option><option value="high">السعر: من الأعلى</option>
           </select></label></div>
@@ -467,7 +494,7 @@
   function renderProduct(id) {
     const p = findProd(id);
     if (!p) {
-      app.innerHTML = `<div class="page-head"><div class="wrap"><h1>المنتج غير متوفر</h1><p>ربما بيع أو أُزيل من المعرض.</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn" href="#/shop">العودة إلى المتجر</a></div></div></div>`;
+      app.innerHTML = `<div class="page-head"><div class="wrap"><h1>المنتج غير متوفر</h1><p>ربما بيع أو أُزيل من المعرض.</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn shine" href="#/shop">العودة إلى المتجر</a></div></div></div>`;
       return;
     }
     const c = catOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
@@ -487,15 +514,15 @@
         <h1 data-split>${splitWords(p.name)}</h1>
         <div class="p-price price" data-rv>${priceHTML(p)}</div>
         ${p.description ? `<p class="desc" data-rv>${esc(p.description)}</p>` : ""}
-        <dl class="spec" data-rv>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
-        ${out ? `<div class="empty" style="padding:20px">نفدت الكمية حالياً — راسلنا ليصلك خبر توفّرها.</div>` : `
+        <dl class="spec glass" data-rv>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
+        ${out ? `<div class="empty" style="padding:20px;margin-bottom:12px">نفدت الكمية حالياً — راسلنا ليصلك خبر توفّرها.</div>` : `
         <div class="buy-row" data-rv>
           <div class="qty" role="group" aria-label="الكمية"><button type="button" id="qMinus" aria-label="إنقاص">−</button><span id="qVal">${num(1)}</span><button type="button" id="qPlus" aria-label="زيادة">+</button></div>
-          <button class="btn" type="button" id="addBtn" data-magnet>${A.ui.cart} أضف إلى السلة</button>
+          <button class="btn shine" type="button" id="addBtn" data-magnet>${A.ui.cart} أضف إلى السلة</button>
         </div>
-        <div class="buy-row" data-rv><button class="btn ghost block" type="button" id="buyNow">اطلب الآن</button></div>`}
-        ${wa ? `<a class="btn ghost block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv style="border-color:#1f8f5f;color:#1f8f5f">${A.ui.whatsapp} اسأل عنه على واتساب</a>` : ""}
-        <div class="assure" data-rv><div>${A.ui.shield}فضة أصلية مضمونة</div><div>${A.ui.truck}توصيل لكل المحافظات</div><div>${A.ui.gift}تغليف هدايا</div></div>
+        <div class="buy-row" data-rv><button class="btn glass-btn block" type="button" id="buyNow">اطلب الآن</button></div>`}
+        ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv>${A.ui.whatsapp} اسأل عنه على واتساب</a>` : ""}
+        <div class="assure" data-rv><div class="glass">${A.ui.shield}فضة أصلية مضمونة</div><div class="glass">${A.ui.truck}توصيل لكل المحافظات</div><div class="glass">${A.ui.gift}تغليف هدايا</div></div>
       </div></div>
       ${related.length ? `<section class="block" style="padding-top:20px">${titleBlock("", "قد يعجبك أيضاً", "")}${grid(related)}</section>` : ""}
     </div>`;
@@ -571,7 +598,7 @@
     const lines = cartLines(), t = totals();
     const body = $("#cartBody"), foot = $("#cartFoot");
     if (!lines.length) {
-      body.innerHTML = `<div class="cart-empty">${A.ui.cart}<p>سلتك فارغة</p><a class="btn" href="#/shop" data-close="cart">تصفّح المنتجات</a></div>`;
+      body.innerHTML = `<div class="cart-empty">${A.ui.cart}<p>سلتك فارغة</p><a class="btn shine" href="#/shop" data-close="cart">تصفّح المنتجات</a></div>`;
       foot.innerHTML = "";
       return;
     }
@@ -584,7 +611,7 @@
       <div class="sum"><span>التوصيل</span><span>${t.delivery ? money(t.delivery) : "مجاني"}</span></div>
       ${t.free && t.sub < t.free ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>أضف ${money(t.free - t.sub)} للحصول على توصيل مجاني</span></div>` : ""}
       <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}</span></div>
-      <button class="btn block" type="button" id="toCheckout" style="margin-top:12px">إتمام الطلب</button>
+      <button class="btn shine block" type="button" id="toCheckout" style="margin-top:12px">إتمام الطلب</button>
       <p style="text-align:center;color:var(--soft);font-size:13px;margin:8px 0 0">${esc(state.s.shop.payment_note)}</p>`;
     $("#toCheckout").addEventListener("click", openCheckout);
   }
@@ -634,7 +661,7 @@
         <div class="sum"><span>التوصيل</span><span>${t.delivery ? money(t.delivery) : "مجاني"}</span></div>
         <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}</span></div>
         <p style="color:var(--soft);font-size:13px">${esc(s.shop.payment_note)}</p>
-        <button class="btn block" type="submit">تأكيد الطلب</button>
+        <button class="btn shine block" type="submit">تأكيد الطلب</button>
       </form>`;
     $("#checkoutBg").classList.add("open"); lock(true);
     setTimeout(() => $("#coName").focus(), 100);
@@ -668,8 +695,8 @@
     $("#checkout").innerHTML = `<div class="success"><div class="ok">${A.ui.check}</div>
       <h3>تمّ استلام طلبك</h3><p style="color:var(--soft)">شكراً لك يا ${esc(cust.name)}، سنتواصل معك قريباً لتأكيد الطلب.</p>
       <div class="no">#${esc(data.order_no)}</div><p style="margin-top:0;color:var(--soft)">رقم طلبك · الإجمالي ${money(data.total)}</p>
-      ${wa ? `<a class="btn block" href="${esc(wa)}" target="_blank" rel="noopener" style="background:#1f8f5f;border-color:#1f8f5f;margin-bottom:10px">${A.ui.whatsapp} أرسل تفاصيل الطلب على واتساب</a>` : ""}
-      <button class="btn ghost block" type="button" id="coDone">متابعة التسوق</button></div>`;
+      ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" style="margin-bottom:10px">${A.ui.whatsapp} أرسل تفاصيل الطلب على واتساب</a>` : ""}
+      <button class="btn glass-btn block" type="button" id="coDone">متابعة التسوق</button></div>`;
     $("#coDone").addEventListener("click", () => { closeCheckout(); location.hash = "#/"; });
     if (G) G.from(".success > *", { y: 24, opacity: 0, stagger: 0.08, duration: 0.7, ease: "expo.out" });
   }
@@ -684,7 +711,7 @@
   function doSearch() {
     const q = norm($("#searchInput").value.trim());
     const res = $("#searchRes");
-    if (!q) { res.innerHTML = `<div class="chips" style="justify-content:flex-start">${state.cats.map((c) => `<a class="chip" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>`; return; }
+    if (!q) { res.innerHTML = `<div class="seg">${state.cats.map((c) => `<a class="chip" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>`; return; }
     const list = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.description, (catOf(p) || {}).name].join(" ")).includes(q)).slice(0, 24);
     res.innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${num(list.length)} نتيجة</p>${grid(list)}` : `<div class="empty">لا توجد نتائج لـ «${esc($("#searchInput").value)}»</div>`;
   }
@@ -698,52 +725,59 @@
   function killMotion() {
     cleanups.forEach((f) => f()); cleanups = [];
     if (window.ScrollTrigger) window.ScrollTrigger.getAll().forEach((t) => t.kill());
+    if (G) G.set("footer.site .mark", { clearProps: "all" }); // the footer lives outside the routed view
   }
   function animateCommon() {
     if (!G) return;
     const ST = window.ScrollTrigger;
     $$("[data-split]").forEach((h) => {
-      G.fromTo($$(".w", h), { yPercent: 110, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, ease: "expo.out", stagger: 0.08, scrollTrigger: { trigger: h, start: "top 88%", once: true } });
+      G.fromTo($$(".w", h), { yPercent: 110, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, ease: "expo.out", stagger: 0.08, scrollTrigger: { trigger: h, start: "top 95%", once: true } });
     });
     $$("[data-rv]").forEach((el) => {
-      G.fromTo(el, { opacity: 0, y: 36 }, { opacity: 1, y: 0, duration: 1, ease: "expo.out", scrollTrigger: { trigger: el, start: "top 90%", once: true } });
+      G.fromTo(el, { opacity: 0, y: 36, filter: "blur(8px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.1, ease: "expo.out", scrollTrigger: { trigger: el, start: "top 97%", once: true } });
     });
     $$("[data-clip]").forEach((el) => {
-      G.fromTo(el, { clipPath: "inset(100% 0% 0% 0%)" }, { clipPath: "inset(0% 0% 0% 0%)", duration: 1.5, ease: "expo.inOut", scrollTrigger: { trigger: el, start: "top 82%", once: true } });
+      G.fromTo(el, { clipPath: "inset(100% 0% 0% 0% round 36px)" }, { clipPath: "inset(0% 0% 0% 0% round 36px)", duration: 1.5, ease: "expo.inOut", scrollTrigger: { trigger: el, start: "top 82%", once: true }, onComplete: () => G.set(el, { clearProps: "clipPath" }) });
     });
     $$("[data-stagger]").forEach((box) => {
-      G.fromTo(box.children, { opacity: 0, y: 60, scale: 0.94 }, { opacity: 1, y: 0, scale: 1, duration: 1.1, ease: "expo.out", stagger: 0.07, scrollTrigger: { trigger: box, start: "top 85%", once: true } });
+      G.fromTo(box.children, { opacity: 0, y: 60, scale: 0.94, filter: "blur(8px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 1.1, ease: "expo.out", stagger: 0.06, scrollTrigger: { trigger: box, start: "top 85%", once: true }, onComplete: () => G.set(box.children, { clearProps: "filter,transform" }) });
     });
     $$("[data-batch]").forEach((box) => {
       G.set(box.children, { opacity: 0, y: 50 });
-      ST.batch(box.children, { start: "top 92%", once: true, onEnter: (els) => G.to(els, { opacity: 1, y: 0, duration: 1, ease: "expo.out", stagger: 0.08 }) });
+      ST.batch(box.children, { start: "top 92%", once: true, onEnter: (els) => G.to(els, { opacity: 1, y: 0, duration: 1, ease: "expo.out", stagger: 0.08, onComplete: () => G.set(els, { clearProps: "transform" }) }) });
     });
     magnet();
   }
   function animateHome() {
     animateCommon();
     if (!G) return;
-    // hero entrance
+    // hero entrance, played once the opening has finished
     const tl = G.timeline({ paused: true, delay: 0.05 });
     introPromise.then(() => tl.play());
-    tl.fromTo(".hero h1 .w", { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.3, ease: "expo.out", stagger: 0.1 })
-      .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=0.9")
-      .fromTo("[data-hero-arch] .arch", { clipPath: "inset(100% 0% 0% 0%)", y: 60 }, { clipPath: "inset(0% 0% 0% 0%)", y: 0, duration: 1.6, ease: "expo.inOut" }, 0)
-      .fromTo("[data-orn]", { scale: 0.6, opacity: 0, rotate: -40 }, { scale: 1, opacity: 0.55, rotate: 0, duration: 2, ease: "expo.out" }, 0.3);
+    tl.fromTo(".hero h1 .w", { yPercent: 120, opacity: 0, filter: "blur(10px)" }, { yPercent: 0, opacity: 1, filter: "blur(0px)", duration: 1.4, ease: "expo.out", stagger: 0.09 })
+      .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=1")
+      .fromTo("#showCard", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.8, ease: "expo.out" }, 0)
+      .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1)
+      .fromTo("[data-float]", { y: 30, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 1.2, ease: "back.out(1.6)", stagger: 0.15 }, 0.8);
     countUp();
+    // gentle float of the hero chips
+    $$("[data-float]").forEach((c, i) => G.to(c, { y: i ? 10 : -10, duration: 3 + i, ease: "sine.inOut", yoyo: true, repeat: -1, delay: 2 }));
     // parallax
-    G.to("#heroArch", { yPercent: -8, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
-    $$("[data-orn]").forEach((o, i) => G.to(o, { rotate: i ? -60 : 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } }));
-    const pic = $("[data-feature-pic] > *");
-    if (pic) G.fromTo(pic, { scale: 1.2 }, { scale: 1, ease: "none", scrollTrigger: { trigger: "[data-feature]", start: "top bottom", end: "bottom top", scrub: true } });
+    G.to("[data-show]", { yPercent: -10, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
+    G.to("[data-orbit]", { rotate: 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
+    const pic = $("[data-feature-pic] > svg, [data-feature-pic] > img");
+    if (pic) G.fromTo(pic, { scale: 1.18, rotate: -6 }, { scale: 1, rotate: 0, ease: "none", scrollTrigger: { trigger: "[data-feature]", start: "top bottom", end: "bottom top", scrub: true } });
     const feat = $("[data-feature]");
-    if (feat) G.fromTo(feat, { clipPath: "inset(8% 6% 8% 6% round 30px)" }, { clipPath: "inset(0% 0% 0% 0% round 30px)", ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 40%", scrub: true } });
-    // band skews with scroll speed
+    if (feat) G.fromTo(feat, { scale: 0.92, opacity: 0.4 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 45%", scrub: true } });
+    // marquee leans with scroll speed
     const band = $("[data-band]");
     if (band) {
       const setSkew = G.quickTo(band, "skewX", { duration: 0.5, ease: "power3" });
       window.ScrollTrigger.create({ trigger: band, start: "top bottom", end: "bottom top", onUpdate: (self) => setSkew(G.utils.clamp(-12, 12, self.getVelocity() / -180)) });
     }
+    // footer wordmark rises
+    const mark = $("footer.site .mark");
+    if (mark) G.fromTo(mark, { yPercent: 40, opacity: 0 }, { yPercent: 0, opacity: 1, ease: "none", scrollTrigger: { trigger: "footer.site", start: "top bottom", end: "top 50%", scrub: true } });
   }
   function countUp() {
     $$("[data-count]").forEach((b) => {
@@ -760,6 +794,54 @@
       el.addEventListener("mousemove", (e) => { const r = el.getBoundingClientRect(); xTo((e.clientX - r.left - r.width / 2) * 0.25); yTo((e.clientY - r.top - r.height / 2) * 0.35); });
       el.addEventListener("mouseleave", () => { xTo(0); yTo(0); });
     });
+    $$("[data-tilt]").forEach((el) => {
+      const rx = G.quickTo(el, "rotateX", { duration: 0.8, ease: "power3" }), ry = G.quickTo(el, "rotateY", { duration: 0.8, ease: "power3" });
+      G.set(el.parentElement, { perspective: 1000 });
+      el.parentElement.addEventListener("mousemove", (e) => { const r = el.getBoundingClientRect(); ry(((e.clientX - r.left) / r.width - 0.5) * 14); rx(-((e.clientY - r.top) / r.height - 0.5) * 14); });
+      el.parentElement.addEventListener("mouseleave", () => { rx(0); ry(0); });
+    });
+  }
+
+  /* ---------- ambient light: sparkles, spotlight cards, cursor glow ---------- */
+  function ambient() {
+    // spotlight follows the pointer inside glass cards
+    document.addEventListener("pointermove", (e) => {
+      const el = e.target.closest && e.target.closest(".spot");
+      if (el) { const r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`); }
+    }, { passive: true });
+    if (fine && G) {
+      const light = $("#cursorLight");
+      const lx = G.quickTo(light, "x", { duration: 0.9, ease: "power3" }), ly = G.quickTo(light, "y", { duration: 0.9, ease: "power3" });
+      addEventListener("pointermove", (e) => { light.style.opacity = 1; lx(e.clientX); ly(e.clientY); }, { passive: true });
+    }
+    // twinkling sparkles
+    const cv = $("#sparkles"); if (!cv || reduce) return;
+    const ctx = cv.getContext("2d");
+    let W, H, dots = [], raf;
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    const size = () => {
+      W = cv.width = innerWidth * dpr; H = cv.height = innerHeight * dpr;
+      const n = Math.round(Math.min(90, (innerWidth * innerHeight) / 16000));
+      dots = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.3 + 0.4) * dpr, p: Math.random() * Math.PI * 2, s: 0.006 + Math.random() * 0.018, v: (Math.random() * 0.15 + 0.03) * dpr }));
+    };
+    const css = getComputedStyle(document.documentElement);
+    let col = css.getPropertyValue("--emerald").trim() || "#34e3a8";
+    const tick = () => {
+      ctx.clearRect(0, 0, W, H);
+      for (const d of dots) {
+        d.p += d.s; d.y -= d.v; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
+        const a = (Math.sin(d.p) + 1) / 2;
+        ctx.globalAlpha = a * 0.85;
+        ctx.fillStyle = col;
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
+        if (a > 0.92) { ctx.globalAlpha = (a - 0.92) * 6; ctx.fillRect(d.x - d.r * 4, d.y - 0.4 * dpr, d.r * 8, 0.8 * dpr); ctx.fillRect(d.x - 0.4 * dpr, d.y - d.r * 4, 0.8 * dpr, d.r * 8); }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    size(); tick();
+    addEventListener("resize", () => { size(); }, { passive: true });
+    document.addEventListener("visibilitychange", () => { cancelAnimationFrame(raf); if (!document.hidden) tick(); });
+    window.__rqSparkColor = (c) => { col = c; };
   }
   function scrollToId(id) {
     const el = document.getElementById(id);
@@ -808,10 +890,10 @@
     busy = true;
     const cur = $("#curtain");
     G.timeline({ onComplete: () => { busy = false; } })
-      .set(cur, { clipPath: "ellipse(0% 0% at 50% 100%)" })
-      .to(cur, { clipPath: "ellipse(150% 150% at 50% 100%)", duration: 0.55, ease: "power3.in" })
+      .set(cur, { clipPath: "circle(0% at 50% 50%)" })
+      .to(cur, { clipPath: "circle(75% at 50% 50%)", duration: 0.55, ease: "power3.in" })
       .add(() => { scrollTo(0, 0); render(); if (to) setTimeout(() => scrollToId(to), 60); })
-      .to(cur, { clipPath: "ellipse(150% 0% at 50% 0%)", duration: 0.7, ease: "power3.out" });
+      .to(cur, { clipPath: "circle(0% at 50% 50%)", duration: 0.75, ease: "power3.out" });
   }
   addEventListener("hashchange", navigate);
 
@@ -836,11 +918,12 @@
     // a first visit waits briefly so the intro knows whether a logo video was uploaded
     if (!hadCache) await Promise.race([loading, new Promise((r) => setTimeout(r, 1800))]);
     applySettings();
+    ambient();
     introPromise = intro();
     if (state.ready) { render(); updateCartCount(); }
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;
     const changed = await loading;
-    if (changed) { applySettings(); render(); updateCartCount(); }
+    if (changed) { applySettings(); render(); updateCartCount(); if (window.__rqSparkColor) window.__rqSparkColor(state.s.theme.emerald); }
     await introPromise;
     if (window.ScrollTrigger) window.ScrollTrigger.refresh();
   })();
