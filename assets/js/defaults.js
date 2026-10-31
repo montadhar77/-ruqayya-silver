@@ -17,27 +17,27 @@ window.RQ_DEFAULTS = {
     subtitle: "فضيات وأحجار كريمة · كربلاء المقدسة"
   },
   theme: {
-    deep: "#020f0b",
-    pearl: "#06201a",
-    paper: "#0c2c23",
-    emerald: "#34e3a8",
-    silver: "#c7d3cf",
-    accent: "#e3bd72",
-    ink: "#ecf6f2",
+    deep: "#0b0d0c",
+    pearl: "#121614",
+    paper: "#1b201e",
+    emerald: "#d6b26e",
+    silver: "#b9c0bc",
+    accent: "#5fae8a",
+    ink: "#f3efe6",
     floral: true,
     mode: "dark"
   },
   theme_light: {
-    deep: "#f3f8f5",
-    pearl: "#e4efe9",
+    deep: "#f4f4f1",
+    pearl: "#e9eae5",
     paper: "#ffffff",
-    emerald: "#0c8a5d",
-    silver: "#55685f",
-    accent: "#a87a25",
-    ink: "#0b2119"
+    emerald: "#134e3a",
+    silver: "#5d6a64",
+    accent: "#a8823c",
+    ink: "#111a16"
   },
   announcement: {
-    enabled: true,
+    enabled: false,
     items: ["توصيل لجميع محافظات العراق", "شحن دولي لكل دول العالم", "كل القطع مدموغة بعيار ٩٢٥", "تغليف هدايا فاخر"]
   },
   hero: {
@@ -51,9 +51,7 @@ window.RQ_DEFAULTS = {
     slide_seconds: 5.5,
     slides: [],
     stats: [
-      { value: "٩٢٥", label: "عيار الفضة" },
-      { value: "١٨", label: "محافظة عراقية" },
-      { value: "٢٠+", label: "دولة يصلها الشحن" }
+      { value: "٩٢٥", label: "عيار الفضة" }
     ]
   },
   sections: {

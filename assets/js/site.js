@@ -46,6 +46,8 @@
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toLatin = (t) => String(t ?? "").replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
   const num = (n) => Number(n || 0).toLocaleString("ar-IQ");
+  // "N pieces" with Arabic number agreement: قطعة واحدة · قطعتان · ٣–١٠ قطع · ١١+ قطعة
+  const pieces = (n) => { n = Number(n) || 0; const r = n % 100; return n === 1 ? "قطعة واحدة" : n === 2 ? "قطعتان" : `${num(n)} ${r >= 3 && r <= 10 ? "قطع" : "قطعة"}`; };
   const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
   const waNumber = (p) => {
     let d = toLatin(p).replace(/\D/g, "");
@@ -120,7 +122,6 @@
   function syncThemeMeta() {
     const cs = getComputedStyle(document.documentElement);
     const tc = $('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", cs.getPropertyValue("--deep").trim());
-    if (window.__rqSparkColor) window.__rqSparkColor(cs.getPropertyValue("--emerald").trim());
   }
   function setTheme(mode, save) {
     const was = document.documentElement.getAttribute("data-theme");
@@ -159,14 +160,10 @@
     $("#brandName").textContent = s.brand.name;
     $("#brandSub").textContent = /عليها السلام/.test(s.brand.full) ? "عليها السلام" : s.brand.tagline;
 
-    // announcement marquee
+    // announcement: a single still line (no scrolling text)
     const items = (s.announcement.items || []).filter(Boolean);
     const tb = $("#topbar");
-    if (s.announcement.enabled && items.length) {
-      const row = items.map((i) => `<span>${esc(i)}</span>`).join("");
-      $("#topTrack").innerHTML = row + row + row + row;
-      tb.hidden = false;
-    } else tb.hidden = true;
+    if (s.announcement.enabled && items.length) { $("#topTrack").textContent = items[0]; tb.hidden = false; } else tb.hidden = true;
 
     // whatsapp float
     const wa = $("#waFloat"), wl = waLink(`السلام عليكم، أودّ الاستفسار من ${s.brand.full}`);
@@ -194,7 +191,7 @@
   function renderFooter() {
     const s = state.s;
     $("#footer").innerHTML = `<div class="wrap">
-      <p class="mark grad" aria-hidden="true">${esc(s.brand.name)}</p>
+      <p class="mark" aria-hidden="true">${esc(s.brand.name)}</p>
       <div class="cols">
         <div><img class="f-logo" src="${esc(s.brand.logo || LOGO_FULL)}" alt="${esc(s.brand.full)}" loading="lazy"><h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
         <div><h4>الأقسام</h4><ul>${state.cats.slice(0, 6).map((c) => `<li><a href="#/c/${esc(c.slug)}">${esc(c.name)}</a></li>`).join("")}</ul></div>
@@ -320,7 +317,10 @@
     const s = state.s, sec = s.sections;
     const slides = heroSlides();
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
-    if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
+    // live counts fill the row, so the hero never repeats the shipping figures shown in the globe section
+    const plural = (n, few, many) => (n % 100 >= 3 && n % 100 <= 10 ? few : many); // Arabic: 3–10 take the plural, 11+ the singular
+    if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: plural(state.cats.length, "أقسام", "قسماً") + " في المعرض" });
+    if (state.prods.length && stats.length < 3) stats.push({ value: num(state.prods.length), label: plural(state.prods.length, "قطع", "قطعة") + " في المتجر" });
 
     const flips = [s.hero.title2, ...((s.hero.flip_more || []).filter(Boolean))].filter(Boolean);
     const line2 = flips.length > 1
@@ -345,8 +345,6 @@
               ${sl.img ? `<img src="${esc(sl.img)}" alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
               ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
           </div>
-          <div class="float-chip glass a" data-float>${A.ui.shield}<div><b>فضة ٩٢٥ أصلية</b><span>مدموغة ومضمونة</span></div></div>
-          <div class="float-chip glass b" data-float>${A.ui.truck}<div><b>${s.shop.intl_enabled ? "شحن لكل دول العالم" : "توصيل لكل العراق"}</b><span>${s.shop.intl_enabled ? "ومن كربلاء إلى بابك" : "الدفع عند الاستلام"}</span></div></div>
           ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
         </div>
       </div></header>`;
@@ -363,7 +361,7 @@
           return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge tilt ${cls}"><span class="glare"></span>
             ${c.image_url ? `<div class="t-img"><img src="${esc(c.image_url)}" alt="" loading="lazy"></div>` : ""}
             <div class="t-art">${A.depIcon(c.icon)}</div>
-            <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? `${num(count)} قطعة` : "قريباً"}</span></div>
+            <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? pieces(count) : "قريباً"}</span></div>
             <div><h3>${esc(c.name)}</h3><p>${esc(c.subtitle)}</p></div>
             <span class="t-go">${A.ui.arrowL}</span></a>`;
         }).join("")}</div></div></section>`;
@@ -373,9 +371,8 @@
     if (sec.featured.show && fp) {
       const c = catOf(fp);
       const spec = [["القسم", c && c.name], ["المعدن", fp.metal], ["الحجر", fp.stone], ["الوزن", fp.weight]].filter((x) => x[1]);
-      const meteors = Array.from({ length: 9 }, (_, k) => `<span class="meteor" style="left:${8 + ((k * 37) % 96)}%;animation-delay:${((k * 1.7) % 6).toFixed(1)}s;animation-duration:${(3.6 + (k % 4) * 1.1).toFixed(1)}s"></span>`).join("");
-      html += `<section class="block" style="padding-top:0"><div class="lamp" data-lamp aria-hidden="true"><span class="l-glow"></span><span class="l-a"></span><span class="l-b"></span><span class="l-bar"></span></div>
-        <div class="wrap"><div class="lamp-title"><h2 data-split>${splitWords(sec.featured.eyebrow, "grad")}</h2></div><div class="feature glass edge lit" data-feature>
+      html += `<section class="block" style="padding-top:0">
+        <div class="wrap"><div class="sec-title"><span class="rule" aria-hidden="true"></span><h2 data-split>${splitWords(sec.featured.eyebrow, "grad")}</h2><span class="rule" aria-hidden="true"></span></div><div class="feature glass edge lit" data-feature>
         <div class="txt"><div>${eyebrow((c && c.name) || "")}</div>
           <h2 data-split>${splitWords(fp.name)}</h2>
           ${fp.description ? `<p data-rv>${esc(fp.description.split("\n")[0])}</p>` : ""}
@@ -384,7 +381,7 @@
           <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
           ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} أضف للسلة</button>` : ""}</div>
         </div>
-        <div class="pic" data-feature-pic><span class="meteors">${meteors}</span><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
+        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
       </div></div></section>`;
     }
 
@@ -399,7 +396,7 @@
             <span class="room-no" aria-hidden="true">${String(k + 1).padStart(2, "0")}</span>
             <div class="room-ph">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
             <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
-        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>كل القطع</b><span>${num(state.prods.length)} قطعة في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
+        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>كل القطع</b><span>${pieces(state.prods.length)} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
       </div></section>`;
     }
 
@@ -412,11 +409,6 @@
       </div></section>`;
     }
 
-    const band = (sec.band.items || []).filter(Boolean);
-    if (sec.band.show && band.length) {
-      const row = band.map((b) => `<span>${esc(b)}</span>`).join("");
-      html += `<div class="band" aria-hidden="true"><div class="track" data-band>${row}${row}${row}${row}</div></div>`;
-    }
 
     const gl = sec.globe || {};
     if (s.shop.intl_enabled && gl.show !== false) {
@@ -481,7 +473,7 @@
     ].filter(Boolean);
     return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "")}
       <div class="visit">
-        <div class="visit-card glass spot" data-rv><h3>${esc(s.brand.full)}</h3>
+        <div class="visit-card glass spot info-card" data-rv><img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy"><h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
           <div class="socials">${socialLinks()}</div>
         </div>
@@ -535,10 +527,10 @@
       const words = $$(".fw", flip); let k = 0;
       const t = setInterval(() => {
         const cur = words[k]; k = (k + 1) % words.length; const nxt = words[k];
-        G.to(cur, { yPercent: -45, opacity: 0, duration: 0.5, ease: "power3.in", onComplete: () => cur.classList.remove("on") });
-        nxt.classList.add("on");
-        G.fromTo(nxt, { yPercent: 45, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.8, delay: 0.25, ease: "expo.out" });
-      }, 3200);
+        // one word leaves completely before the next arrives, so the two never overlap
+        G.to(cur, { yPercent: -30, opacity: 0, duration: 0.45, ease: "power2.in", onComplete: () => cur.classList.remove("on") });
+        G.fromTo(nxt, { yPercent: 30, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.9, delay: 0.5, ease: "expo.out", onStart: () => nxt.classList.add("on") });
+      }, 3600);
       cleanups.push(() => clearInterval(t));
     }
     $$("[data-filter]").forEach((b) => b.addEventListener("click", () => {
@@ -786,7 +778,7 @@
       f.address.placeholder = intl ? "الشارع، رقم المبنى، الرمز البريدي" : "المنطقة، أقرب نقطة دالة";
       $("#coAddrLbl").textContent = intl ? "العنوان الكامل" : "العنوان";
       f.phone.placeholder = intl ? "+00 000 000 0000" : "07XX XXX XXXX";
-      $("#coLead").innerHTML = `${num(lines.reduce((a, l) => a + l.qty, 0))} قطعة · الإجمالي <b class="price">${money(t.total)}</b>${t.tbd ? " + الشحن" : ""}`;
+      $("#coLead").innerHTML = `${pieces(lines.reduce((a, l) => a + l.qty, 0))} · الإجمالي <b class="price">${money(t.total)}</b>${t.tbd ? " + الشحن" : ""}`;
       $("#coSum").innerHTML = `<div class="sum"><span>المجموع</span><span>${money(t.sub)}</span></div>
         <div class="sum"><span>${intl ? "الشحن الدولي" : "التوصيل"}</span><span>${feeLabel(t)}</span></div>
         <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}${t.tbd ? ` <small style="font-weight:400;color:var(--soft)">+ الشحن</small>` : ""}</span></div>
@@ -898,11 +890,7 @@
     tl
       .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=1")
       .fromTo("#deck", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.6, ease: "expo.out" }, 0)
-      .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1)
-      .fromTo("[data-float]", { y: 30, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 1.2, ease: "back.out(1.6)", stagger: 0.15 }, 0.8);
-    countUp();
-    // gentle float of the hero chips
-    introPromise.then(() => setTimeout(() => $$("[data-float]").forEach((c) => { G.set(c, { clearProps: "transform" }); c.classList.add("bob"); }), 2200));
+      .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1);
     // parallax
     G.to("[data-show]", { yPercent: -10, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
     G.to("[data-orbit]", { rotate: 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
@@ -910,11 +898,6 @@
     if (pic) G.fromTo(pic, { scale: 1.18, rotate: -6 }, { scale: 1, rotate: 0, ease: "none", scrollTrigger: { trigger: "[data-feature]", start: "top bottom", end: "bottom top", scrub: true } });
     const feat = $("[data-feature]");
     if (feat) G.fromTo(feat, { scale: 0.94, opacity: 0.5 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 50%", scrub: true } });
-    // lamp: light fans open as it comes into view
-    const lamp = $("[data-lamp]");
-    if (lamp) G.timeline({ scrollTrigger: { trigger: lamp, start: "top 85%", once: true } })
-      .fromTo($$(".l-a, .l-b, .l-bar", lamp), { scaleX: 0.45, opacity: 0.3 }, { scaleX: 1, opacity: 1, duration: 1.4, ease: "expo.out" })
-      .fromTo($(".l-glow", lamp), { scaleX: 0.4, opacity: 0 }, { scaleX: 1, opacity: 0.45, duration: 1.4, ease: "expo.out" }, 0);
     // about text: each word lights up as it scrolls through the viewport
     const lit = $("[data-lit]");
     if (lit) G.fromTo($$(".lw", lit), { opacity: 0.16 }, { opacity: 1, ease: "none", stagger: 0.08, scrollTrigger: { trigger: lit, start: "top 82%", end: "bottom 45%", scrub: true } });
@@ -925,23 +908,6 @@
       G.to(track, { x: () => dist(), ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), pin: ".room-pin", scrub: 0.8, invalidateOnRefresh: true, anticipatePin: 1 } });
       $$(".room-card .room-ph > svg, .room-card .room-ph > img", track).forEach((el) => G.fromTo(el, { rotate: -8 }, { rotate: 8, ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), scrub: true } }));
     }
-    // marquee leans with scroll speed
-    const band = $("[data-band]");
-    if (band) {
-      const setSkew = G.quickTo(band, "skewX", { duration: 0.5, ease: "power3" });
-      window.ScrollTrigger.create({ trigger: band, start: "top bottom", end: "bottom top", onUpdate: (self) => setSkew(G.utils.clamp(-12, 12, self.getVelocity() / -180)) });
-    }
-    // footer wordmark rises
-    const mark = $("footer.site .mark");
-    if (mark) G.fromTo(mark, { yPercent: 40, opacity: 0 }, { yPercent: 0, opacity: 1, ease: "none", scrollTrigger: { trigger: "footer.site", start: "top bottom", end: "top 50%", scrub: true } });
-  }
-  function countUp() {
-    $$("[data-count]").forEach((b) => {
-      const m = toLatin(b.dataset.count).match(/^(\D*)(\d+)(\D*)$/);
-      if (!m) return;
-      const end = +m[2], o = { v: 0 };
-      introPromise.then(() => G.to(o, { v: end, duration: 2, ease: "power2.out", delay: 0.6, onUpdate: () => { b.textContent = m[1] + Math.round(o.v).toLocaleString("ar-IQ", { useGrouping: end >= 10000 }) + m[3]; } }));
-    });
   }
   function magnet() {
     if (!fine) return;
@@ -998,8 +964,8 @@
       globe = window.createGlobe(cv, {
         devicePixelRatio: dpr, width: size * dpr, height: size * dpr, phi, theta, dark: light ? 0 : 1, diffuse: light ? 1.4 : 2,
         mapSamples: small ? 12000 : 18000, mapBrightness: light ? 4.5 : 9, mapBaseBrightness: light ? 0.05 : 0.02,
-        baseColor: light ? [1, 1, 1] : rgb("--emerald").map((x) => Math.min(1, x * 0.45 + 0.3)),
-        markerColor: rgb("--accent"), glowColor: light ? [0.86, 0.95, 0.9] : rgb("--emerald").map((x) => x * 0.7),
+        baseColor: light ? [1, 1, 1] : rgb("--silver").map((x) => Math.min(1, x * 0.85)),
+        markerColor: light ? rgb("--accent") : rgb("--emerald"), glowColor: light ? [0.9, 0.9, 0.86] : rgb("--emerald").map((x) => x * 0.55),
         markers, opacity: light ? 0.9 : 0.95,
         onRender: (st) => {
           if (drag === null) { phi += 0.0028 + vel; vel *= 0.94; }
@@ -1023,7 +989,7 @@
     }
   }
 
-  /* ---------- ambient light: sparkles, spotlight cards, cursor glow ---------- */
+  /* ---------- ambient light: spotlight cards, cursor glow ---------- */
   function ambient() {
     // spotlight + 3D tilt + glare follow the pointer (mouse / trackpad only)
     let tiltEl = null;
@@ -1066,42 +1032,6 @@
       new MutationObserver(watch).observe(app, { childList: true });
       watch();
     }
-    // twinkling sparkles (fewer and lighter on phones)
-    const cv = $("#sparkles"); if (!cv || reduce) return;
-    if (innerWidth < 700 || (navigator.hardwareConcurrency || 8) <= 4) { cv.remove(); return; }
-    const ctx = cv.getContext("2d", { alpha: true });
-    if (!ctx) { cv.remove(); return; }
-    let W = 0, H = 0, lastW = 0, dots = [], raf;
-    const small = innerWidth < 700;
-    const dpr = Math.min(small ? 1 : 1.5, devicePixelRatio || 1);
-    const size = () => {
-      const w = innerWidth, h = innerHeight;
-      W = cv.width = Math.round(w * dpr); H = cv.height = Math.round(h * dpr);
-      if (w === lastW && dots.length) return; // phone address bar: keep the same stars
-      lastW = w;
-      const n = Math.round(Math.min(small ? 26 : 64, (w * h) / (small ? 22000 : 18000)));
-      dots = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.2 + 0.4) * dpr, p: Math.random() * Math.PI * 2, s: 0.006 + Math.random() * 0.016, v: (Math.random() * 0.14 + 0.03) * dpr }));
-    };
-    let col = getComputedStyle(document.documentElement).getPropertyValue("--emerald").trim() || "#34e3a8";
-    let lastT = 0;
-    const tick = (t = 0) => {
-      raf = requestAnimationFrame(tick);
-      if (t - lastT < 32) return; // ~30 fps is plenty for slow twinkles
-      lastT = t;
-      ctx.clearRect(0, 0, W, H);
-      ctx.fillStyle = col;
-      for (const d of dots) {
-        d.p += d.s * 2; d.y -= d.v * 2; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
-        const a = (Math.sin(d.p) + 1) / 2;
-        ctx.globalAlpha = a * 0.85;
-        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.2832); ctx.fill();
-        if (a > 0.93) { ctx.globalAlpha = (a - 0.93) * 7; ctx.fillRect(d.x - d.r * 4, d.y - 0.4 * dpr, d.r * 8, 0.8 * dpr); ctx.fillRect(d.x - 0.4 * dpr, d.y - d.r * 4, 0.8 * dpr, d.r * 8); }
-      }
-    };
-    size(); tick();
-    let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(size, 150); }, { passive: true });
-    document.addEventListener("visibilitychange", () => { cancelAnimationFrame(raf); if (!document.hidden) tick(); });
-    window.__rqSparkColor = (c) => { col = c; };
   }
   let lenis = null;
   function smoothScroll() {
@@ -1198,7 +1128,7 @@
     if (state.ready) { render(); updateCartCount(); }
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;
     const changed = await loading;
-    if (changed) { applySettings(); render(); updateCartCount(); if (window.__rqSparkColor) window.__rqSparkColor(state.s.theme.emerald); }
+    if (changed) { applySettings(); render(); updateCartCount(); }
     await introPromise;
     if (window.ScrollTrigger) window.ScrollTrigger.refresh();
     if (state.s.shop.intl_enabled) {

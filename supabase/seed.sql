@@ -12,14 +12,14 @@ insert into public.categories(name,subtitle,slug,icon,sort) values
 ('هدايا العتبات المقدسة','من حرم الإمام الحسين وأبي الفضل العباس (ع)','shrine-gifts','lantern',10)
 on conflict (slug) do nothing;
 insert into public.products(category_id,name,description,price,old_price,badge,metal,stone,featured,sort)
-select c.id, v.name, 'منتج تجريبي لعرض شكل الموقع — عدّله بصورك وبياناتك أو احذفه من لوحة التحكم.', v.price, v.old, v.badge, v.metal, v.stone, v.feat, v.sort from (values
-('mens-rings','خاتم الفيروز النيشابوري',240000,null::int,'جديد','فضة ٩٢٥','فيروز نيشابوري',true,1),
-('womens-rings','خاتم دُرّ النجف',160000,null::int,'','فضة ٩٢٥','دُرّ النجف',false,2),
-('mens-rings','خاتم العقيق اليماني الملكي',320000,360000,'قطعة الموسم','فضة ٩٢٥','عقيق يماني',true,3),
-('misbaha','مسبحة عقيق يماني ٣٣ حبة',95000,null::int,'الأكثر طلباً','','عقيق يماني',false,4),
-('misbaha','مسبحة يُسر أسود',120000,null::int,'','','يُسر',false,5),
-('mens-rings','خاتم الشذر الأصفر',210000,null::int,'','فضة ٩٢٥','شذر',false,6),
-('bracelets-necklaces','قلادة فضة منقوشة',145000,null::int,'','فضة ٩٢٥','',false,7),
-('perfumes-incense','بخور عود كربلائي',35000,null::int,'','','',false,8)
-) v(slug,name,price,old,badge,metal,stone,feat,sort) join public.categories c on c.slug=v.slug;
+select c.id, v.name, v.descr, v.price, v.old, v.badge, v.metal, v.stone, v.feat, v.sort from (values
+('mens-rings','خاتم الفيروز النيشابوري','فيروزٌ نيشابوري بلونه السماوي الصافي، يحتضنه إطارٌ من فضة عيار ٩٢٥ مصاغٌ يدوياً بلمسةٍ كربلائية هادئة.',240000,null::int,'جديد','فضة ٩٢٥','فيروز نيشابوري',true,1),
+('womens-rings','خاتم دُرّ النجف','دُرّ النجف بصفائه الهادئ في إطارٍ نسائي رقيق من فضة عيار ٩٢٥، لإطلالةٍ ناعمة كل يوم.',160000,null::int,'','فضة ٩٢٥','دُرّ النجف',false,2),
+('mens-rings','خاتم العقيق اليماني الملكي','عقيقٌ يماني بحُمرته العميقة في إطارٍ ملكي من فضة عيار ٩٢٥، قطعةٌ تليق بالمناسبات وتبقى ذكرى.',320000,360000,'قطعة الموسم','فضة ٩٢٥','عقيق يماني',true,3),
+('misbaha','مسبحة عقيق يماني ٣٣ حبة','ثلاثٌ وثلاثون حبة من العقيق اليماني، منظومةٌ بعناية مع شاهدٍ وفواصل فضية.',95000,null::int,'الأكثر طلباً','','عقيق يماني',false,4),
+('misbaha','مسبحة يُسر أسود','مسبحة يُسر أسود بلمعةٍ طبيعية هادئة، خفيفةٌ في اليد ومريحةٌ للذكر.',120000,null::int,'','','يُسر',false,5),
+('mens-rings','خاتم الشذر الأصفر','شذرٌ أصفر بلونه العسلي الدافئ في إطارٍ رجالي متين من فضة عيار ٩٢٥.',210000,null::int,'','فضة ٩٢٥','شذر',false,6),
+('bracelets-necklaces','قلادة فضة منقوشة','قلادة من فضة عيار ٩٢٥ بنقشٍ يدوي دقيق، هديةٌ أنيقة تحمل روح المدينة.',145000,null::int,'','فضة ٩٢٥','',false,7),
+('perfumes-incense','بخور عود كربلائي','بخور عود كربلائي بعبيرٍ دافئ يملأ المكان، يُقدَّم في علبةٍ أنيقة جاهزة للإهداء.',35000,null::int,'','','',false,8)
+) v(slug,name,descr,price,old,badge,metal,stone,feat,sort) join public.categories c on c.slug=v.slug;
 insert into public.admins(user_id) select id from auth.users where email='danialwahab77@gmail.com' on conflict do nothing;

@@ -585,13 +585,12 @@
           SH("hero.text", "النص التعريفي", { t: "textarea" }), SH("hero.cta1", "نص الزر الأول (يفتح المتجر)"), SH("hero.cta2", "نص الزر الثاني (ينزل إلى الأقسام)"),
           SH("hero.slides", "صور العرض المتحرك داخل القوس", { t: "list", add: "إضافة صورة", hint: "تتبدّل الصور بحركة انتقال ناعمة. إن تركتها فارغة ستُعرض صور المنتجات المميزة تلقائياً.", fields: [{ k: "image", l: "الصورة", t: "image", folder: "slides" }, { k: "title", l: "عنوان على الصورة" }, { k: "caption", l: "سطر صغير تحته" }, { k: "link", l: "رابط عند الضغط (اختياري)", dir: "ltr" }] }),
           SH("hero.slide_seconds", "مدة كل صورة بالثواني", { t: "number" }),
-          SH("hero.stats", "الأرقام تحت النص", { t: "list", add: "إضافة رقم", hint: "عدد الأقسام يُضاف تلقائياً.", fields: [{ k: "value", l: "الرقم" }, { k: "label", l: "الوصف" }] })
+          SH("hero.stats", "الأرقام تحت النص", { t: "list", add: "إضافة رقم", hint: "إذا كانت الأرقام أقل من ثلاثة يُكمَّل الصف تلقائياً بعدد الأقسام وعدد القطع.", fields: [{ k: "value", l: "الرقم" }, { k: "label", l: "الوصف" }] })
         ] },
-        { title: "شريط الإعلانات أعلى الموقع", fields: [SH("announcement.enabled", "إظهار الشريط", { t: "toggle" }), SH("announcement.items", "الجمل المتحركة", { t: "strings", add: "إضافة جملة" })] },
+        { title: "سطر الإعلان أعلى الموقع", fields: [SH("announcement.enabled", "إظهار السطر", { t: "toggle" }), SH("announcement.items", "نص الإعلان (يظهر الأول فقط، ثابتاً)", { t: "strings", add: "إضافة نص" })] },
         { title: "قسم «أقسام المعرض»", fields: [showT("sections.departments.show"), SH("sections.departments.eyebrow", "السطر الصغير"), SH("sections.departments.title", "العنوان"), SH("sections.departments.text", "الوصف")] },
         { title: "قسم «قطعة الموسم»", fields: [showT("sections.featured.show"), SH("sections.featured.product_id", "المنتج المعروض", { t: "product", hint: "إن لم تختر، يُعرض أول منتج مميز." }), SH("sections.featured.eyebrow", "السطر الصغير"), SH("sections.featured.button", "نص الزر")] },
         { title: "قسم «المجموعة المختارة»", fields: [showT("sections.collection.show"), SH("sections.collection.eyebrow", "السطر الصغير"), SH("sections.collection.title", "العنوان"), SH("sections.collection.text", "الوصف"), SH("sections.collection.count", "عدد المنتجات المعروضة", { t: "number" })] },
-        { title: "الشريط الأخضر المتحرك", fields: [showT("sections.band.show"), SH("sections.band.items", "الكلمات", { t: "strings", add: "إضافة كلمة" })] },
         { title: "قسم «من كربلاء إلى العالم» (الكرة الأرضية)", fields: [SH("sections.globe.show", "إظهار القسم (يظهر فقط عند تفعيل الشحن الدولي)", { t: "toggle" }), SH("sections.globe.eyebrow", "السطر الصغير"), SH("sections.globe.title", "العنوان"), SH("sections.globe.text", "النص", { t: "textarea" })] },
         { title: "قسم «عن المعرض»", fields: [showT("sections.about.show"), SH("sections.about.image", "الصورة (داخل القوس)", { t: "image", folder: "about" }), SH("sections.about.eyebrow", "السطر الصغير"), SH("sections.about.title", "العنوان"), SH("sections.about.text", "النص", { t: "textarea" })] },
         { title: "آراء الزبائن", fields: [showT("sections.testimonials.show"), SH("sections.testimonials.title", "العنوان"), SH("sections.testimonials.items", "الآراء", { t: "list", add: "إضافة رأي", hint: "لا يظهر القسم إلا بعد إضافة رأي واحد على الأقل.", fields: [{ k: "name", l: "الاسم" }, { k: "city", l: "المدينة" }, { k: "text", l: "الرأي", t: "textarea" }] })] },
@@ -609,7 +608,7 @@
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
           SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
-          SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" })
+          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" })
         ] },
         { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
         { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
@@ -634,7 +633,7 @@
       ]
     }
   };
-  const COLOR_LABELS = { deep: ["لون الخلفية", ""], emerald: ["لون التوهّج (الزمرّدي)", ""], accent: ["اللون الذهبي", ""], paper: ["لون البطاقات الزجاجية", ""], pearl: ["الخلفية الثانية", ""], silver: ["الفضّي", ""], ink: ["لون النص", ""] };
+  const COLOR_LABELS = { deep: ["لون الخلفية", ""], emerald: ["اللون الأساسي (الأزرار واللمعان)", ""], accent: ["اللون الثانوي", ""], paper: ["لون البطاقات", ""], pearl: ["الخلفية الثانية", ""], silver: ["الفضّي", ""], ink: ["لون النص", ""] };
 
   function fieldHTML(f, d) {
     const v = getPath(d, f.p);
