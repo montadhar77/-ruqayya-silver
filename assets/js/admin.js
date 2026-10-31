@@ -581,7 +581,7 @@
       title: "محتوى الصفحة الرئيسية", sub: "كل النصوص والصور في الصفحة الرئيسية، بالترتيب الذي تظهر به",
       groups: [
         { title: "الواجهة الرئيسية (أعلى الصفحة)", fields: [
-          SH("hero.eyebrow", "السطر الصغير فوق العنوان"), SH("hero.title1", "العنوان — السطر الأول"), SH("hero.title2", "العنوان — السطر الثاني (بلون فضّي لامع)"),
+          SH("hero.eyebrow", "السطر الصغير فوق العنوان"), SH("hero.title1", "العنوان — السطر الأول"), SH("hero.title2", "العنوان — السطر الثاني (بلون متدرّج)"), SH("hero.flip_more", "كلمات تتبدّل مع السطر الثاني", { t: "strings", add: "إضافة عبارة", hint: "تتناوب هذه العبارات مكان السطر الثاني بحركة ناعمة. احذفها كلها ليبقى السطر ثابتاً." }),
           SH("hero.text", "النص التعريفي", { t: "textarea" }), SH("hero.cta1", "نص الزر الأول (يفتح المتجر)"), SH("hero.cta2", "نص الزر الثاني (ينزل إلى الأقسام)"),
           SH("hero.slides", "صور العرض المتحرك داخل القوس", { t: "list", add: "إضافة صورة", hint: "تتبدّل الصور بحركة انتقال ناعمة. إن تركتها فارغة ستُعرض صور المنتجات المميزة تلقائياً.", fields: [{ k: "image", l: "الصورة", t: "image", folder: "slides" }, { k: "title", l: "عنوان على الصورة" }, { k: "caption", l: "سطر صغير تحته" }, { k: "link", l: "رابط عند الضغط (اختياري)", dir: "ltr" }] }),
           SH("hero.slide_seconds", "مدة كل صورة بالثواني", { t: "number" }),
@@ -592,6 +592,7 @@
         { title: "قسم «قطعة الموسم»", fields: [showT("sections.featured.show"), SH("sections.featured.product_id", "المنتج المعروض", { t: "product", hint: "إن لم تختر، يُعرض أول منتج مميز." }), SH("sections.featured.eyebrow", "السطر الصغير"), SH("sections.featured.button", "نص الزر")] },
         { title: "قسم «المجموعة المختارة»", fields: [showT("sections.collection.show"), SH("sections.collection.eyebrow", "السطر الصغير"), SH("sections.collection.title", "العنوان"), SH("sections.collection.text", "الوصف"), SH("sections.collection.count", "عدد المنتجات المعروضة", { t: "number" })] },
         { title: "الشريط الأخضر المتحرك", fields: [showT("sections.band.show"), SH("sections.band.items", "الكلمات", { t: "strings", add: "إضافة كلمة" })] },
+        { title: "قسم «من كربلاء إلى العالم» (الكرة الأرضية)", fields: [SH("sections.globe.show", "إظهار القسم (يظهر فقط عند تفعيل الشحن الدولي)", { t: "toggle" }), SH("sections.globe.eyebrow", "السطر الصغير"), SH("sections.globe.title", "العنوان"), SH("sections.globe.text", "النص", { t: "textarea" })] },
         { title: "قسم «عن المعرض»", fields: [showT("sections.about.show"), SH("sections.about.image", "الصورة (داخل القوس)", { t: "image", folder: "about" }), SH("sections.about.eyebrow", "السطر الصغير"), SH("sections.about.title", "العنوان"), SH("sections.about.text", "النص", { t: "textarea" })] },
         { title: "آراء الزبائن", fields: [showT("sections.testimonials.show"), SH("sections.testimonials.title", "العنوان"), SH("sections.testimonials.items", "الآراء", { t: "list", add: "إضافة رأي", hint: "لا يظهر القسم إلا بعد إضافة رأي واحد على الأقل.", fields: [{ k: "name", l: "الاسم" }, { k: "city", l: "المدينة" }, { k: "text", l: "الرأي", t: "textarea" }] })] },
         { title: "قسم «زورونا» ونموذج المراسلة", fields: [showT("sections.visit.show"), SH("sections.visit.title", "العنوان"), SH("sections.visit.form_title", "عنوان النموذج"), SH("sections.visit.form_text", "وصف النموذج")] }
@@ -608,8 +609,7 @@
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
           SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
-          SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" }),
-          SH("theme.jasmine", "زهور الياسمين", { t: "toggle" })
+          SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" })
         ] },
         { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
         { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
@@ -698,7 +698,7 @@
       const h = e.target.closest(".collapsible > h2"); if (h) { h.parentElement.classList.toggle("open"); return; }
       const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],[data-reset]");
       if (!t) return;
-      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode", "jasmine"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
+      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
       if (t.dataset.clear) { setPath(d, t.dataset.clear, ""); redraw(t.dataset.clear); dirty(); return; }
       const p = t.dataset.addstr || t.dataset.additem || t.dataset.del || t.dataset.move;
       const arr = Array.isArray(getPath(d, p)) ? getPath(d, p) : [];

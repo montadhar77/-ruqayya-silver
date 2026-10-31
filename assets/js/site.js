@@ -7,7 +7,20 @@
   "use strict";
   const A = window.RQ_ART;
   const cfg = window.RQ_CONFIG;
-  const db = window.supabase.createClient(cfg.url, cfg.key, { auth: { persistSession: false, autoRefreshToken: false } });
+  // The public site only reads the catalogue, places orders and sends messages,
+  // so it talks to the database REST API directly (no 218 KB client library).
+  async function api(path, opts = {}) {
+    try {
+      const r = await fetch(`${cfg.url}/rest/v1/${path}`, { ...opts, headers: { apikey: cfg.key, "Content-Type": "application/json", Accept: "application/json", ...(opts.headers || {}) } });
+      const txt = await r.text();
+      let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
+      return r.ok ? { data, error: null } : { data: null, error: data || { message: r.statusText || "request_failed" } };
+    } catch (e) { return { data: null, error: { message: String(e && e.message || e) } }; }
+  }
+  const db = {
+    rpc: (fn, args) => api(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }),
+    insert: (table, row) => api(table, { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } })
+  };
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -75,12 +88,13 @@
   }
   async function fetchAll() {
     const [s, c, p] = await Promise.all([
-      db.from("settings").select("data").eq("id", 1).maybeSingle(),
-      db.from("categories").select("*").eq("active", true).order("sort").order("created_at"),
-      db.from("products").select("*").eq("active", true).order("sort").order("created_at", { ascending: false })
+      api("settings?select=data&id=eq.1"),
+      api("categories?select=*&active=eq.true&order=sort.asc,created_at.asc"),
+      api("products?select=*&active=eq.true&order=sort.asc,created_at.desc")
     ]);
     if (s.error || c.error || p.error) throw s.error || c.error || p.error;
-    return { settings: (s.data && s.data.data) || {}, cats: c.data || [], prods: p.data || [] };
+    const row = Array.isArray(s.data) ? s.data[0] : s.data;
+    return { settings: (row && row.data) || {}, cats: Array.isArray(c.data) ? c.data : [], prods: Array.isArray(p.data) ? p.data : [] };
   }
   async function load() {
     const cached = safeLS(() => JSON.parse(localStorage.getItem("rq_cache") || "null"), null);
@@ -109,9 +123,11 @@
     if (window.__rqSparkColor) window.__rqSparkColor(cs.getPropertyValue("--emerald").trim());
   }
   function setTheme(mode, save) {
+    const was = document.documentElement.getAttribute("data-theme");
     document.documentElement.setAttribute("data-theme", mode);
     if (save) safeLS(() => localStorage.setItem("rq_theme", mode));
     syncThemeMeta();
+    if (was !== mode && $("#globe")) startGlobe();
   }
   function toggleTheme(e) {
     const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
@@ -131,7 +147,6 @@
     tv.textContent = `:root{${keys.filter((k) => ok(t[k])).map((k) => `--${k}:${t[k]}`).join(";")}}` +
       `:root[data-theme="light"]{${keys.filter((k) => ok(tl[k])).map((k) => `--${k}:${tl[k]}`).join(";")}}`;
     document.body.classList.toggle("no-aurora", t.floral === false);
-    document.body.classList.toggle("no-jasmine", t.jasmine === false);
     if (!safeLS(() => localStorage.getItem("rq_theme"), null)) setTheme(resolveMode(t.mode), false);
     document.title = s.seo.title || s.brand.full;
     const md = $('meta[name="description"]'); if (md) md.setAttribute("content", s.seo.description || "");
@@ -178,7 +193,7 @@
 
   function renderFooter() {
     const s = state.s;
-    $("#footer").innerHTML = `<div class="jas j-foot">${A.jasmine()}</div><div class="wrap">
+    $("#footer").innerHTML = `<div class="wrap">
       <p class="mark grad" aria-hidden="true">${esc(s.brand.name)}</p>
       <div class="cols">
         <div><img class="f-logo" src="${esc(s.brand.logo || LOGO_FULL)}" alt="${esc(s.brand.full)}" loading="lazy"><h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
@@ -204,9 +219,9 @@
       const finish = () => {
         if (done) return; done = true;
         safeLS(() => sessionStorage.setItem("rq_intro", "1"));
-        if (G) G.to(el, { clipPath: "circle(0% at 50% 50%)", duration: 1.1, ease: "expo.inOut", onComplete: () => el.remove() });
+        if (G) G.to(el, { clipPath: "circle(0% at 50% 50%)", duration: 0.8, ease: "expo.inOut", onComplete: () => el.remove() });
         else el.remove();
-        setTimeout(resolve, G ? 500 : 0);
+        setTimeout(resolve, G ? 320 : 0);
       };
       if (!s.enabled || (seen && !s.every_visit)) { el.remove(); resolve(); return; }
       if (G) G.set(el, { clipPath: "circle(150% at 50% 50%)" });
@@ -238,10 +253,10 @@
     if (!G) { $$("#introMark > *").forEach((e) => (e.style.opacity = 1)); setTimeout(finish, 1200); return; }
     const paths = $$("#introArch circle, #introArch path");
     paths.forEach((p) => { const l = p.getTotalLength(); p.style.strokeDasharray = l; p.style.strokeDashoffset = l; });
-    const tl = G.timeline({ onComplete: () => setTimeout(finish, 450) });
-    tl.to("#introBloom", { scale: 1, duration: 2.4, ease: "expo.out" }, 0);
-    tl.fromTo(logo, { opacity: 0, scale: 0.6, filter: "blur(16px) brightness(2.2)" }, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)", duration: 1.6, ease: "expo.out" }, 0.2);
-    tl.fromTo("#introSub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.7");
+    const tl = G.timeline({ onComplete: () => setTimeout(finish, 250) });
+    tl.to("#introBloom", { scale: 1, duration: 1.6, ease: "expo.out" }, 0);
+    tl.fromTo(logo, { opacity: 0, scale: 0.7, filter: "brightness(2.4)" }, { opacity: 1, scale: 1, filter: "brightness(1)", duration: 1.1, ease: "expo.out" }, 0.1);
+    tl.fromTo("#introSub", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, "-=0.55");
   }
 
   /* ---------- small renderers ---------- */
@@ -259,7 +274,7 @@
   function card(p) {
     const c = catOf(p);
     const out = !inStock(p);
-    return `<article class="card glass spot edge" data-card>
+    return `<article class="card glass spot edge tilt" data-card><span class="glare"></span>
       <div class="ph">${out ? `<span class="tag out">نفدت الكمية</span>` : p.badge ? `<span class="tag">${esc(p.badge)}</span>` : ""}${media(p)}</div>
       <h4>${esc(p.name)}</h4>
       <div class="meta">${esc([c && c.name, p.stone || p.metal].filter(Boolean).join(" · "))}</div>
@@ -274,14 +289,14 @@
   function splitWords(text, wordCls = "") {
     return esc(text).split(/\s+/).filter(Boolean).map((w) => `<span class="wl"><span class="w ${wordCls}">${w}</span></span>`).join(" ");
   }
-  function titleBlock(eb, title, text, flower) {
-    return `<div class="title">${flower ? `<span class="jas j-title">${A.jasmine("flower")}</span>` : ""}${eb ? `<div data-rv>${eyebrow(eb)}</div>` : ""}
+  function titleBlock(eb, title, text) {
+    return `<div class="title">${eb ? `<div data-rv>${eyebrow(eb)}</div>` : ""}
       <h2 data-split>${splitWords(title)}</h2>${text ? `<p data-rv>${esc(text)}</p>` : ""}</div>`;
   }
   const orbitSVG = () => `<svg viewBox="0 0 500 500" aria-hidden="true">
-      <circle class="o" cx="250" cy="250" r="246"/><circle class="o" cx="250" cy="250" r="196" stroke-dasharray="2 6"/><circle class="o" cx="250" cy="250" r="150"/>
-      <g class="g1"><circle class="sat" cx="250" cy="4" r="4"/><circle class="sat gold" cx="496" cy="250" r="3"/></g>
-      <g class="g2"><circle class="sat" cx="250" cy="446" r="3"/><circle class="sat" cx="54" cy="250" r="2.5"/></g></svg>`;
+      <circle class="o" cx="250" cy="250" r="246"/><circle class="o" cx="250" cy="250" r="196" stroke-dasharray="2 6"/><circle class="o" cx="250" cy="250" r="150"/></svg>
+      <svg class="r1" viewBox="0 0 500 500" aria-hidden="true"><circle class="sat" cx="250" cy="4" r="4"/><circle class="sat gold" cx="496" cy="250" r="3"/></svg>
+      <svg class="r2" viewBox="0 0 500 500" aria-hidden="true"><circle class="sat" cx="250" cy="446" r="3"/><circle class="sat" cx="54" cy="250" r="2.5"/></svg>`;
 
   /* ---------- home ---------- */
   function heroSlides() {
@@ -307,10 +322,14 @@
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
     if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
 
-    let html = `<header class="hero" id="top"><div class="wrap hero-grid">
+    const flips = [s.hero.title2, ...((s.hero.flip_more || []).filter(Boolean))].filter(Boolean);
+    const line2 = flips.length > 1
+      ? `<span class="flip" data-flip>${flips.map((w, k) => `<span class="fw grad${k ? "" : " on"}">${esc(w)}</span>`).join("")}</span>`
+      : splitWords(s.hero.title2, "grad");
+    let html = `<header class="hero" id="top"><span class="spotlight s1" aria-hidden="true"></span><span class="spotlight s2" aria-hidden="true"></span><div class="wrap hero-grid">
         <div class="hero-txt">
           <div class="pill" data-hero><span class="dot"></span>${esc(s.hero.eyebrow)}</div>
-          <h1>${splitWords(s.hero.title1)}<span class="line2">${splitWords(s.hero.title2, "grad")}</span></h1>
+          <h1>${splitWords(s.hero.title1)}<span class="line2">${line2}</span></h1>
           <p class="lead" data-hero>${esc(s.hero.text)}</p>
           <div class="cta" data-hero>
             <a class="btn shine" href="#/shop" data-magnet>${esc(s.hero.cta1)} ${A.ui.arrow}</a>
@@ -320,13 +339,11 @@
         </div>
         <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
           <div class="orbit" data-orbit>${orbitSVG()}</div>
-          <div class="jas j-hero-a">${A.jasmine()}</div><div class="jas j-hero-b">${A.jasmine()}</div>
-          <div class="show-card" id="showCard" data-tilt>
-            <div class="stage"></div>
-            ${slides.map((sl, i) => `<a class="slide${i === 0 ? " on" : ""}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
+          <div class="deck" id="deck" data-tilt>
+            ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
+              ${slides.length > 1 ? `<span class="deck-no" aria-hidden="true">${String(i + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}</span>` : ""}
               ${sl.img ? `<img src="${esc(sl.img)}" alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
-              ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}</a>`).join("")}
-            <div class="gloss"></div>
+              ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
           </div>
           <div class="float-chip glass a" data-float>${A.ui.shield}<div><b>فضة ٩٢٥ أصلية</b><span>مدموغة ومضمونة</span></div></div>
           <div class="float-chip glass b" data-float>${A.ui.truck}<div><b>${s.shop.intl_enabled ? "شحن لكل دول العالم" : "توصيل لكل العراق"}</b><span>${s.shop.intl_enabled ? "ومن كربلاء إلى بابك" : "الدفع عند الاستلام"}</span></div></div>
@@ -339,11 +356,11 @@
       const w = (4 - ((n + 3) % 4)) % 4, wides = new Set();
       if (w && n > 6) wides.add(5);
       for (let k = n - 1; wides.size < w && k > 0; k--) if (k !== 5) wides.add(k);
-      html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text, true)}
+      html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text)}
         <div class="bento" data-stagger>${state.cats.map((c, i) => {
           const count = state.prods.filter((p) => p.category_id === c.id).length;
           const cls = i === 0 ? "big" : wides.has(i) ? "wide" : "";
-          return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge ${cls}">
+          return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge tilt ${cls}"><span class="glare"></span>
             ${c.image_url ? `<div class="t-img"><img src="${esc(c.image_url)}" alt="" loading="lazy"></div>` : ""}
             <div class="t-art">${A.depIcon(c.icon)}</div>
             <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? `${num(count)} قطعة` : "قريباً"}</span></div>
@@ -356,8 +373,10 @@
     if (sec.featured.show && fp) {
       const c = catOf(fp);
       const spec = [["القسم", c && c.name], ["المعدن", fp.metal], ["الحجر", fp.stone], ["الوزن", fp.weight]].filter((x) => x[1]);
-      html += `<section class="block" style="padding-top:0"><div class="wrap"><div class="feature glass edge lit" data-feature>
-        <div class="txt"><div>${eyebrow(sec.featured.eyebrow)}</div>
+      const meteors = Array.from({ length: 9 }, (_, k) => `<span class="meteor" style="left:${8 + ((k * 37) % 96)}%;animation-delay:${((k * 1.7) % 6).toFixed(1)}s;animation-duration:${(3.6 + (k % 4) * 1.1).toFixed(1)}s"></span>`).join("");
+      html += `<section class="block" style="padding-top:0"><div class="lamp" data-lamp aria-hidden="true"><span class="l-glow"></span><span class="l-a"></span><span class="l-b"></span><span class="l-bar"></span></div>
+        <div class="wrap"><div class="lamp-title"><h2 data-split>${splitWords(sec.featured.eyebrow, "grad")}</h2></div><div class="feature glass edge lit" data-feature>
+        <div class="txt"><div>${eyebrow((c && c.name) || "")}</div>
           <h2 data-split>${splitWords(fp.name)}</h2>
           ${fp.description ? `<p data-rv>${esc(fp.description.split("\n")[0])}</p>` : ""}
           <div class="chips-spec" data-rv>${spec.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>
@@ -365,7 +384,7 @@
           <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
           ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} أضف للسلة</button>` : ""}</div>
         </div>
-        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
+        <div class="pic" data-feature-pic><span class="meteors">${meteors}</span><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
       </div></div></section>`;
     }
 
@@ -399,10 +418,34 @@
       html += `<div class="band" aria-hidden="true"><div class="track" data-band>${row}${row}${row}${row}</div></div>`;
     }
 
+    const gl = sec.globe || {};
+    if (s.shop.intl_enabled && gl.show !== false) {
+      const cs = (s.shop.countries || []).filter(Boolean);
+      html += `<section class="block globe-sec" id="world"><div class="wrap globe-grid">
+        <div class="globe-txt">
+          <div data-rv>${eyebrow(gl.eyebrow || "Worldwide")}</div>
+          <h2 data-split>${splitWords(gl.title || "من كربلاء إلى العالم")}</h2>
+          <p data-rv>${esc(gl.text || "")}</p>
+          <div class="g-stats" data-rv>
+            <div class="glass"><b>${num((s.shop.cities || []).length)}</b><span>محافظة عراقية</span></div>
+            <div class="glass"><b>${num(cs.length)}+</b><span>دولة يصلها الشحن</span></div>
+            <div class="glass"><b>${A.ui.shield}</b><span>تغليف آمن ومؤمَّن</span></div>
+          </div>
+          ${cs.length ? `<div class="g-countries" data-rv>${cs.slice(0, 9).map((c) => `<span>${esc(c)}</span>`).join("")}${cs.length > 9 ? `<span class="more">+${num(cs.length - 9)}</span>` : ""}</div>` : ""}
+        </div>
+        <div class="globe-wrap" data-rv>
+          <div class="globe-halo" aria-hidden="true"></div>
+          <canvas id="globe" role="img" aria-label="كرة أرضية تُظهر كربلاء والدول التي يصلها الشحن"></canvas>
+          <div class="globe-pin glass" aria-hidden="true"><span class="dot"></span>كربلاء المقدسة</div>
+          <p class="globe-hint">${fine ? "اسحب لتدوير الكرة" : "حرّك بإصبعك لتدوير الكرة"}</p>
+        </div>
+      </div></section>`;
+    }
+
     if (sec.about.show) {
       html += `<section class="block" id="about"><div class="wrap about">
-        <div style="position:relative"><div class="jas j-about">${A.jasmine()}</div><div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div></div>
-        <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p data-rv>${esc(sec.about.text)}</p>
+        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div>
+        <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p class="lit-text" data-lit>${String(sec.about.text || "").split("\n").map((line) => line.split(/\s+/).filter(Boolean).map((w) => `<span class="lw">${esc(w)}</span>`).join(" ")).join("<br>")}</p>
           <div class="values" data-stagger>
             <div class="glass">${A.ui.shield}<span><b>أصالة مضمونة</b>فضة ٩٢٥ مدموغة وأحجار طبيعية</span></div>
             <div class="glass">${A.ui.gift}<span><b>تغليف فاخر</b>جاهز للإهداء</span></div>
@@ -422,7 +465,8 @@
 
     app.innerHTML = html;
     bindHome();
-    animateHome();
+    try { animateHome(); } catch (e) { console.warn("animation skipped", e); }
+    try { startGlobe(); } catch (e) { console.warn("globe skipped", e); }
     if (scrollTo) requestAnimationFrame(() => scrollToId(scrollTo));
   }
 
@@ -435,7 +479,7 @@
       c.whatsapp && [A.ui.whatsapp, "واتساب", `<a href="${esc(waLink("السلام عليكم"))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
       c.email && [A.ui.mail, "البريد", `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`]
     ].filter(Boolean);
-    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "", true)}
+    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "")}
       <div class="visit">
         <div class="visit-card glass spot" data-rv><h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
@@ -452,41 +496,57 @@
   }
 
   function bindHome() {
-    const cardEl = $("#showCard");
-    if (cardEl) {
-      const slides = $$(".slide", cardEl), dots = $$("[data-dot]");
-      let i = 0, timer;
+    const deck = $("#deck");
+    if (deck) {
+      const cards = $$(".deck-card", deck), dots = $$("[data-dot]"), n = cards.length;
+      let top = 0, timer, moving = false;
       const ms = Math.round((Number(state.s.hero.slide_seconds) || 5.5) * 1000);
-      const kb = (sl) => { const img = $("img", sl); if (img && G) G.fromTo(img, { scale: 1.25 }, { scale: 1.04, duration: ms / 1000 + 1.4, ease: "none" }); const art = $(".slide-art", sl); if (art && G) G.fromTo(art, { y: 30, rotate: -8, scale: .9 }, { y: 0, rotate: 0, scale: 1, duration: 1.6, ease: "expo.out" }); };
-      const show = (n) => {
-        const prev = slides[i];
-        i = (n + slides.length) % slides.length;
-        const cur = slides[i];
-        dots.forEach((d, k) => { d.classList.remove("on"); void d.offsetWidth; d.classList.toggle("on", k === i); });
-        if (prev === cur) return;
-        if (G) {
-          G.set(cur, { zIndex: 2, opacity: 1, clipPath: "circle(0% at 50% 50%)" });
-          G.set(prev, { zIndex: 1 });
-          G.to(cur, { clipPath: "circle(75% at 50% 50%)", duration: 1.3, ease: "expo.inOut", onComplete: () => { prev.classList.remove("on"); G.set(prev, { opacity: 0 }); G.set(cur, { clearProps: "clipPath" }); cur.classList.add("on"); } });
-          kb(cur);
-          const cap = $(".cap", cur); if (cap) G.fromTo(cap, { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, delay: 0.5, ease: "expo.out" });
-        } else { prev.classList.remove("on"); cur.classList.add("on"); }
+      const place = (el, k, instant) => { // k = position in the stack, 0 = front
+        const v = { y: -k * 18, scale: 1 - k * 0.06, rotate: k ? (k % 2 ? -4 : 3) * Math.min(k, 2) : 0, opacity: k > 2 ? 0 : 1 - k * 0.22, zIndex: 10 - k };
+        el.classList.toggle("top", k === 0);
+        el.setAttribute("aria-hidden", k ? "true" : "false"); el.tabIndex = k ? -1 : 0;
+        if (G && !instant) G.to(el, { ...v, duration: 0.9, ease: "expo.out" }); else if (G) G.set(el, v);
+        else Object.assign(el.style, { transform: `translateY(${v.y}px) scale(${v.scale}) rotate(${v.rotate}deg)`, opacity: v.opacity, zIndex: v.zIndex });
       };
-      const play = () => { clearInterval(timer); if (slides.length > 1) timer = setInterval(() => show(i + 1), ms); };
-      dots.forEach((d) => d.addEventListener("click", () => { show(+d.dataset.dot); play(); }));
-      if (slides.length > 1) { dots[0].classList.add("on"); play(); }
-      kb(slides[0]);
+      const layout = (instant) => cards.forEach((el, k) => place(el, (k - top + n) % n, instant));
+      const mark = () => dots.forEach((d, k) => { d.classList.remove("on"); void d.offsetWidth; d.classList.toggle("on", k === top); });
+      const go = (to, dir = 1) => {
+        if (moving || n < 2) return;
+        to = (to + n) % n; if (to === top) return;
+        moving = true;
+        const out = cards[top];
+        top = to; mark();
+        if (!G) { layout(true); moving = false; return; }
+        G.to(out, { x: dir * -window.innerWidth * 0.35, y: 30, rotate: dir * -16, opacity: 0, duration: 0.55, ease: "power3.in", onComplete: () => {
+          G.set(out, { x: 0 }); layout(false); moving = false; } });
+        cards.forEach((el, k) => { if (el !== out) place(el, (k - top + n) % n); });
+      };
+      const play = () => { clearInterval(timer); if (n > 1) timer = setInterval(() => go(top + 1), ms); };
+      layout(true);
+      dots.forEach((d) => d.addEventListener("click", () => { const k = +d.dataset.dot; go(k, k > top ? 1 : -1); play(); }));
+      if (n > 1) { mark(); play(); }
       let sx = null;
-      cardEl.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
-      cardEl.addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) { show(i + (dx > 0 ? 1 : -1)); play(); } sx = null; });
+      deck.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
+      deck.addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) { go(top + 1, dx > 0 ? -1 : 1); play(); } sx = null; });
       cleanups.push(() => clearInterval(timer));
+    }
+    const flip = $("[data-flip]");
+    if (flip && G) {
+      const words = $$(".fw", flip); let k = 0;
+      const t = setInterval(() => {
+        const cur = words[k]; k = (k + 1) % words.length; const nxt = words[k];
+        G.to(cur, { yPercent: -45, opacity: 0, duration: 0.5, ease: "power3.in", onComplete: () => cur.classList.remove("on") });
+        nxt.classList.add("on");
+        G.fromTo(nxt, { yPercent: 45, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 0.8, delay: 0.25, ease: "expo.out" });
+      }, 3200);
+      cleanups.push(() => clearInterval(t));
     }
     $$("[data-filter]").forEach((b) => b.addEventListener("click", () => {
       $$("[data-filter]").forEach((x) => x.classList.toggle("on", x === b));
       const id = b.dataset.filter, n = Number(state.s.sections.collection.count) || 8;
       const list = (id ? state.prods.filter((p) => p.category_id === id) : state.prods).slice(0, n);
       const box = $("#homeGrid");
-      const swap = () => { box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.94, filter: "blur(6px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 0.9, stagger: 0.06, ease: "expo.out" }); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); };
+      const swap = () => { box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.05, ease: "expo.out", clearProps: "transform" }); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); };
       if (G) G.to($$(".card", box), { opacity: 0, y: -20, duration: 0.25, stagger: 0.02, onComplete: swap }); else swap();
     }));
     bindContactForm();
@@ -501,7 +561,7 @@
       if (name.length < 2) { toast("يرجى كتابة الاسم"); f.name.focus(); return; }
       if (body.length < 2) { toast("يرجى كتابة الرسالة"); f.body.focus(); return; }
       const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
-      const { error } = await db.from("inquiries").insert({ name, phone, body });
+      const { error } = await db.insert("inquiries", { name, phone, body });
       btn.disabled = false; btn.textContent = "إرسال الرسالة";
       if (error) { toast("تعذّر الإرسال، حاول مرة أخرى"); return; }
       f.reset(); toast("وصلتنا رسالتك، شكراً لك");
@@ -799,6 +859,7 @@
   let cleanups = [];
   let introPromise = Promise.resolve();
   function killMotion() {
+    stopGlobe();
     cleanups.forEach((f) => f()); cleanups = [];
     if (window.ScrollTrigger) window.ScrollTrigger.getAll().forEach((t) => t.kill());
     if (G) G.set("footer.site .mark", { clearProps: "all" }); // the footer lives outside the routed view
@@ -810,13 +871,13 @@
       G.fromTo($$(".w", h), { yPercent: 110, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.1, ease: "expo.out", stagger: 0.08, scrollTrigger: { trigger: h, start: "top 95%", once: true } });
     });
     $$("[data-rv]").forEach((el) => {
-      G.fromTo(el, { opacity: 0, y: 36, filter: "blur(8px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.1, ease: "expo.out", scrollTrigger: { trigger: el, start: "top 97%", once: true } });
+      G.fromTo(el, { opacity: 0, y: 30 }, { opacity: 1, y: 0, duration: 1, ease: "expo.out", clearProps: "transform", scrollTrigger: { trigger: el, start: "top 97%", once: true } });
     });
     $$("[data-clip]").forEach((el) => {
       G.fromTo(el, { clipPath: "inset(100% 0% 0% 0% round 36px)" }, { clipPath: "inset(0% 0% 0% 0% round 36px)", duration: 1.5, ease: "expo.inOut", scrollTrigger: { trigger: el, start: "top 82%", once: true }, onComplete: () => G.set(el, { clearProps: "clipPath" }) });
     });
     $$("[data-stagger]").forEach((box) => {
-      G.fromTo(box.children, { opacity: 0, y: 60, scale: 0.94, filter: "blur(8px)" }, { opacity: 1, y: 0, scale: 1, filter: "blur(0px)", duration: 1.1, ease: "expo.out", stagger: 0.06, scrollTrigger: { trigger: box, start: "top 85%", once: true }, onComplete: () => G.set(box.children, { clearProps: "filter,transform" }) });
+      G.fromTo(box.children, { opacity: 0, y: 50, scale: 0.95 }, { opacity: 1, y: 0, scale: 1, duration: 1, ease: "expo.out", stagger: 0.05, scrollTrigger: { trigger: box, start: "top 88%", once: true }, onComplete: () => G.set(box.children, { clearProps: "transform" }) });
     });
     $$("[data-batch]").forEach((box) => {
       G.set(box.children, { opacity: 0, y: 50 });
@@ -830,21 +891,33 @@
     // hero entrance, played once the opening has finished
     const tl = G.timeline({ paused: true, delay: 0.05 });
     introPromise.then(() => tl.play());
-    tl.fromTo(".hero h1 .w", { yPercent: 120, opacity: 0, filter: "blur(10px)" }, { yPercent: 0, opacity: 1, filter: "blur(0px)", duration: 1.4, ease: "expo.out", stagger: 0.09 })
+    $(".hero").classList.add("spot-on");
+    const flip0 = $("[data-flip] .fw.on");
+    tl.fromTo(".hero h1 .w", { yPercent: 120, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.3, ease: "expo.out", stagger: 0.09 });
+    if (flip0) tl.fromTo(flip0, { yPercent: 60, opacity: 0 }, { yPercent: 0, opacity: 1, duration: 1.2, ease: "expo.out" }, 0.15);
+    tl
       .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=1")
-      .fromTo("#showCard", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.8, ease: "expo.out" }, 0)
+      .fromTo("#deck", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.6, ease: "expo.out" }, 0)
       .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1)
       .fromTo("[data-float]", { y: 30, opacity: 0, scale: 0.9 }, { y: 0, opacity: 1, scale: 1, duration: 1.2, ease: "back.out(1.6)", stagger: 0.15 }, 0.8);
     countUp();
     // gentle float of the hero chips
-    $$("[data-float]").forEach((c, i) => G.to(c, { y: i ? 10 : -10, duration: 3 + i, ease: "sine.inOut", yoyo: true, repeat: -1, delay: 2 }));
+    introPromise.then(() => setTimeout(() => $$("[data-float]").forEach((c) => { G.set(c, { clearProps: "transform" }); c.classList.add("bob"); }), 2200));
     // parallax
     G.to("[data-show]", { yPercent: -10, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
     G.to("[data-orbit]", { rotate: 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
     const pic = $("[data-feature-pic] > svg, [data-feature-pic] > img");
     if (pic) G.fromTo(pic, { scale: 1.18, rotate: -6 }, { scale: 1, rotate: 0, ease: "none", scrollTrigger: { trigger: "[data-feature]", start: "top bottom", end: "bottom top", scrub: true } });
     const feat = $("[data-feature]");
-    if (feat) G.fromTo(feat, { scale: 0.92, opacity: 0.4 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 45%", scrub: true } });
+    if (feat) G.fromTo(feat, { scale: 0.94, opacity: 0.5 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 50%", scrub: true } });
+    // lamp: light fans open as it comes into view
+    const lamp = $("[data-lamp]");
+    if (lamp) G.timeline({ scrollTrigger: { trigger: lamp, start: "top 85%", once: true } })
+      .fromTo($$(".l-a, .l-b, .l-bar", lamp), { scaleX: 0.45, opacity: 0.3 }, { scaleX: 1, opacity: 1, duration: 1.4, ease: "expo.out" })
+      .fromTo($(".l-glow", lamp), { scaleX: 0.4, opacity: 0 }, { scaleX: 1, opacity: 0.45, duration: 1.4, ease: "expo.out" }, 0);
+    // about text: each word lights up as it scrolls through the viewport
+    const lit = $("[data-lit]");
+    if (lit) G.fromTo($$(".lw", lit), { opacity: 0.16 }, { opacity: 1, ease: "none", stagger: 0.08, scrollTrigger: { trigger: lit, start: "top 82%", end: "bottom 45%", scrub: true } });
     // showroom: vertical scroll drives a horizontal walk through the pieces (desktop)
     const track = $("#roomTrack");
     if (track && innerWidth > 920) {
@@ -885,49 +958,154 @@
     });
   }
 
+  /* ---------- globe: Karbala and the countries we ship to ---------- */
+  const PLACES = { "العراق": [32.62, 44.02], "السعودية": [24.71, 46.68], "الكويت": [29.37, 47.98], "الإمارات": [25.2, 55.27], "قطر": [25.29, 51.53], "البحرين": [26.23, 50.59], "عُمان": [23.59, 58.38], "عمان": [23.59, 58.38],
+    "الأردن": [31.95, 35.93], "لبنان": [33.89, 35.5], "سوريا": [33.51, 36.29], "إيران": [35.69, 51.39], "تركيا": [41.01, 28.98], "مصر": [30.04, 31.24], "المملكة المتحدة": [51.51, -0.13], "بريطانيا": [51.51, -0.13],
+    "ألمانيا": [52.52, 13.4], "السويد": [59.33, 18.07], "هولندا": [52.37, 4.9], "فرنسا": [48.86, 2.35], "الدنمارك": [55.68, 12.57], "النرويج": [59.91, 10.75], "بلجيكا": [50.85, 4.35], "النمسا": [48.21, 16.37], "فنلندا": [60.17, 24.94],
+    "إيطاليا": [41.9, 12.5], "إسبانيا": [40.42, -3.7], "الولايات المتحدة": [42.33, -83.05], "أمريكا": [42.33, -83.05], "كندا": [43.65, -79.38], "أستراليا": [-33.87, 151.21], "نيوزيلندا": [-36.85, 174.76], "الهند": [28.61, 77.21], "باكستان": [33.68, 73.05], "أذربيجان": [40.41, 49.87], "روسيا": [55.76, 37.62], "ماليزيا": [3.14, 101.69] };
+  let globe = null, globeIO = null;
+  const scripts = {};
+  const loadScript = (src) => scripts[src] || (scripts[src] = new Promise((ok, fail) => { const el = document.createElement("script"); el.src = src; el.async = true; el.onload = ok; el.onerror = () => { delete scripts[src]; fail(); }; document.head.appendChild(el); }));
+  const GLOBE_JS = "assets/vendor/cobe.min.js";
+  function stopGlobe() { if (globe) { globe.destroy(); globe = null; } if (globeIO) { globeIO.disconnect(); globeIO = null; } }
+  function startGlobe() {
+    stopGlobe();
+    const cv = $("#globe");
+    if (!cv) return;
+    if (!window.createGlobe) {
+      if (!("IntersectionObserver" in window)) return;
+      globeIO = new IntersectionObserver(([en]) => {
+        if (!en.isIntersecting) return;
+        globeIO.disconnect(); globeIO = null;
+        loadScript(GLOBE_JS).then(() => { if (document.contains(cv)) startGlobe(); }).catch(() => cv.closest(".globe-wrap").classList.add("no-webgl"));
+      }, { rootMargin: "900px" });
+      globeIO.observe(cv);
+      return;
+    }
+    const css = getComputedStyle(document.documentElement);
+    const rgb = (v) => { const h = (css.getPropertyValue(v).trim() || "#34e3a8").replace("#", ""); const f = h.length === 3 ? h.split("").map((c) => c + c).join("") : h.slice(0, 6); return [0, 2, 4].map((i) => parseInt(f.slice(i, i + 2), 16) / 255); };
+    const light = document.documentElement.getAttribute("data-theme") === "light";
+    const markers = [{ location: PLACES["العراق"], size: 0.11 }];
+    (state.s.shop.countries || []).forEach((c) => { const loc = PLACES[c]; if (loc) markers.push({ location: loc, size: 0.045 }); });
+    const small = innerWidth < 700;
+    const dpr = Math.min(small ? 1.5 : 2, devicePixelRatio || 1);
+    // face Karbala first: phi turns the globe to its longitude
+    let phi = Math.PI - ((44.02 * Math.PI) / 180 - Math.PI / 2), drag = null, dragDelta = 0, vel = 0, size = 0;
+    const theta = 0.42;
+    const measure = () => { size = cv.offsetWidth; };
+    measure();
+    try {
+      globe = window.createGlobe(cv, {
+        devicePixelRatio: dpr, width: size * dpr, height: size * dpr, phi, theta, dark: light ? 0 : 1, diffuse: light ? 1.4 : 2,
+        mapSamples: small ? 12000 : 18000, mapBrightness: light ? 4.5 : 9, mapBaseBrightness: light ? 0.05 : 0.02,
+        baseColor: light ? [1, 1, 1] : rgb("--emerald").map((x) => Math.min(1, x * 0.45 + 0.3)),
+        markerColor: rgb("--accent"), glowColor: light ? [0.86, 0.95, 0.9] : rgb("--emerald").map((x) => x * 0.7),
+        markers, opacity: light ? 0.9 : 0.95,
+        onRender: (st) => {
+          if (drag === null) { phi += 0.0028 + vel; vel *= 0.94; }
+          st.phi = phi + dragDelta; st.width = size * dpr; st.height = size * dpr;
+        }
+      });
+    } catch (e) { cv.closest(".globe-wrap").classList.add("no-webgl"); return; }
+    cv.closest(".globe-wrap").classList.add("ready");
+    G && G.fromTo(cv, { opacity: 0, scale: 0.9 }, { opacity: 1, scale: 1, duration: 1.1, ease: "expo.out" });
+    // drag to spin
+    cv.onpointerdown = (e) => { drag = e.clientX; cv.setPointerCapture(e.pointerId); cv.style.cursor = "grabbing"; };
+    cv.onpointermove = (e) => { if (drag !== null) dragDelta = (e.clientX - drag) / 180; };
+    const up = () => { if (drag === null) return; phi += dragDelta; vel = Math.max(-0.05, Math.min(0.05, dragDelta / 12)); dragDelta = 0; drag = null; cv.style.cursor = "grab"; };
+    cv.onpointerup = up; cv.onpointercancel = up;
+    let rt; const onR = () => { clearTimeout(rt); rt = setTimeout(measure, 120); }; addEventListener("resize", onR, { passive: true });
+    cleanups.push(() => removeEventListener("resize", onR));
+    // draw only while it is on screen
+    if ("IntersectionObserver" in window) {
+      globeIO = new IntersectionObserver(([en]) => { if (globe) globe.toggle(en.isIntersecting); }, { rootMargin: "120px" });
+      globeIO.observe(cv);
+    }
+  }
+
   /* ---------- ambient light: sparkles, spotlight cards, cursor glow ---------- */
   function ambient() {
-    // spotlight follows the pointer inside glass cards
+    // spotlight + 3D tilt + glare follow the pointer (mouse / trackpad only)
+    let tiltEl = null;
+    const resetTilt = (el) => { el.classList.remove("moving", "follow"); el.style.setProperty("--rx", "0deg"); el.style.setProperty("--ry", "0deg"); };
     document.addEventListener("pointermove", (e) => {
-      const el = e.target.closest && e.target.closest(".spot");
-      if (el) { const r = el.getBoundingClientRect(); el.style.setProperty("--mx", `${e.clientX - r.left}px`); el.style.setProperty("--my", `${e.clientY - r.top}px`); }
+      if (e.pointerType !== "mouse") return;
+      const t = e.target.closest ? e.target : null; if (!t) return;
+      const sp = t.closest(".spot");
+      if (sp) { const r = sp.getBoundingClientRect(); sp.style.setProperty("--mx", `${e.clientX - r.left}px`); sp.style.setProperty("--my", `${e.clientY - r.top}px`); }
+      const ed = t.closest(".edge");
+      if (ed) { const r = ed.getBoundingClientRect(); const a = Math.atan2(e.clientX - (r.left + r.width / 2), -(e.clientY - (r.top + r.height / 2))) * 180 / Math.PI; ed.classList.add("follow"); ed.style.setProperty("--ang", `${(a - 266).toFixed(1)}deg`); }
+      const el = reduce ? null : t.closest(".tilt");
+      if (tiltEl && tiltEl !== el) resetTilt(tiltEl);
+      tiltEl = el;
+      if (!el) return;
+      const r = el.getBoundingClientRect(), px = (e.clientX - r.left) / r.width, py = (e.clientY - r.top) / r.height;
+      el.classList.add("moving");
+      el.style.setProperty("--ry", `${((px - 0.5) * 10).toFixed(2)}deg`);
+      el.style.setProperty("--rx", `${(-(py - 0.5) * 10).toFixed(2)}deg`);
+      el.style.setProperty("--gx", `${(px * 100).toFixed(1)}%`);
+      el.style.setProperty("--gy", `${(py * 100).toFixed(1)}%`);
     }, { passive: true });
+    document.addEventListener("pointerleave", () => { if (tiltEl) resetTilt(tiltEl); tiltEl = null; });
     if (fine && G) {
       const light = $("#cursorLight");
       const lx = G.quickTo(light, "x", { duration: 0.9, ease: "power3" }), ly = G.quickTo(light, "y", { duration: 0.9, ease: "power3" });
-      addEventListener("pointermove", (e) => { light.style.opacity = 1; lx(e.clientX); ly(e.clientY); }, { passive: true });
+      addEventListener("pointermove", (e) => { if (e.pointerType !== "mouse") return; light.style.opacity = 1; lx(e.clientX); ly(e.clientY); }, { passive: true });
     }
-    // twinkling sparkles
+    // pause every CSS animation inside sections that are off screen
+    if ("IntersectionObserver" in window) {
+      const off = new IntersectionObserver((es) => es.forEach((en) => en.target.classList.toggle("offscreen", !en.isIntersecting)), { rootMargin: "150px 0px" });
+      const watchOff = () => $$("#app > section:not([data-off]), #app > header:not([data-off]), #app > .band:not([data-off]), #app .wrap > section:not([data-off]), footer.site:not([data-off]), .topbar:not([data-off])").forEach((el) => { el.dataset.off = "1"; off.observe(el); });
+      new MutationObserver(watchOff).observe(app, { childList: true });
+      watchOff();
+    }
+    // glowing border beams run only while their card is on screen
+    if ("IntersectionObserver" in window) {
+      const io = new IntersectionObserver((es) => es.forEach((en) => en.target.classList.toggle("in-view", en.isIntersecting)), { rootMargin: "0px 0px -10% 0px" });
+      const watch = () => $$(".edge.lit:not([data-io])").forEach((el) => { el.dataset.io = "1"; io.observe(el); });
+      new MutationObserver(watch).observe(app, { childList: true });
+      watch();
+    }
+    // twinkling sparkles (fewer and lighter on phones)
     const cv = $("#sparkles"); if (!cv || reduce) return;
-    const ctx = cv.getContext("2d");
-    let W, H, dots = [], raf;
-    const dpr = Math.min(2, devicePixelRatio || 1);
+    if (innerWidth < 700 || (navigator.hardwareConcurrency || 8) <= 4) { cv.remove(); return; }
+    const ctx = cv.getContext("2d", { alpha: true });
+    if (!ctx) { cv.remove(); return; }
+    let W = 0, H = 0, lastW = 0, dots = [], raf;
+    const small = innerWidth < 700;
+    const dpr = Math.min(small ? 1 : 1.5, devicePixelRatio || 1);
     const size = () => {
-      W = cv.width = innerWidth * dpr; H = cv.height = innerHeight * dpr;
-      const n = Math.round(Math.min(90, (innerWidth * innerHeight) / 16000));
-      dots = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.3 + 0.4) * dpr, p: Math.random() * Math.PI * 2, s: 0.006 + Math.random() * 0.018, v: (Math.random() * 0.15 + 0.03) * dpr }));
+      const w = innerWidth, h = innerHeight;
+      W = cv.width = Math.round(w * dpr); H = cv.height = Math.round(h * dpr);
+      if (w === lastW && dots.length) return; // phone address bar: keep the same stars
+      lastW = w;
+      const n = Math.round(Math.min(small ? 26 : 64, (w * h) / (small ? 22000 : 18000)));
+      dots = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.2 + 0.4) * dpr, p: Math.random() * Math.PI * 2, s: 0.006 + Math.random() * 0.016, v: (Math.random() * 0.14 + 0.03) * dpr }));
     };
     let col = getComputedStyle(document.documentElement).getPropertyValue("--emerald").trim() || "#34e3a8";
-    const tick = () => {
+    let lastT = 0;
+    const tick = (t = 0) => {
+      raf = requestAnimationFrame(tick);
+      if (t - lastT < 32) return; // ~30 fps is plenty for slow twinkles
+      lastT = t;
       ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = col;
       for (const d of dots) {
-        d.p += d.s; d.y -= d.v; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
+        d.p += d.s * 2; d.y -= d.v * 2; if (d.y < -10) { d.y = H + 10; d.x = Math.random() * W; }
         const a = (Math.sin(d.p) + 1) / 2;
         ctx.globalAlpha = a * 0.85;
-        ctx.fillStyle = col;
-        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, Math.PI * 2); ctx.fill();
-        if (a > 0.92) { ctx.globalAlpha = (a - 0.92) * 6; ctx.fillRect(d.x - d.r * 4, d.y - 0.4 * dpr, d.r * 8, 0.8 * dpr); ctx.fillRect(d.x - 0.4 * dpr, d.y - d.r * 4, 0.8 * dpr, d.r * 8); }
+        ctx.beginPath(); ctx.arc(d.x, d.y, d.r, 0, 6.2832); ctx.fill();
+        if (a > 0.93) { ctx.globalAlpha = (a - 0.93) * 7; ctx.fillRect(d.x - d.r * 4, d.y - 0.4 * dpr, d.r * 8, 0.8 * dpr); ctx.fillRect(d.x - 0.4 * dpr, d.y - d.r * 4, 0.8 * dpr, d.r * 8); }
       }
-      raf = requestAnimationFrame(tick);
     };
     size(); tick();
-    addEventListener("resize", () => { size(); }, { passive: true });
+    let rt; addEventListener("resize", () => { clearTimeout(rt); rt = setTimeout(size, 150); }, { passive: true });
     document.addEventListener("visibilitychange", () => { cancelAnimationFrame(raf); if (!document.hidden) tick(); });
     window.__rqSparkColor = (c) => { col = c; };
   }
   let lenis = null;
   function smoothScroll() {
-    if (reduce || !window.Lenis || !G) return;
+    if (reduce || !window.Lenis || !G || !fine) return;
     lenis = new window.Lenis({ duration: 1.15, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true });
     lenis.on("scroll", () => window.ScrollTrigger && window.ScrollTrigger.update());
     G.ticker.add((t) => lenis.raf(t * 1000));
@@ -980,12 +1158,13 @@
     if (!parts.length && state.view === "home" && to) { scrollToId(to); return; }
     if (!G || busy) { render(); jumpTop(); if (to) setTimeout(() => scrollToId(to), 60); return; }
     busy = true;
-    const cur = $("#curtain");
-    G.timeline({ onComplete: () => { busy = false; } })
-      .set(cur, { clipPath: "circle(0% at 50% 50%)" })
-      .to(cur, { clipPath: "circle(75% at 50% 50%)", duration: 0.55, ease: "power3.in" })
-      .add(() => { jumpTop(); render(); if (to) setTimeout(() => scrollToId(to), 120); })
-      .to(cur, { clipPath: "circle(0% at 50% 50%)", duration: 0.75, ease: "power3.out" });
+    app.classList.add("leaving");
+    setTimeout(() => {
+      jumpTop(); render();
+      app.classList.remove("leaving");
+      G.fromTo(app, { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.45, ease: "power3.out", clearProps: "all", onComplete: () => { busy = false; } });
+      if (to) setTimeout(() => scrollToId(to), 120);
+    }, 180);
   }
   addEventListener("hashchange", navigate);
 
@@ -1010,16 +1189,21 @@
     const hadCache = !!safeLS(() => localStorage.getItem("rq_cache"), null);
     const loading = load();
     // a first visit waits briefly so the intro knows whether a logo video was uploaded
-    if (!hadCache) await Promise.race([loading, new Promise((r) => setTimeout(r, 1800))]);
+    if (!hadCache) await Promise.race([loading, new Promise((r) => setTimeout(r, 450))]);
+    const safe = (fn) => { try { fn(); } catch (e) { console.warn("effect skipped", e); } };
     applySettings();
-    ambient();
-    smoothScroll();
-    introPromise = intro();
+    safe(ambient);
+    safe(smoothScroll);
+    try { introPromise = intro(); } catch (e) { const el = $("#intro"); if (el) el.remove(); introPromise = Promise.resolve(); }
     if (state.ready) { render(); updateCartCount(); }
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;
     const changed = await loading;
     if (changed) { applySettings(); render(); updateCartCount(); if (window.__rqSparkColor) window.__rqSparkColor(state.s.theme.emerald); }
     await introPromise;
     if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+    if (state.s.shop.intl_enabled) {
+      const idle = window.requestIdleCallback || ((f) => setTimeout(f, 1200));
+      if (!window.createGlobe) idle(() => loadScript(GLOBE_JS).catch(() => {}), { timeout: 3000 });
+    }
   })();
 })();
