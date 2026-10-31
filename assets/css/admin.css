@@ -274,3 +274,15 @@ svg { flex: none; }
   .shell { display: block; }
   .content { display: none; }
 }
+
+/* search across every site text */
+.search-in { position: relative; flex: 1; min-width: 0; }
+.search-in svg { position: absolute; inset-inline-start: 14px; top: 50%; width: 18px; height: 18px; transform: translateY(-50%); color: var(--soft); pointer-events: none; }
+.search-in .input { width: 100%; padding-inline-start: 42px; }
+.field[hidden], .card[hidden] { display: none !important; }
+.field input::placeholder, .field textarea::placeholder { color: #a3aea9; }
+.side .brand img { width: 46px; padding: 5px; border-radius: 14px; background: #f6f3ea; box-shadow: 0 6px 18px -8px rgba(0,0,0,.5); }
+@media (min-width: 900px) {
+  .card.tx .body { display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; }
+  .card.tx .body > .field:has(textarea) { grid-column: 1 / -1; }
+}

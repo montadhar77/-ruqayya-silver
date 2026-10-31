@@ -48,7 +48,7 @@ document.documentElement.classList.add("js");
     <div class="intro-name grad" id="introName">معرض رقية</div>
     <div class="intro-sub" id="introSub"></div>
   </div>
-  <button class="intro-skip" id="introSkip" type="button">تخطّي</button>
+  <button class="intro-skip" id="introSkip" type="button" data-t="intro_skip">تخطّي</button>
 </div>
 
 <div class="topbar" id="topbar" hidden><div class="wrap" id="topTrack"></div></div>
@@ -56,10 +56,10 @@ document.documentElement.classList.add("js");
 <nav class="nav" id="nav" aria-label="القائمة الرئيسية">
   <div class="wrap">
     <div class="nav-links">
-      <a href="#/" data-link="home">الرئيسية</a>
-      <a href="#/shop" data-link="shop">المتجر</a>
-      <a href="#/?to=departments">الأقسام</a>
-      <a href="#/?to=visit">تواصل معنا</a>
+      <a href="#/" data-link="home" data-t="nav_home">الرئيسية</a>
+      <a href="#/shop" data-link="shop" data-t="nav_shop">المتجر</a>
+      <a href="#/?to=departments" data-t="nav_departments">الأقسام</a>
+      <a href="#/?to=visit" data-t="nav_contact">تواصل معنا</a>
     </div>
     <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="فتح القائمة"></button>
     <a class="brand" href="#/" id="brand" aria-label="الرئيسية">
@@ -81,14 +81,14 @@ document.documentElement.classList.add("js");
 <!-- mobile menu -->
 <div class="drawer-bg" id="menuBg"></div>
 <aside class="drawer left" id="menu" aria-label="القائمة" aria-hidden="true">
-  <div class="drawer-head"><h3>القائمة</h3><button class="icon-btn" type="button" data-close="menu" aria-label="إغلاق"></button></div>
+  <div class="drawer-head"><h3 data-t="menu_title">القائمة</h3><button class="icon-btn" type="button" data-close="menu" aria-label="إغلاق"></button></div>
   <div class="drawer-body"><div class="menu-list" id="menuList"></div></div>
 </aside>
 
 <!-- cart -->
 <div class="drawer-bg" id="cartBg"></div>
 <aside class="drawer" id="cart" aria-label="سلة التسوق" aria-hidden="true">
-  <div class="drawer-head"><h3>السلة</h3><button class="icon-btn" type="button" data-close="cart" aria-label="إغلاق"></button></div>
+  <div class="drawer-head"><h3 data-t="cart_title">السلة</h3><button class="icon-btn" type="button" data-close="cart" aria-label="إغلاق"></button></div>
   <div class="drawer-body" id="cartBody"></div>
   <div class="drawer-foot" id="cartFoot"></div>
 </aside>
@@ -102,7 +102,7 @@ document.documentElement.classList.add("js");
 <div class="search-bg" id="search" aria-hidden="true">
   <div class="wrap">
     <div class="search-box">
-      <input id="searchInput" type="search" placeholder="ابحث عن خاتم، مسبحة، عطر…" aria-label="بحث في المنتجات" autocomplete="off">
+      <input id="searchInput" type="search" data-t-ph="search_placeholder" placeholder="ابحث عن خاتم، مسبحة، عطر…" aria-label="بحث في المنتجات" autocomplete="off">
       <button class="icon-btn" type="button" id="searchClose" aria-label="إغلاق البحث"></button>
     </div>
     <div class="search-res" id="searchRes"></div>

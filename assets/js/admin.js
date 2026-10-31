@@ -79,7 +79,9 @@
     print: S('<path d="M7 9V3h10v6M7 17H4v-7h16v7h-3"/><rect x="7" y="14" width="10" height="7"/>'),
     refresh: S('<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/>'),
     ext: S('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
-    sparkle: S('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>')
+    sparkle: S('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'),
+    type: S('<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>'),
+    search: S('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>')
   };
 
   /* ---------- state ---------- */
@@ -176,7 +178,7 @@
      ======================================================================= */
   const NAV = [
     ["dashboard", "الرئيسية", I.dash], ["orders", "الطلبات", I.receipt, "orders"], ["products", "المنتجات", I.box], ["categories", "الأقسام", I.folder], ["inquiries", "الرسائل", I.mail, "inq"],
-    ["sep", "تخصيص الموقع"], ["home", "محتوى الصفحة الرئيسية", I.home], ["identity", "الهوية والألوان والافتتاحية", I.palette], ["contact", "التواصل والمتجر", I.phone],
+    ["sep", "تخصيص الموقع"], ["home", "محتوى الصفحة الرئيسية", I.home], ["texts", "نصوص الموقع (كل الكلمات)", I.type], ["identity", "الهوية والألوان والافتتاحية", I.palette], ["contact", "التواصل والمتجر", I.phone],
     ["sep", "الحساب"], ["account", "حسابي", I.user]
   ];
   function renderShell() {
@@ -220,7 +222,7 @@
     state.page = page;
     $$("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === page));
     const old = $("#page"); if (old) { const fresh = old.cloneNode(false); old.replaceWith(fresh); } // drop listeners of the previous page
-    const P = { dashboard: pageDashboard, orders: pageOrders, products: pageProducts, categories: pageCategories, inquiries: pageInquiries, home: () => pageSettings("home"), identity: () => pageSettings("identity"), contact: () => pageSettings("contact"), account: pageAccount };
+    const P = { dashboard: pageDashboard, orders: pageOrders, products: pageProducts, categories: pageCategories, inquiries: pageInquiries, home: () => pageSettings("home"), texts: () => pageSettings("texts"), identity: () => pageSettings("identity"), contact: () => pageSettings("contact"), account: pageAccount };
     (P[page] || pageDashboard)();
     scrollTo(0, 0);
   }
@@ -235,12 +237,11 @@
     const s = state.s;
     const now = new Date(), month = state.orders.filter((o) => o.status !== "cancelled" && new Date(o.created_at).getMonth() === now.getMonth() && new Date(o.created_at).getFullYear() === now.getFullYear());
     const sales = month.reduce((a, o) => a + (o.total || 0), 0);
-    const samples = state.prods.filter((p) => /منتج تجريبي/.test(p.description || ""));
+    const noPhotos = state.prods.filter((p) => !(p.images || []).length);
     const todo = [
       !s.contact.whatsapp && ["أضف رقم واتساب ليصلك تفاصيل كل طلب ويستطيع الزبائن مراسلتك", "#/contact"],
-      !s.brand.logo && ["ارفع شعار المعرض", "#/identity"],
       !s.intro.video && ["ارفع فيديو الافتتاحية (ظهور الشعار)", "#/identity"],
-      samples.length && [`استبدل المنتجات التجريبية (${num(samples.length)}) بمنتجاتك الحقيقية وصورها`, "#/products"],
+      noPhotos.length && [`أضف صور منتجاتك — ${num(noPhotos.length)} منتج بدون صور (المنتجات الحالية تجريبية، عدّلها أو احذفها)`, "#/products"],
       !s.contact.phone && ["أضف رقم الهاتف وأوقات الدوام", "#/contact"]
     ].filter(Boolean);
     page().innerHTML = `<div class="page-title"><div><h1>أهلاً بك</h1><p>نظرة سريعة على المعرض</p></div><a class="btn" href="#/products?new=1">${I.plus} إضافة منتج</a></div>
@@ -254,7 +255,7 @@
       <div class="card"><div class="card-h"><h2>آخر الطلبات</h2><a class="btn ghost sm" href="#/orders">كل الطلبات</a></div>
         ${state.orders.length ? `<div class="rows">${state.orders.slice(0, 6).map(orderRow).join("")}</div>` : `<div class="empty">لا توجد طلبات بعد — ستظهر هنا فور وصولها.</div>`}</div>
       <div class="card"><h2>روابط سريعة</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
-        <a class="btn light" href="#/home">${I.home} تعديل الصفحة الرئيسية</a><a class="btn light" href="#/identity">${I.palette} الشعار والألوان</a>
+        <a class="btn light" href="#/home">${I.home} تعديل الصفحة الرئيسية</a><a class="btn light" href="#/texts">${I.type} نصوص الموقع</a><a class="btn light" href="#/identity">${I.palette} الشعار والألوان</a>
         <a class="btn light" href="#/categories">${I.folder} الأقسام</a><a class="btn light" href="${SITE}" target="_blank" rel="noopener">${I.eye} عرض الموقع</a></div></div>`;
     bindOrderRows();
   }
@@ -576,6 +577,7 @@
      ======================================================================= */
   const SH = (p, l, extra = {}) => ({ p, l, ...extra });
   const showT = (p) => SH(p, "إظهار هذا القسم في الموقع", { t: "toggle" });
+  const TX = (k, l, extra = {}) => SH("ui." + k, l, { ph: (DEF.ui || {})[k] || "", ...extra });
   const SCHEMA = {
     home: {
       title: "محتوى الصفحة الرئيسية", sub: "كل النصوص والصور في الصفحة الرئيسية، بالترتيب الذي تظهر به",
@@ -583,27 +585,47 @@
         { title: "الواجهة الرئيسية (أعلى الصفحة)", fields: [
           SH("hero.eyebrow", "السطر الصغير فوق العنوان"), SH("hero.title1", "العنوان — السطر الأول"), SH("hero.title2", "العنوان — السطر الثاني (بلون متدرّج)"), SH("hero.flip_more", "كلمات تتبدّل مع السطر الثاني", { t: "strings", add: "إضافة عبارة", hint: "تتناوب هذه العبارات مكان السطر الثاني بحركة ناعمة. احذفها كلها ليبقى السطر ثابتاً." }),
           SH("hero.text", "النص التعريفي", { t: "textarea" }), SH("hero.cta1", "نص الزر الأول (يفتح المتجر)"), SH("hero.cta2", "نص الزر الثاني (ينزل إلى الأقسام)"),
-          SH("hero.slides", "صور العرض المتحرك داخل القوس", { t: "list", add: "إضافة صورة", hint: "تتبدّل الصور بحركة انتقال ناعمة. إن تركتها فارغة ستُعرض صور المنتجات المميزة تلقائياً.", fields: [{ k: "image", l: "الصورة", t: "image", folder: "slides" }, { k: "title", l: "عنوان على الصورة" }, { k: "caption", l: "سطر صغير تحته" }, { k: "link", l: "رابط عند الضغط (اختياري)", dir: "ltr" }] }),
+          SH("hero.slides", "صور البطاقات المتحركة أعلى الصفحة", { t: "list", add: "إضافة صورة", hint: "تتبدّل البطاقات بحركة ناعمة. إن تركتها فارغة تُعرض صور المنتجات المميزة تلقائياً.", fields: [{ k: "image", l: "الصورة", t: "image", folder: "slides" }, { k: "title", l: "عنوان على الصورة" }, { k: "caption", l: "سطر صغير تحته" }, { k: "link", l: "رابط عند الضغط (اختياري)", dir: "ltr" }] }),
           SH("hero.slide_seconds", "مدة كل صورة بالثواني", { t: "number" }),
           SH("hero.stats", "الأرقام تحت النص", { t: "list", add: "إضافة رقم", hint: "إذا كانت الأرقام أقل من ثلاثة يُكمَّل الصف تلقائياً بعدد الأقسام وعدد القطع.", fields: [{ k: "value", l: "الرقم" }, { k: "label", l: "الوصف" }] })
         ] },
         { title: "سطر الإعلان أعلى الموقع", fields: [SH("announcement.enabled", "إظهار السطر", { t: "toggle" }), SH("announcement.items", "نص الإعلان (يظهر الأول فقط، ثابتاً)", { t: "strings", add: "إضافة نص" })] },
         { title: "قسم «أقسام المعرض»", fields: [showT("sections.departments.show"), SH("sections.departments.eyebrow", "السطر الصغير"), SH("sections.departments.title", "العنوان"), SH("sections.departments.text", "الوصف")] },
         { title: "قسم «قطعة الموسم»", fields: [showT("sections.featured.show"), SH("sections.featured.product_id", "المنتج المعروض", { t: "product", hint: "إن لم تختر، يُعرض أول منتج مميز." }), SH("sections.featured.eyebrow", "السطر الصغير"), SH("sections.featured.button", "نص الزر")] },
+        { title: "قسم «جولة في المعرض» (البطاقات الأفقية)", fields: [showT("sections.showroom.show"), SH("sections.showroom.eyebrow", "السطر الصغير"), SH("sections.showroom.title", "العنوان"), SH("sections.showroom.hint", "التلميح على الكمبيوتر"), SH("sections.showroom.hint_touch", "التلميح على الهاتف"), SH("sections.showroom.end_title", "عنوان البطاقة الأخيرة"), { p: "sections.showroom._note", t: "note", l: "تظهر هنا المنتجات المميزة (أو أول ٦ منتجات). اختر المنتجات المميزة بالنجمة في صفحة المنتجات." }] },
         { title: "قسم «المجموعة المختارة»", fields: [showT("sections.collection.show"), SH("sections.collection.eyebrow", "السطر الصغير"), SH("sections.collection.title", "العنوان"), SH("sections.collection.text", "الوصف"), SH("sections.collection.count", "عدد المنتجات المعروضة", { t: "number" })] },
-        { title: "قسم «من كربلاء إلى العالم» (الكرة الأرضية)", fields: [SH("sections.globe.show", "إظهار القسم (يظهر فقط عند تفعيل الشحن الدولي)", { t: "toggle" }), SH("sections.globe.eyebrow", "السطر الصغير"), SH("sections.globe.title", "العنوان"), SH("sections.globe.text", "النص", { t: "textarea" })] },
-        { title: "قسم «عن المعرض»", fields: [showT("sections.about.show"), SH("sections.about.image", "الصورة (داخل القوس)", { t: "image", folder: "about" }), SH("sections.about.eyebrow", "السطر الصغير"), SH("sections.about.title", "العنوان"), SH("sections.about.text", "النص", { t: "textarea" })] },
+        { title: "قسم «من كربلاء إلى العالم» (الكرة الأرضية)", fields: [SH("sections.globe.show", "إظهار القسم (يظهر فقط عند تفعيل الشحن الدولي)", { t: "toggle" }), SH("sections.globe.eyebrow", "السطر الصغير"), SH("sections.globe.title", "العنوان"), SH("sections.globe.text", "النص", { t: "textarea" }), SH("sections.globe.stat_cities", "وصف عدد المحافظات"), SH("sections.globe.stat_countries", "وصف عدد الدول"), SH("sections.globe.stat_pack", "البطاقة الثالثة"), SH("sections.globe.pin", "الاسم على الكرة"), SH("sections.globe.hint", "التلميح على الكمبيوتر"), SH("sections.globe.hint_touch", "التلميح على الهاتف")] },
+        { title: "قسم «عن المعرض»", fields: [showT("sections.about.show"), SH("sections.about.image", "الصورة بجانب النص (بدونها يظهر الشعار)", { t: "image", folder: "about" }), SH("sections.about.eyebrow", "السطر الصغير"), SH("sections.about.title", "العنوان"), SH("sections.about.text", "النص", { t: "textarea" }),
+          SH("sections.about.values", "البطاقات الصغيرة تحت النص", { t: "list", add: "إضافة بطاقة", fields: [{ k: "icon", l: "الأيقونة", t: "select", options: [["shield", "ضمان"], ["gift", "هدية"], ["truck", "توصيل"], ["check", "علامة صح"], ["pin", "موقع"], ["clock", "وقت"], ["phone", "هاتف"], ["mail", "رسالة"]] }, { k: "title", l: "العنوان" }, { k: "text", l: "السطر تحته" }] }),
+          SH("sections.about.button", "نص الزر (اتركه فارغاً لإخفائه)")] },
         { title: "آراء الزبائن", fields: [showT("sections.testimonials.show"), SH("sections.testimonials.title", "العنوان"), SH("sections.testimonials.items", "الآراء", { t: "list", add: "إضافة رأي", hint: "لا يظهر القسم إلا بعد إضافة رأي واحد على الأقل.", fields: [{ k: "name", l: "الاسم" }, { k: "city", l: "المدينة" }, { k: "text", l: "الرأي", t: "textarea" }] })] },
-        { title: "قسم «زورونا» ونموذج المراسلة", fields: [showT("sections.visit.show"), SH("sections.visit.title", "العنوان"), SH("sections.visit.form_title", "عنوان النموذج"), SH("sections.visit.form_text", "وصف النموذج")] }
+        { title: "قسم «زورونا» ونموذج المراسلة", fields: [showT("sections.visit.show"), SH("sections.visit.eyebrow", "السطر الصغير"), SH("sections.visit.title", "العنوان"), SH("sections.visit.image", "صورة في بطاقة العنوان (اختياري — مثل صورة واجهة المعرض)", { t: "image", folder: "visit" }), SH("sections.visit.form_title", "عنوان النموذج"), SH("sections.visit.form_text", "وصف النموذج")] }
+      ]
+    },
+    texts: {
+      title: "نصوص الموقع", sub: "كل كلمة تظهر للزائر — الأزرار، العناوين، السلة، نموذج الطلب، الرسائل",
+      search: true, open: 1,
+      groups: [
+        { title: "القائمة العلوية والبحث", fields: [TX("nav_home", "رابط «الرئيسية»"), TX("nav_shop", "رابط «المتجر»"), TX("nav_departments", "رابط «الأقسام»"), TX("nav_contact", "رابط «تواصل معنا»"), TX("menu_title", "عنوان القائمة في الهاتف"), TX("menu_all", "«كل المنتجات» في قائمة الهاتف"), TX("search_placeholder", "النص داخل خانة البحث"), TX("search_results", "عدد نتائج البحث", { hint: "{n} = العدد" }), TX("search_none", "عند عدم وجود نتائج", { hint: "{q} = كلمة البحث" }), TX("intro_skip", "زر تخطّي الافتتاحية")] },
+        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
+        { title: "صفحة المتجر والأقسام", fields: [TX("shop_title", "عنوان صفحة كل المنتجات"), TX("shop_count", "عدد المنتجات", { hint: "{n} = العدد" }), TX("sort_label", "كلمة «ترتيب»"), TX("sort_default", "ترتيب: المقترح"), TX("sort_new", "ترتيب: الأحدث"), TX("sort_low", "ترتيب: الأرخص"), TX("sort_high", "ترتيب: الأغلى"), TX("empty_category", "قسم بلا منتجات"), TX("out_of_stock", "شارة نفاد الكمية")] },
+        { title: "صفحة المنتج", fields: [TX("spec_category", "خانة: القسم"), TX("spec_metal", "خانة: المعدن"), TX("spec_stone", "خانة: الحجر"), TX("spec_weight", "خانة: الوزن"), TX("spec_size", "خانة: المقاس"), TX("spec_stock", "خانة: التوفر"), TX("in_stock", "متوفر"), TX("in_stock_n", "متوفر مع العدد", { hint: "{n} = الكمية" }), TX("qty", "كلمة «الكمية»"), TX("add_to_cart", "زر «أضف إلى السلة»"), TX("buy_now", "زر «اطلب الآن»"), TX("ask_whatsapp", "زر السؤال على واتساب"), TX("out_note", "رسالة نفاد الكمية"), TX("assure_1", "الضمان الأول"), TX("assure_2", "الضمان الثاني (مع الشحن الدولي)"), TX("assure_2_local", "الضمان الثاني (بدون شحن دولي)"), TX("assure_3", "الضمان الثالث"), TX("related", "عنوان «قد يعجبك أيضاً»"), TX("notfound_title", "منتج غير موجود — العنوان"), TX("notfound_text", "منتج غير موجود — النص"), TX("notfound_btn", "منتج غير موجود — الزر")] },
+        { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
+        { title: "نموذج إتمام الطلب", fields: [TX("co_title", "العنوان"), TX("co_name", "خانة الاسم"), TX("co_phone", "خانة الهاتف"), TX("co_country", "خانة الدولة"), TX("co_other", "خيار «دولة أخرى»"), TX("co_other_name", "خانة اسم الدولة"), TX("co_city", "خانة المحافظة"), TX("co_city_intl", "خانة المدينة (خارج العراق)"), TX("co_addr", "خانة العنوان"), TX("co_addr_intl", "خانة العنوان (خارج العراق)"), TX("co_addr_ph", "مثال داخل خانة العنوان"), TX("co_addr_ph_intl", "مثال داخل خانة العنوان (خارج العراق)"), TX("co_notes", "خانة الملاحظات"), TX("co_notes_ph", "مثال داخل خانة الملاحظات"), TX("co_sub", "المجموع"), TX("co_delivery", "التوصيل"), TX("co_intl_shipping", "الشحن الدولي"), TX("co_total", "الإجمالي"), TX("co_plus_shipping", "«+ الشحن»"), TX("co_submit", "زر تأكيد الطلب"), TX("co_sending", "أثناء الإرسال")] },
+        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال")] },
+        { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
+        { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
+        { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
+        { title: "رسائل واتساب الجاهزة", fields: [TX("wa_hello", "التحية عند فتح واتساب"), TX("wa_inquiry", "رسالة زر واتساب العائم", { hint: "{brand} = اسم المعرض" }), TX("wa_product", "رسالة «اسأل عنه على واتساب»", { hint: "{name} = اسم المنتج، {price} = السعر" })] }
       ]
     },
     identity: {
       title: "الهوية والألوان والافتتاحية", sub: "الاسم، الشعار، فيديو الافتتاحية، ألوان الموقع بالكامل",
       groups: [
-        { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true, fallback: "../assets/img/logo.webp", hint: "يُستخدم شعار معرض رقية الحالي إذا لم ترفع شعاراً آخر." }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
+        { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.sub", "السطر الصغير تحت الاسم في الشريط العلوي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true, fallback: "../assets/img/logo.webp", hint: "يُستخدم شعار معرض رقية الحالي إذا لم ترفع شعاراً آخر." }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
         { title: "الافتتاحية (عند فتح الموقع)", fields: [
           SH("intro.enabled", "تشغيل الافتتاحية", { t: "toggle" }),
-          SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو تظهر حركة رسم القوس والاسم." }),
+          SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو يظهر الشعار بحركة ناعمة." }),
           SH("intro.subtitle", "السطر تحت الاسم (في الحركة بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
@@ -641,7 +663,8 @@
     const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
     switch (f.t) {
       case "toggle": return `<div class="field">${toggleHTML(`data-p="${f.p}" data-type="bool"`, v !== false, f.l)}${hint}</div>`;
-      case "textarea": return `<div class="field"><label for="${id}">${f.l}</label><textarea id="${id}" data-p="${f.p}">${esc(v)}</textarea>${hint}</div>`;
+      case "textarea": return `<div class="field"><label for="${id}">${f.l}</label><textarea id="${id}" data-p="${f.p}" ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${esc(v)}</textarea>${hint}</div>`;
+      case "note": return `<p class="hint" style="margin:-4px 0 14px">${f.l}</p>`;
       case "number": return `<div class="field"><label for="${id}">${f.l}</label><input type="text" inputmode="decimal" id="${id}" data-p="${f.p}" data-type="num" value="${esc(v)}" dir="ltr">${hint}</div>`;
       case "image": case "video": {
         const vid = f.t === "video";
@@ -672,7 +695,7 @@
           <div class="preview-strip" data-strip="${base}" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${val(k)}"></div>`).join("")}</div>
           <button class="btn ghost sm" type="button" data-reset="${base}" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
       }
-      default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""}>${hint}</div>`;
+      default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${hint}</div>`;
     }
   }
   function findField(groups, p) {
@@ -684,9 +707,23 @@
     state.draft = clone(state.s);
     const d = state.draft;
     page().innerHTML = `<div class="page-title"><div><h1>${sc.title}</h1><p>${sc.sub}</p></div><a class="btn light" href="${SITE}" target="_blank" rel="noopener">${I.eye} معاينة الموقع</a></div>
-      <div class="notice info">بعد أي تعديل اضغط «حفظ ونشر» في الأسفل — يظهر التغيير في الموقع فوراً.</div>
-      ${sc.groups.map((g, gi) => `<section class="card collapsible ${gi < 2 ? "open" : ""}"><h2 tabindex="0" role="button">${g.title}</h2><div class="body">${g.fields.map((f) => fieldHTML(f, d)).join("")}</div></section>`).join("")}`;
+      <div class="notice info">بعد أي تعديل اضغط «حفظ ونشر» في الأسفل — يظهر التغيير في الموقع فوراً.${sc.search ? " اترك أي خانة فارغة ليعود نصها الأصلي (الظاهر بلون باهت)." : ""}</div>
+      ${sc.search ? `<div class="toolbar"><div class="search-in">${I.search}<input class="input" type="search" id="txSearch" placeholder="ابحث عن أي كلمة في الموقع… مثل: السلة، واتساب، تأكيد" aria-label="بحث في النصوص"></div></div>` : ""}
+      ${sc.groups.map((g, gi) => `<section class="card collapsible ${sc.search ? "tx" : ""} ${gi < (sc.open || 2) ? "open" : ""}"><h2 tabindex="0" role="button">${g.title}</h2><div class="body">${g.fields.map((f) => fieldHTML(f, d)).join("")}</div></section>`).join("")}`;
     const pg = page();
+    const sIn = $("#txSearch", pg);
+    if (sIn) sIn.addEventListener("input", () => {
+      const qy = sIn.value.trim();
+      $$(".collapsible", pg).forEach((sec) => {
+        let any = false;
+        $$(".body > .field", sec).forEach((fl) => {
+          const inp = $("input, textarea", fl);
+          const hay = fl.textContent + " " + (inp ? inp.value + " " + (inp.placeholder || "") : "");
+          const hit = !qy || hay.includes(qy); fl.hidden = !hit; any = any || hit;
+        });
+        sec.hidden = !any; if (qy && any) sec.classList.add("open");
+      });
+    });
     const redraw = (p) => {
       const f = findField(sc.groups, p) || findSub(sc.groups, p);
       const box = pg.querySelector(`[data-fp="${CSS.escape(p)}"]`);

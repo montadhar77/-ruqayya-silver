@@ -49,6 +49,13 @@
   // "N pieces" with Arabic number agreement: قطعة واحدة · قطعتان · ٣–١٠ قطع · ١١+ قطعة
   const pieces = (n) => { n = Number(n) || 0; const r = n % 100; return n === 1 ? "قطعة واحدة" : n === 2 ? "قطعتان" : `${num(n)} ${r >= 3 && r <= 10 ? "قطع" : "قطعة"}`; };
   const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
+  // interface text from the dashboard («نصوص الموقع»); empty falls back to the default, {x} placeholders are filled in
+  const uiRaw = (k, vars) => {
+    let v = ((state.s && state.s.ui) || {})[k];
+    if (v == null || v === "") v = (window.RQ_DEFAULTS.ui || {})[k] ?? "";
+    return vars ? String(v).replace(/\{(\w+)\}/g, (m, n) => (n in vars ? vars[n] : m)) : String(v);
+  };
+  const ui = (k, vars) => esc(uiRaw(k, vars));
   const waNumber = (p) => {
     let d = toLatin(p).replace(/\D/g, "");
     if (!d) return "";
@@ -158,7 +165,9 @@
     const logo = $("#brandLogo");
     logo.src = s.brand.logo || LOGO_MARK; logo.alt = `شعار ${s.brand.full}`; logo.hidden = false;
     $("#brandName").textContent = s.brand.name;
-    $("#brandSub").textContent = /عليها السلام/.test(s.brand.full) ? "عليها السلام" : s.brand.tagline;
+    $("#brandSub").textContent = s.brand.sub || s.brand.tagline;
+    $$("[data-t]").forEach((el) => { el.textContent = uiRaw(el.dataset.t); });
+    $$("[data-t-ph]").forEach((el) => { el.placeholder = uiRaw(el.dataset.tPh); });
 
     // announcement: a single still line (no scrolling text)
     const items = (s.announcement.items || []).filter(Boolean);
@@ -166,14 +175,14 @@
     if (s.announcement.enabled && items.length) { $("#topTrack").textContent = items[0]; tb.hidden = false; } else tb.hidden = true;
 
     // whatsapp float
-    const wa = $("#waFloat"), wl = waLink(`السلام عليكم، أودّ الاستفسار من ${s.brand.full}`);
+    const wa = $("#waFloat"), wl = waLink(uiRaw("wa_inquiry", { brand: s.brand.full }));
     if (wl) { wa.href = wl; wa.innerHTML = A.ui.whatsapp; wa.hidden = false; } else wa.hidden = true;
 
     // mobile menu
     $("#menuList").innerHTML =
-      `<a href="#/">الرئيسية <small>${A.ui.arrowL}</small></a><a href="#/shop">كل المنتجات <small>${num(state.prods.length)}</small></a>` +
+      `<a href="#/">${ui("nav_home")} <small>${A.ui.arrowL}</small></a><a href="#/shop">${ui("menu_all")} <small>${num(state.prods.length)}</small></a>` +
       state.cats.map((c) => `<a href="#/c/${esc(c.slug)}">${esc(c.name)} <small>${num(state.prods.filter((p) => p.category_id === c.id).length)}</small></a>`).join("") +
-      `<a href="#/?to=visit">تواصل معنا <small>${A.ui.arrowL}</small></a>`;
+      `<a href="#/?to=visit">${ui("nav_contact")} <small>${A.ui.arrowL}</small></a>`;
     $$("#menuList small svg").forEach((sv) => { sv.style.width = "18px"; });
 
     renderFooter();
@@ -183,8 +192,8 @@
     const c = state.s.contact;
     const map = [["instagram", "انستغرام"], ["facebook", "فيسبوك"], ["tiktok", "تيك توك"], ["telegram", "تيليغرام"], ["snapchat", "سناب شات"]];
     let out = map.filter(([k]) => c[k]).map(([k, n]) => `<a class="${cls}" href="${esc(c[k])}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
-    const wl = waLink("السلام عليكم");
-    if (wl) out = `<a class="${cls}" href="${esc(wl)}" target="_blank" rel="noopener" aria-label="واتساب">${A.ui.whatsapp}</a>` + out;
+    const wl = waLink(uiRaw("wa_hello"));
+    if (wl) out = `<a class="${cls}" href="${esc(wl)}" target="_blank" rel="noopener" aria-label="${ui("lbl_whatsapp")}">${A.ui.whatsapp}</a>` + out;
     return out;
   }
 
@@ -194,12 +203,12 @@
       <p class="mark" aria-hidden="true">${esc(s.brand.name)}</p>
       <div class="cols">
         <div><img class="f-logo" src="${esc(s.brand.logo || LOGO_FULL)}" alt="${esc(s.brand.full)}" loading="lazy"><h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
-        <div><h4>الأقسام</h4><ul>${state.cats.slice(0, 6).map((c) => `<li><a href="#/c/${esc(c.slug)}">${esc(c.name)}</a></li>`).join("")}</ul></div>
-        <div><h4>تواصل</h4><ul>
+        <div><h4>${ui("footer_departments")}</h4><ul>${state.cats.slice(0, 6).map((c) => `<li><a href="#/c/${esc(c.slug)}">${esc(c.name)}</a></li>`).join("")}</ul></div>
+        <div><h4>${ui("footer_contact")}</h4><ul>
           ${s.contact.address ? `<li>${esc(s.contact.address)}</li>` : ""}
           ${s.contact.phone ? `<li><a href="tel:${esc(toLatin(s.contact.phone).replace(/[^\d+]/g, ""))}" dir="ltr">${esc(s.contact.phone)}</a></li>` : ""}
           ${s.contact.hours ? `<li>${esc(s.contact.hours)}</li>` : ""}
-          <li><a href="#/shop">المتجر</a></li>
+          <li><a href="#/shop">${ui("footer_shop")}</a></li>
         </ul></div>
       </div>
       <div class="copy">© ${new Date().getFullYear().toLocaleString("ar-IQ", { useGrouping: false })} — ${esc(s.footer.copyright)}</div>
@@ -272,16 +281,16 @@
     const c = catOf(p);
     const out = !inStock(p);
     return `<article class="card glass spot edge tilt" data-card><span class="glare"></span>
-      <div class="ph">${out ? `<span class="tag out">نفدت الكمية</span>` : p.badge ? `<span class="tag">${esc(p.badge)}</span>` : ""}${media(p)}</div>
+      <div class="ph">${out ? `<span class="tag out">${ui("out_of_stock")}</span>` : p.badge ? `<span class="tag">${esc(p.badge)}</span>` : ""}${media(p)}</div>
       <h4>${esc(p.name)}</h4>
       <div class="meta">${esc([c && c.name, p.stone || p.metal].filter(Boolean).join(" · "))}</div>
       <div class="row"><span class="price">${priceHTML(p)}</span>
-        ${out ? "" : `<button class="add" type="button" data-add="${p.id}" aria-label="أضف ${esc(p.name)} إلى السلة">${A.ui.plus}</button>`}</div>
+        ${out ? "" : `<button class="add" type="button" data-add="${p.id}" aria-label="${ui("add_to_cart")}: ${esc(p.name)}">${A.ui.plus}</button>`}</div>
       <a class="stretch" href="#/p/${p.id}" aria-label="${esc(p.name)}"></a>
     </article>`;
   }
-  function grid(list, empty = "لا توجد منتجات في هذا القسم حالياً — قريباً بإذن الله.") {
-    return list.length ? `<div class="grid" data-batch>${list.map(card).join("")}</div>` : `<div class="empty">${empty}</div>`;
+  function grid(list, empty) {
+    return list.length ? `<div class="grid" data-batch>${list.map(card).join("")}</div>` : `<div class="empty">${esc(empty || uiRaw("empty_category"))}</div>`;
   }
   function splitWords(text, wordCls = "") {
     return esc(text).split(/\s+/).filter(Boolean).map((w) => `<span class="wl"><span class="w ${wordCls}">${w}</span></span>`).join(" ");
@@ -361,7 +370,7 @@
           return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge tilt ${cls}"><span class="glare"></span>
             ${c.image_url ? `<div class="t-img"><img src="${esc(c.image_url)}" alt="" loading="lazy"></div>` : ""}
             <div class="t-art">${A.depIcon(c.icon)}</div>
-            <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? pieces(count) : "قريباً"}</span></div>
+            <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? pieces(count) : ui("soon")}</span></div>
             <div><h3>${esc(c.name)}</h3><p>${esc(c.subtitle)}</p></div>
             <span class="t-go">${A.ui.arrowL}</span></a>`;
         }).join("")}</div></div></section>`;
@@ -370,7 +379,7 @@
     const fp = findProd(sec.featured.product_id) || state.prods.find((p) => p.featured && p.badge) || state.prods.find((p) => p.featured) || state.prods[0];
     if (sec.featured.show && fp) {
       const c = catOf(fp);
-      const spec = [["القسم", c && c.name], ["المعدن", fp.metal], ["الحجر", fp.stone], ["الوزن", fp.weight]].filter((x) => x[1]);
+      const spec = [[ui("spec_category"), c && c.name], [ui("spec_metal"), fp.metal], [ui("spec_stone"), fp.stone], [ui("spec_weight"), fp.weight]].filter((x) => x[1]);
       html += `<section class="block" style="padding-top:0">
         <div class="wrap"><div class="sec-title"><span class="rule" aria-hidden="true"></span><h2 data-split>${splitWords(sec.featured.eyebrow, "grad")}</h2><span class="rule" aria-hidden="true"></span></div><div class="feature glass edge lit" data-feature>
         <div class="txt"><div>${eyebrow((c && c.name) || "")}</div>
@@ -379,33 +388,34 @@
           <div class="chips-spec" data-rv>${spec.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>
           <div class="price-big" data-rv>${money(fp.price)}${fp.old_price && fp.old_price > fp.price ? `<s>${num(fp.old_price)}</s>` : ""}</div>
           <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
-          ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} أضف للسلة</button>` : ""}</div>
+          ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} ${ui("featured_add")}</button>` : ""}</div>
         </div>
         <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
       </div></div></section>`;
     }
 
     const room = (state.prods.filter((p) => p.featured).length >= 3 ? state.prods.filter((p) => p.featured) : state.prods).slice(0, 6);
-    if (room.length >= 3) {
-      html += `<section class="showroom" id="showroom" aria-label="جولة في المعرض"><div class="room-pin">
-        <div class="wrap room-head"><div>${eyebrow("جولة في المعرض")}<h2 data-split>${splitWords("قطعٌ تُروى حكايتها")}</h2></div>
-          <p class="room-hint">${fine ? "مرّر للأسفل لتتجوّل بين القطع" : "اسحب لتتجوّل بين القطع"} ${A.ui.arrowL}</p></div>
+    const sr = sec.showroom || {};
+    if (sr.show !== false && room.length >= 3) {
+      html += `<section class="showroom" id="showroom" aria-label="${esc(sr.eyebrow || sr.title)}"><div class="room-pin">
+        <div class="wrap room-head"><div>${sr.eyebrow ? eyebrow(sr.eyebrow) : ""}<h2 data-split>${splitWords(sr.title)}</h2></div>
+          <p class="room-hint">${esc(fine ? sr.hint : sr.hint_touch)} ${A.ui.arrowL}</p></div>
         <div class="room-track" id="roomTrack">${room.map((p, k) => {
           const c = catOf(p);
           return `<a class="room-card glass edge" href="#/p/${p.id}">
             <span class="room-no" aria-hidden="true">${String(k + 1).padStart(2, "0")}</span>
             <div class="room-ph">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
             <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
-        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>كل القطع</b><span>${pieces(state.prods.length)} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
+        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>${esc(sr.end_title)}</b><span>${pieces(state.prods.length)} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
       </div></section>`;
     }
 
     if (sec.collection.show) {
       const usedCats = state.cats.filter((c) => state.prods.some((p) => p.category_id === c.id));
       html += `<section class="block" id="collection" style="padding-top:0"><div class="wrap">${titleBlock(sec.collection.eyebrow, sec.collection.title, sec.collection.text)}
-        ${usedCats.length > 1 ? `<div class="seg" data-rv role="group" aria-label="تصفية حسب القسم"><button class="chip on" type="button" data-filter="">الكل</button>${usedCats.map((c) => `<button class="chip" type="button" data-filter="${c.id}">${esc(c.name)}</button>`).join("")}</div>` : ""}
-        <div id="homeGrid">${grid(state.prods.slice(0, Number(sec.collection.count) || 8), "ستُعرض المنتجات هنا فور إضافتها من لوحة التحكم.")}</div>
-        ${state.prods.length ? `<div class="more" data-rv><a class="btn glass-btn" href="#/shop" data-magnet>عرض كل المنتجات (${num(state.prods.length)}) ${A.ui.arrow}</a></div>` : ""}
+        ${usedCats.length > 1 ? `<div class="seg" data-rv role="group" aria-label="${ui("sort_label")}"><button class="chip on" type="button" data-filter="">${ui("filter_all")}</button>${usedCats.map((c) => `<button class="chip" type="button" data-filter="${c.id}">${esc(c.name)}</button>`).join("")}</div>` : ""}
+        <div id="homeGrid">${grid(state.prods.slice(0, Number(sec.collection.count) || 8), uiRaw("collection_empty"))}</div>
+        ${state.prods.length ? `<div class="more" data-rv><a class="btn glass-btn" href="#/shop" data-magnet>${ui("collection_more", { n: num(state.prods.length) })} ${A.ui.arrow}</a></div>` : ""}
       </div></section>`;
     }
 
@@ -419,31 +429,28 @@
           <h2 data-split>${splitWords(gl.title || "من كربلاء إلى العالم")}</h2>
           <p data-rv>${esc(gl.text || "")}</p>
           <div class="g-stats" data-rv>
-            <div class="glass"><b>${num((s.shop.cities || []).length)}</b><span>محافظة عراقية</span></div>
-            <div class="glass"><b>${num(cs.length)}+</b><span>دولة يصلها الشحن</span></div>
-            <div class="glass"><b>${A.ui.shield}</b><span>تغليف آمن ومؤمَّن</span></div>
+            <div class="glass"><b>${num((s.shop.cities || []).length)}</b><span>${esc(gl.stat_cities)}</span></div>
+            <div class="glass"><b>${num(cs.length)}+</b><span>${esc(gl.stat_countries)}</span></div>
+            <div class="glass"><b>${A.ui.shield}</b><span>${esc(gl.stat_pack)}</span></div>
           </div>
           ${cs.length ? `<div class="g-countries" data-rv>${cs.slice(0, 9).map((c) => `<span>${esc(c)}</span>`).join("")}${cs.length > 9 ? `<span class="more">+${num(cs.length - 9)}</span>` : ""}</div>` : ""}
         </div>
         <div class="globe-wrap" data-rv>
           <div class="globe-halo" aria-hidden="true"></div>
-          <canvas id="globe" role="img" aria-label="كرة أرضية تُظهر كربلاء والدول التي يصلها الشحن"></canvas>
-          <div class="globe-pin glass" aria-hidden="true"><span class="dot"></span>كربلاء المقدسة</div>
-          <p class="globe-hint">${fine ? "اسحب لتدوير الكرة" : "حرّك بإصبعك لتدوير الكرة"}</p>
+          <canvas id="globe" role="img" aria-label="${esc(gl.title)}"></canvas>
+          <div class="globe-pin glass" aria-hidden="true"><span class="dot"></span>${esc(gl.pin)}</div>
+          <p class="globe-hint">${esc(fine ? gl.hint : gl.hint_touch)}</p>
         </div>
       </div></section>`;
     }
 
     if (sec.about.show) {
+      const values = (sec.about.values || []).filter((v) => v && v.title);
       html += `<section class="block" id="about"><div class="wrap about">
         <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p class="lit-text" data-lit>${String(sec.about.text || "").split("\n").map((line) => line.split(/\s+/).filter(Boolean).map((w) => `<span class="lw">${esc(w)}</span>`).join(" ")).join("<br>")}</p>
-          <div class="values" data-stagger>
-            <div class="glass">${A.ui.shield}<span><b>أصالة مضمونة</b>فضة ٩٢٥ مدموغة وأحجار طبيعية</span></div>
-            <div class="glass">${A.ui.gift}<span><b>تغليف فاخر</b>جاهز للإهداء</span></div>
-            <div class="glass">${A.ui.truck}<span><b>${s.shop.intl_enabled ? "من كربلاء إلى العالم" : "توصيل لكل العراق"}</b>${s.shop.intl_enabled ? "توصيل داخل العراق وشحن دولي" : "والدفع عند الاستلام"}</span></div>
-          </div>
-          <div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>تصفّح المتجر ${A.ui.arrow}</a></div></div>
+          ${values.length ? `<div class="values" data-stagger>${values.map((v) => `<div class="glass">${A.ui[v.icon] || A.ui.shield}<span><b>${esc(v.title)}</b>${esc(v.text || "")}</span></div>`).join("")}</div>` : ""}
+          ${sec.about.button ? `<div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>${esc(sec.about.button)} ${A.ui.arrow}</a></div>` : ""}</div>
       </div></section>`;
     }
 
@@ -465,24 +472,24 @@
   function visitSection() {
     const s = state.s, c = s.contact, sec = s.sections.visit;
     const rows = [
-      c.address && [A.ui.pin, "العنوان", esc(c.address) + (c.map_url ? ` · <a href="${esc(c.map_url)}" target="_blank" rel="noopener" style="color:var(--emerald)">الموقع على الخريطة</a>` : "")],
-      c.hours && [A.ui.clock, "أوقات الدوام", esc(c.hours)],
-      c.phone && [A.ui.phone, "الهاتف", `<a href="tel:${esc(toLatin(c.phone).replace(/[^\d+]/g, ""))}" dir="ltr">${esc(c.phone)}</a>`],
-      c.whatsapp && [A.ui.whatsapp, "واتساب", `<a href="${esc(waLink("السلام عليكم"))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
-      c.email && [A.ui.mail, "البريد", `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`]
+      c.address && [A.ui.pin, ui("lbl_address"), esc(c.address) + (c.map_url ? ` · <a href="${esc(c.map_url)}" target="_blank" rel="noopener" style="color:var(--emerald)">${ui("map_link")}</a>` : "")],
+      c.hours && [A.ui.clock, ui("lbl_hours"), esc(c.hours)],
+      c.phone && [A.ui.phone, ui("lbl_phone"), `<a href="tel:${esc(toLatin(c.phone).replace(/[^\d+]/g, ""))}" dir="ltr">${esc(c.phone)}</a>`],
+      c.whatsapp && [A.ui.whatsapp, ui("lbl_whatsapp"), `<a href="${esc(waLink(uiRaw("wa_hello")))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
+      c.email && [A.ui.mail, ui("lbl_email"), `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`]
     ].filter(Boolean);
-    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "")}
+    return `<section class="block" id="visit"><div class="wrap">${titleBlock(sec.eyebrow, sec.title, "")}
       <div class="visit">
-        <div class="visit-card glass spot info-card" data-rv><img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy"><h3>${esc(s.brand.full)}</h3>
+        <div class="visit-card glass spot info-card" data-rv>${sec.image ? `<img class="card-photo" src="${esc(sec.image)}" alt="" loading="lazy">` : `<img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy">`}<h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
           <div class="socials">${socialLinks()}</div>
         </div>
         <form class="visit-card glass spot" id="contactForm" data-rv novalidate>
           <h3>${esc(sec.form_title)}</h3><p style="color:var(--soft);margin-top:-8px">${esc(sec.form_text)}</p>
-          <div class="two"><div class="field"><label for="cfName">الاسم</label><input id="cfName" name="name" required maxlength="120" autocomplete="name"></div>
-          <div class="field"><label for="cfPhone">رقم الهاتف</label><input id="cfPhone" name="phone" type="tel" inputmode="tel" maxlength="30" dir="ltr" autocomplete="tel"></div></div>
-          <div class="field"><label for="cfBody">رسالتك</label><textarea id="cfBody" name="body" required maxlength="3000"></textarea></div>
-          <button class="btn shine block" type="submit">إرسال الرسالة</button>
+          <div class="two"><div class="field"><label for="cfName">${ui("form_name")}</label><input id="cfName" name="name" required maxlength="120" autocomplete="name"></div>
+          <div class="field"><label for="cfPhone">${ui("form_phone")}</label><input id="cfPhone" name="phone" type="tel" inputmode="tel" maxlength="30" dir="ltr" autocomplete="tel"></div></div>
+          <div class="field"><label for="cfBody">${ui("form_body")}</label><textarea id="cfBody" name="body" required maxlength="3000"></textarea></div>
+          <button class="btn shine block" type="submit">${ui("form_send")}</button>
         </form>
       </div></div></section>`;
   }
@@ -550,13 +557,13 @@
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = f.name.value.trim(), phone = f.phone.value.trim(), body = f.body.value.trim();
-      if (name.length < 2) { toast("يرجى كتابة الاسم"); f.name.focus(); return; }
-      if (body.length < 2) { toast("يرجى كتابة الرسالة"); f.body.focus(); return; }
-      const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = "جارٍ الإرسال…";
+      if (name.length < 2) { toast(uiRaw("form_need_name")); f.name.focus(); return; }
+      if (body.length < 2) { toast(uiRaw("form_need_body")); f.body.focus(); return; }
+      const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("form_sending");
       const { error } = await db.insert("inquiries", { name, phone, body });
-      btn.disabled = false; btn.textContent = "إرسال الرسالة";
-      if (error) { toast("تعذّر الإرسال، حاول مرة أخرى"); return; }
-      f.reset(); toast("وصلتنا رسالتك، شكراً لك");
+      btn.disabled = false; btn.textContent = uiRaw("form_send");
+      if (error) { toast(uiRaw("form_err")); return; }
+      f.reset(); toast(uiRaw("form_ok"));
     });
   }
 
@@ -570,15 +577,15 @@
     if (sort === "high") list.sort((a, b) => b.price - a.price);
     if (sort === "new") list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     app.innerHTML = `<div class="page-head"><div class="wrap">
-        <nav class="crumbs" aria-label="مسار الصفحة" data-rv><a href="#/">الرئيسية</a><span>/</span>${cat ? `<a href="#/shop">المتجر</a><span>/</span><span>${esc(cat.name)}</span>` : "<span>المتجر</span>"}</nav>
-        <h1 data-split>${splitWords(cat ? cat.name : "كل المنتجات")}</h1>
+        <nav class="crumbs" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${cat ? `<a href="#/shop">${ui("nav_shop")}</a><span>/</span><span>${esc(cat.name)}</span>` : `<span>${ui("nav_shop")}</span>`}</nav>
+        <h1 data-split>${splitWords(cat ? cat.name : uiRaw("shop_title"))}</h1>
         <p data-rv>${esc(cat ? cat.subtitle : state.s.brand.tagline)}</p></div></div>
       <section style="padding-bottom:40px"><div class="wrap">
-        <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">الكل</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
-        <div class="toolbar" data-rv><span class="count">${num(list.length)} منتج</span>
-          <label>ترتيب
-          <select id="sortSel" aria-label="ترتيب المنتجات">
-            <option value="default">المقترح</option><option value="new">الأحدث</option><option value="low">السعر: من الأقل</option><option value="high">السعر: من الأعلى</option>
+        <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">${ui("filter_all")}</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
+        <div class="toolbar" data-rv><span class="count">${ui("shop_count", { n: num(list.length) })}</span>
+          <label>${ui("sort_label")}
+          <select id="sortSel" aria-label="${ui("sort_label")}">
+            <option value="default">${ui("sort_default")}</option><option value="new">${ui("sort_new")}</option><option value="low">${ui("sort_low")}</option><option value="high">${ui("sort_high")}</option>
           </select></label></div>
         ${grid(list)}
       </div></section>`;
@@ -591,37 +598,37 @@
   function renderProduct(id) {
     const p = findProd(id);
     if (!p) {
-      app.innerHTML = `<div class="page-head"><div class="wrap"><h1>المنتج غير متوفر</h1><p>ربما بيع أو أُزيل من المعرض.</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn shine" href="#/shop">العودة إلى المتجر</a></div></div></div>`;
+      app.innerHTML = `<div class="page-head"><div class="wrap"><h1>${ui("notfound_title")}</h1><p>${ui("notfound_text")}</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn shine" href="#/shop">${ui("notfound_btn")}</a></div></div></div>`;
       return;
     }
     const c = catOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
-    const spec = [["القسم", c && c.name], ["المعدن", p.metal], ["الحجر", p.stone], ["الوزن", p.weight], ["المقاس", p.size],
-      ["التوفر", out ? "نفدت الكمية" : p.stock ? `متوفر (${num(p.stock)})` : "متوفر"]].filter((x) => x[1]);
+    const spec = [[ui("spec_category"), c && c.name], [ui("spec_metal"), p.metal], [ui("spec_stone"), p.stone], [ui("spec_weight"), p.weight], [ui("spec_size"), p.size],
+      [ui("spec_stock"), out ? uiRaw("out_of_stock") : p.stock ? uiRaw("in_stock_n", { n: num(p.stock) }) : uiRaw("in_stock")]].filter((x) => x[1]);
     const related = state.prods.filter((x) => x.id !== p.id && x.category_id === p.category_id).slice(0, 4);
-    const wa = waLink(`السلام عليكم، أريد طلب: ${p.name} — ${num(p.price)} ${state.s.shop.currency}\n${location.href}`);
+    const wa = waLink(`${uiRaw("wa_product", { name: p.name, price: `${num(p.price)} ${state.s.shop.currency}` })}\n${location.href}`);
     app.innerHTML = `<div class="wrap"><div class="product">
       <div class="gallery" data-rv>
         <div class="g-main" id="gMain">${imgs.length ? `<img src="${esc(imgs[0])}" alt="${esc(p.name)}">` : A.productArt(p, iconOf(p))}
-          ${imgs.length > 1 ? `<button class="icon-btn g-nav prev" type="button" aria-label="الصورة السابقة">${A.ui.arrowR}</button><button class="icon-btn g-nav next" type="button" aria-label="الصورة التالية">${A.ui.arrowL}</button>` : ""}</div>
+          ${imgs.length > 1 ? `<button class="icon-btn g-nav prev" type="button" aria-label="‹">${A.ui.arrowR}</button><button class="icon-btn g-nav next" type="button" aria-label="›">${A.ui.arrowL}</button>` : ""}</div>
         ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="الصورة ${num(i + 1)}"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join("")}</div>` : ""}
       </div>
       <div class="p-info">
-        <nav class="crumbs" style="justify-content:flex-start" aria-label="مسار الصفحة" data-rv><a href="#/">الرئيسية</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>` : `<a href="#/shop">المتجر</a>`}</nav>
+        <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
         ${p.badge && !out ? `<span class="tag" style="position:static;display:inline-block;margin-top:10px" data-rv>${esc(p.badge)}</span>` : ""}
         <h1 data-split>${splitWords(p.name)}</h1>
         <div class="p-price price" data-rv>${priceHTML(p)}</div>
         ${p.description ? `<p class="desc" data-rv>${esc(p.description)}</p>` : ""}
         <dl class="spec glass" data-rv>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
-        ${out ? `<div class="empty" style="padding:20px;margin-bottom:12px">نفدت الكمية حالياً — راسلنا ليصلك خبر توفّرها.</div>` : `
+        ${out ? `<div class="empty" style="padding:20px;margin-bottom:12px">${ui("out_note")}</div>` : `
         <div class="buy-row" data-rv>
-          <div class="qty" role="group" aria-label="الكمية"><button type="button" id="qMinus" aria-label="إنقاص">−</button><span id="qVal">${num(1)}</span><button type="button" id="qPlus" aria-label="زيادة">+</button></div>
-          <button class="btn shine" type="button" id="addBtn" data-magnet>${A.ui.cart} أضف إلى السلة</button>
+          <div class="qty" role="group" aria-label="${ui("qty")}"><button type="button" id="qMinus" aria-label="إنقاص">−</button><span id="qVal">${num(1)}</span><button type="button" id="qPlus" aria-label="زيادة">+</button></div>
+          <button class="btn shine" type="button" id="addBtn" data-magnet>${A.ui.cart} ${ui("add_to_cart")}</button>
         </div>
-        <div class="buy-row" data-rv><button class="btn glass-btn block" type="button" id="buyNow">اطلب الآن</button></div>`}
-        ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv>${A.ui.whatsapp} اسأل عنه على واتساب</a>` : ""}
-        <div class="assure" data-rv><div class="glass">${A.ui.shield}فضة أصلية مضمونة</div><div class="glass">${A.ui.truck}${state.s.shop.intl_enabled ? "شحن لكل دول العالم" : "توصيل لكل المحافظات"}</div><div class="glass">${A.ui.gift}تغليف هدايا</div></div>
+        <div class="buy-row" data-rv><button class="btn glass-btn block" type="button" id="buyNow">${ui("buy_now")}</button></div>`}
+        ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv>${A.ui.whatsapp} ${ui("ask_whatsapp")}</a>` : ""}
+        <div class="assure" data-rv><div class="glass">${A.ui.shield}${ui("assure_1")}</div><div class="glass">${A.ui.truck}${ui(state.s.shop.intl_enabled ? "assure_2" : "assure_2_local")}</div><div class="glass">${A.ui.gift}${ui("assure_3")}</div></div>
       </div></div>
-      ${related.length ? `<section class="block" style="padding-top:20px">${titleBlock("", "قد يعجبك أيضاً", "")}${grid(related)}</section>` : ""}
+      ${related.length ? `<section class="block" style="padding-top:20px">${titleBlock("", uiRaw("related"), "")}${grid(related)}</section>` : ""}
     </div>`;
 
     // gallery
@@ -673,7 +680,7 @@
     const tbd = intl && !freed && fee === 0;
     return { sub, delivery, total: sub + delivery, free, intl, tbd };
   }
-  const feeLabel = (t) => t.tbd ? "يُحدَّد حسب الدولة" : t.delivery ? money(t.delivery) : "مجاني";
+  const feeLabel = (t) => t.tbd ? ui("tbd") : t.delivery ? money(t.delivery) : ui("free");
   function updateCartCount() {
     const n = cartLines().reduce((a, l) => a + l.qty, 0);
     const b = $("#cartCount");
@@ -685,7 +692,7 @@
     const line = state.cart.find((l) => l.id === id);
     if (line) line.qty = Math.min(50, line.qty + qty); else state.cart.push({ id, qty });
     saveCart(); renderCart();
-    if (!silent) toast(`أُضيف «${p.name}» إلى السلة`);
+    if (!silent) toast(uiRaw("added_toast", { name: p.name }));
     if (G && srcEl) flyToCart(srcEl);
   }
   function flyToCart(srcEl) {
@@ -701,21 +708,21 @@
     const lines = cartLines(), t = totals();
     const body = $("#cartBody"), foot = $("#cartFoot");
     if (!lines.length) {
-      body.innerHTML = `<div class="cart-empty">${A.ui.cart}<p>سلتك فارغة</p><a class="btn shine" href="#/shop" data-close="cart">تصفّح المنتجات</a></div>`;
+      body.innerHTML = `<div class="cart-empty">${A.ui.cart}<p>${ui("cart_empty")}</p><a class="btn shine" href="#/shop" data-close="cart">${ui("cart_browse")}</a></div>`;
       foot.innerHTML = "";
       return;
     }
     body.innerHTML = lines.map((l) => `<div class="c-item">
       <a class="ph" href="#/p/${l.p.id}" data-close="cart">${l.p.images && l.p.images[0] ? `<img src="${esc(l.p.images[0])}" alt="">` : A.productArt(l.p, iconOf(l.p))}</a>
       <div><h5>${esc(l.p.name)}</h5><div class="price" style="font-size:14px">${money(l.p.price)}</div>
-        <div class="qty"><button type="button" data-q="${l.id}" data-d="-1" aria-label="إنقاص">−</button><span>${num(l.qty)}</span><button type="button" data-q="${l.id}" data-d="1" aria-label="زيادة">+</button></div></div>
-      <button class="rm" type="button" data-rm="${l.id}">حذف</button></div>`).join("");
-    foot.innerHTML = `<div class="sum"><span>المجموع الفرعي</span><span>${money(t.sub)}</span></div>
-      <div class="sum"><span>التوصيل داخل العراق</span><span>${feeLabel(t)}</span></div>
-      ${t.free && t.sub < t.free ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>أضف ${money(t.free - t.sub)} للحصول على توصيل مجاني داخل العراق</span></div>` : ""}
-      ${state.s.shop.intl_enabled ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>نشحن أيضاً لكل دول العالم — اختر دولتك عند إتمام الطلب</span></div>` : ""}
-      <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}</span></div>
-      <button class="btn shine block" type="button" id="toCheckout" style="margin-top:12px">إتمام الطلب</button>
+        <div class="qty"><button type="button" data-q="${l.id}" data-d="-1" aria-label="−">−</button><span>${num(l.qty)}</span><button type="button" data-q="${l.id}" data-d="1" aria-label="+">+</button></div></div>
+      <button class="rm" type="button" data-rm="${l.id}">${ui("cart_remove")}</button></div>`).join("");
+    foot.innerHTML = `<div class="sum"><span>${ui("cart_subtotal")}</span><span>${money(t.sub)}</span></div>
+      <div class="sum"><span>${ui("cart_delivery")}</span><span>${feeLabel(t)}</span></div>
+      ${t.free && t.sub < t.free ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>${ui("cart_free_hint", { amount: money(t.free - t.sub) })}</span></div>` : ""}
+      ${state.s.shop.intl_enabled ? `<div class="sum" style="color:var(--soft);font-size:13px"><span>${ui("cart_intl_hint")}</span></div>` : ""}
+      <div class="sum total"><span>${ui("cart_total")}</span><span>${money(t.total)}</span></div>
+      <button class="btn shine block" type="button" id="toCheckout" style="margin-top:12px">${ui("cart_checkout")}</button>
       <p style="text-align:center;color:var(--soft);font-size:13px;margin:8px 0 0">${esc(state.s.shop.payment_note)}</p>`;
     $("#toCheckout").addEventListener("click", openCheckout);
   }
@@ -750,38 +757,38 @@
   function openCheckout() {
     closePanel("cart");
     const lines = cartLines(), s = state.s, sh = s.shop;
-    if (!lines.length) { toast("السلة فارغة"); return; }
+    if (!lines.length) { toast(uiRaw("cart_is_empty")); return; }
     const countries = sh.intl_enabled ? (sh.countries || []).filter((c) => c && c !== LOCAL) : [];
     $("#checkout").innerHTML = `<button class="icon-btn x" type="button" id="coClose" aria-label="إغلاق">${A.ui.close}</button>
-      <h3 id="coTitle">إتمام الطلب</h3><p style="color:var(--soft);margin-top:0" id="coLead"></p>
+      <h3 id="coTitle">${ui("co_title")}</h3><p style="color:var(--soft);margin-top:0" id="coLead"></p>
       <form id="coForm" novalidate>
-        <div class="field"><label for="coName">الاسم الكامل</label><input id="coName" name="name" required maxlength="120" autocomplete="name"></div>
-        <div class="field"><label for="coPhone">رقم الهاتف (واتساب)</label><input id="coPhone" name="phone" type="tel" inputmode="tel" required maxlength="30" dir="ltr" placeholder="07XX XXX XXXX" autocomplete="tel"></div>
-        ${countries.length ? `<div class="field"><label for="coCountry">الدولة</label><select id="coCountry" name="country" autocomplete="country-name">
-          <option value="${LOCAL}">${LOCAL}</option>${countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}<option value="__other">دولة أخرى…</option></select></div>
-          <div class="field" id="coOtherWrap" hidden><label for="coOther">اسم الدولة</label><input id="coOther" name="other" maxlength="60" autocomplete="country-name"></div>` : ""}
+        <div class="field"><label for="coName">${ui("co_name")}</label><input id="coName" name="name" required maxlength="120" autocomplete="name"></div>
+        <div class="field"><label for="coPhone">${ui("co_phone")}</label><input id="coPhone" name="phone" type="tel" inputmode="tel" required maxlength="30" dir="ltr" placeholder="07XX XXX XXXX" autocomplete="tel"></div>
+        ${countries.length ? `<div class="field"><label for="coCountry">${ui("co_country")}</label><select id="coCountry" name="country" autocomplete="country-name">
+          <option value="${LOCAL}">${LOCAL}</option>${countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}<option value="__other">${ui("co_other")}</option></select></div>
+          <div class="field" id="coOtherWrap" hidden><label for="coOther">${ui("co_other_name")}</label><input id="coOther" name="other" maxlength="60" autocomplete="country-name"></div>` : ""}
         <div class="two">
-          <div class="field" id="coCityWrap"><label for="coCity">المحافظة</label><select id="coCity" name="city">${(sh.cities || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
-          <div class="field" id="coCityIntlWrap" hidden><label for="coCityIntl">المدينة</label><input id="coCityIntl" name="cityIntl" maxlength="80" autocomplete="address-level2"></div>
-          <div class="field"><label for="coAddr" id="coAddrLbl">العنوان</label><input id="coAddr" name="address" maxlength="300" placeholder="المنطقة، أقرب نقطة دالة" autocomplete="street-address"></div>
+          <div class="field" id="coCityWrap"><label for="coCity">${ui("co_city")}</label><select id="coCity" name="city">${(sh.cities || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+          <div class="field" id="coCityIntlWrap" hidden><label for="coCityIntl">${ui("co_city_intl")}</label><input id="coCityIntl" name="cityIntl" maxlength="80" autocomplete="address-level2"></div>
+          <div class="field"><label for="coAddr" id="coAddrLbl">${ui("co_addr")}</label><input id="coAddr" name="address" maxlength="300" placeholder="${ui("co_addr_ph")}" autocomplete="street-address"></div>
         </div>
-        <div class="field"><label for="coNotes">ملاحظات (اختياري)</label><textarea id="coNotes" name="notes" maxlength="1000" style="min-height:80px" placeholder="مقاس الخاتم، تغليف هدية…"></textarea></div>
+        <div class="field"><label for="coNotes">${ui("co_notes")}</label><textarea id="coNotes" name="notes" maxlength="1000" style="min-height:80px" placeholder="${ui("co_notes_ph")}"></textarea></div>
         <div id="coSum"></div>
-        <button class="btn shine block" type="submit">تأكيد الطلب</button>
+        <button class="btn shine block" type="submit">${ui("co_submit")}</button>
       </form>`;
     const f = $("#coForm");
-    const country = () => { const v = f.country ? f.country.value : LOCAL; return v === "__other" ? (f.other.value.trim() || "دولة أخرى") : v; };
+    const country = () => { const v = f.country ? f.country.value : LOCAL; return v === "__other" ? (f.other.value.trim() || uiRaw("co_other").replace(/…$/, "")) : v; };
     const refresh = () => {
       const c = country(), t = totals(c), intl = t.intl;
       $("#coCityWrap").hidden = intl; $("#coCityIntlWrap").hidden = !intl;
       if (f.country) $("#coOtherWrap").hidden = f.country.value !== "__other";
-      f.address.placeholder = intl ? "الشارع، رقم المبنى، الرمز البريدي" : "المنطقة، أقرب نقطة دالة";
-      $("#coAddrLbl").textContent = intl ? "العنوان الكامل" : "العنوان";
+      f.address.placeholder = uiRaw(intl ? "co_addr_ph_intl" : "co_addr_ph");
+      $("#coAddrLbl").textContent = uiRaw(intl ? "co_addr_intl" : "co_addr");
       f.phone.placeholder = intl ? "+00 000 000 0000" : "07XX XXX XXXX";
-      $("#coLead").innerHTML = `${pieces(lines.reduce((a, l) => a + l.qty, 0))} · الإجمالي <b class="price">${money(t.total)}</b>${t.tbd ? " + الشحن" : ""}`;
-      $("#coSum").innerHTML = `<div class="sum"><span>المجموع</span><span>${money(t.sub)}</span></div>
-        <div class="sum"><span>${intl ? "الشحن الدولي" : "التوصيل"}</span><span>${feeLabel(t)}</span></div>
-        <div class="sum total"><span>الإجمالي</span><span>${money(t.total)}${t.tbd ? ` <small style="font-weight:400;color:var(--soft)">+ الشحن</small>` : ""}</span></div>
+      $("#coLead").innerHTML = `${pieces(lines.reduce((a, l) => a + l.qty, 0))} · ${ui("co_total")} <b class="price">${money(t.total)}</b>${t.tbd ? " " + ui("co_plus_shipping") : ""}`;
+      $("#coSum").innerHTML = `<div class="sum"><span>${ui("co_sub")}</span><span>${money(t.sub)}</span></div>
+        <div class="sum"><span>${ui(intl ? "co_intl_shipping" : "co_delivery")}</span><span>${feeLabel(t)}</span></div>
+        <div class="sum total"><span>${ui("co_total")}</span><span>${money(t.total)}${t.tbd ? ` <small style="font-weight:400;color:var(--soft)">${ui("co_plus_shipping")}</small>` : ""}</span></div>
         <p style="color:var(--soft);font-size:13px">${esc(intl ? [t.tbd ? sh.intl_note : "", sh.intl_payment_note].filter(Boolean).join(" · ") : sh.payment_note)}</p>`;
     };
     if (f.country) { f.country.addEventListener("change", refresh); f.other.addEventListener("input", refresh); }
@@ -799,18 +806,18 @@
     const f = e.target;
     const country = getCountry(), intl = country !== LOCAL;
     const cust = { name: f.name.value.trim(), phone: f.phone.value.trim(), country, city: intl ? f.cityIntl.value.trim() : f.city.value, address: f.address.value.trim(), notes: f.notes.value.trim() };
-    if (cust.name.length < 2) { toast("يرجى كتابة الاسم"); f.name.focus(); return; }
-    if (toLatin(cust.phone).replace(/\D/g, "").length < 7) { toast("يرجى كتابة رقم هاتف صحيح"); f.phone.focus(); return; }
-    if (intl && f.country.value === "__other" && !f.other.value.trim()) { toast("يرجى كتابة اسم الدولة"); f.other.focus(); return; }
-    if (intl && !cust.city) { toast("يرجى كتابة المدينة"); f.cityIntl.focus(); return; }
-    if (intl && cust.address.length < 6) { toast("يرجى كتابة العنوان الكامل للشحن"); f.address.focus(); return; }
-    const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = "جارٍ إرسال الطلب…";
+    if (cust.name.length < 2) { toast(uiRaw("co_err_name")); f.name.focus(); return; }
+    if (toLatin(cust.phone).replace(/\D/g, "").length < 7) { toast(uiRaw("co_err_phone")); f.phone.focus(); return; }
+    if (intl && f.country.value === "__other" && !f.other.value.trim()) { toast(uiRaw("co_err_country")); f.other.focus(); return; }
+    if (intl && !cust.city) { toast(uiRaw("co_err_city")); f.cityIntl.focus(); return; }
+    if (intl && cust.address.length < 6) { toast(uiRaw("co_err_addr")); f.address.focus(); return; }
+    const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("co_sending");
     const items = cartLines().map((l) => ({ id: l.id, qty: l.qty }));
     const { data, error } = await db.rpc("place_order", { p_customer: cust, p_items: items });
     if (error) {
-      btn.disabled = false; btn.textContent = "تأكيد الطلب";
+      btn.disabled = false; btn.textContent = uiRaw("co_submit");
       const m = String(error.message || "");
-      toast(m.includes("out_of_stock") ? "إحدى القطع نفدت كميتها، يرجى مراجعة السلة" : m.includes("product_unavailable") ? "إحدى القطع لم تعد متوفرة" : m.includes("invalid_phone") ? "رقم الهاتف غير صحيح" : "تعذّر إرسال الطلب، حاول مرة أخرى");
+      toast(uiRaw(m.includes("out_of_stock") ? "co_err_stock" : m.includes("product_unavailable") ? "co_err_gone" : m.includes("invalid_phone") ? "co_err_phone" : "co_err_failed"));
       return;
     }
     const s = state.s;
@@ -820,11 +827,11 @@
     const wa = s.shop.whatsapp_orders ? waLink(msg) : "";
     state.cart = []; saveCart(); renderCart();
     $("#checkout").innerHTML = `<div class="success"><div class="ok">${A.ui.check}</div>
-      <h3>تمّ استلام طلبك</h3><p style="color:var(--soft)">شكراً لك يا ${esc(cust.name)}، سنتواصل معك قريباً لتأكيد الطلب.</p>
-      <div class="no">#${esc(data.order_no)}</div><p style="margin-top:0;color:var(--soft)">رقم طلبك · الإجمالي ${money(data.total)}${data.shipping_tbd ? " + الشحن" : ""}</p>
+      <h3>${ui("ok_title")}</h3><p style="color:var(--soft)">${ui("ok_text", { name: cust.name })}</p>
+      <div class="no">#${esc(data.order_no)}</div><p style="margin-top:0;color:var(--soft)">${ui("ok_no")} · ${ui("co_total")} ${money(data.total)}${data.shipping_tbd ? " " + ui("co_plus_shipping") : ""}</p>
       ${data.shipping_tbd ? `<p style="color:var(--soft);font-size:14px">${esc(s.shop.intl_note)}</p>` : ""}
-      ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" style="margin-bottom:10px">${A.ui.whatsapp} أرسل تفاصيل الطلب على واتساب</a>` : ""}
-      <button class="btn glass-btn block" type="button" id="coDone">متابعة التسوق</button></div>`;
+      ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" style="margin-bottom:10px">${A.ui.whatsapp} ${ui("ok_wa")}</a>` : ""}
+      <button class="btn glass-btn block" type="button" id="coDone">${ui("ok_continue")}</button></div>`;
     $("#coDone").addEventListener("click", () => { closeCheckout(); location.hash = "#/"; });
     if (G) G.from(".success > *", { y: 24, opacity: 0, stagger: 0.08, duration: 0.7, ease: "expo.out" });
   }
@@ -841,7 +848,7 @@
     const res = $("#searchRes");
     if (!q) { res.innerHTML = `<div class="seg">${state.cats.map((c) => `<a class="chip" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>`; return; }
     const list = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.description, (catOf(p) || {}).name].join(" ")).includes(q)).slice(0, 24);
-    res.innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${num(list.length)} نتيجة</p>${grid(list)}` : `<div class="empty">لا توجد نتائج لـ «${esc($("#searchInput").value)}»</div>`;
+    res.innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${ui("search_results", { n: num(list.length) })}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
   }
   $("#searchInput").addEventListener("input", doSearch);
   $("#searchClose").addEventListener("click", closeSearch);

@@ -695,3 +695,4 @@ html.lenis, html.lenis body { height: auto; }
 .info-card .watermark { position: absolute; inset-inline-end: -6%; bottom: -10%; width: 46%; max-width: 230px; height: auto; opacity: .07; pointer-events: none; filter: grayscale(1); }
 :root[data-theme="light"] .info-card .watermark { opacity: .06; }
 .info-card > :not(.watermark) { position: relative; }
+.info-card .card-photo { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: calc(var(--r) - 8px); margin-bottom: 20px; border: 1px solid var(--line); }
