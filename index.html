@@ -10,12 +10,23 @@
 <meta property="og:type" content="website">
 <meta property="og:title" content="معرض رقية (عليها السلام)">
 <meta property="og:description" content="فضيات وأحجار كريمة وهدايا العتبات المقدسة · كربلاء المقدسة">
-<link rel="icon" id="favicon" href="assets/img/favicon.svg" type="image/svg+xml">
+<link rel="icon" id="favicon" href="assets/img/favicon.png" type="image/png">
+<link rel="apple-touch-icon" href="assets/img/apple-touch-icon.png">
+<meta property="og:image" content="assets/img/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@400;500;600;700&family=IBM+Plex+Sans+Arabic:wght@300;400;500;600&family=Cormorant+Garamond:ital,wght@1,500&display=swap">
 <link rel="stylesheet" href="assets/css/site.css">
-<script>document.documentElement.classList.add("js");</script>
+<script>
+document.documentElement.classList.add("js");
+(function () { // apply the saved light/dark choice before the first paint
+  var t = null;
+  try { t = localStorage.getItem("rq_theme"); } catch (e) {}
+  if (!t) { try { var c = JSON.parse(localStorage.getItem("rq_cache") || "null"); t = c && c.settings && c.settings.theme && c.settings.theme.mode; } catch (e) {} }
+  if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+  document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
+})();
+</script>
 </head>
 <body>
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -32,7 +43,7 @@
       <circle cx="100" cy="100" r="74"/>
       <path d="M100 52l10 26 26 10-26 10-10 26-10-26-26-10 26-10z"/>
     </svg>
-    <img class="intro-logo" id="introLogo" alt="" hidden>
+    <img class="intro-logo" id="introLogo" src="assets/img/logo.webp" alt="" hidden>
     <div class="intro-name grad" id="introName">معرض رقية</div>
     <div class="intro-sub" id="introSub"></div>
   </div>
@@ -52,10 +63,11 @@
     </div>
     <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="فتح القائمة"></button>
     <a class="brand" href="#/" id="brand" aria-label="الرئيسية">
-      <img id="brandLogo" alt="" hidden>
+      <img id="brandLogo" class="mark-img" src="assets/img/logo-mark.webp" alt="شعار معرض رقية" width="35" height="52">
       <span class="brand-txt"><b id="brandName">معرض رقية</b><small id="brandSub">عليها السلام</small></span>
     </a>
     <div class="nav-actions">
+      <button class="icon-btn theme-btn" id="themeBtn" type="button" aria-label="تبديل الوضع الداكن والفاتح"></button>
       <button class="icon-btn" id="searchBtn" type="button" aria-label="بحث"></button>
       <button class="icon-btn" id="cartBtn" type="button" aria-label="السلة"><span class="badge-count" id="cartCount" hidden>0</span></button>
     </div>
@@ -102,6 +114,7 @@
 
 <script src="assets/vendor/gsap.min.js"></script>
 <script src="assets/vendor/ScrollTrigger.min.js"></script>
+<script src="assets/vendor/lenis.min.js"></script>
 <script src="assets/vendor/supabase.min.js"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/defaults.js"></script>

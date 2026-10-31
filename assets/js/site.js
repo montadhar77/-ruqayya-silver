@@ -18,6 +18,7 @@
   if (!G) document.documentElement.classList.remove("js");
 
   const app = $("#app");
+  const LOGO_FULL = "assets/img/logo.webp", LOGO_MARK = "assets/img/logo-mark.webp";
   const state = {
     s: window.rqMerge(window.RQ_DEFAULTS, {}),
     cats: [],
@@ -59,7 +60,11 @@
     clearTimeout(toastT);
     toastT = setTimeout(() => t.classList.remove("show"), 2400);
   }
-  function lock(on) { document.body.classList.toggle("locked", on || !!$(".drawer.open, .modal-bg.open, .search-bg.open")); }
+  function lock(on) {
+    const locked = on || !!$(".drawer.open, .modal-bg.open, .search-bg.open");
+    document.body.classList.toggle("locked", locked);
+    if (lenis) { if (locked) lenis.stop(); else lenis.start(); }
+  }
   function safeLS(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
 
   /* ---------- data ---------- */
@@ -96,19 +101,46 @@
     }
   }
 
+  /* ---------- light / dark ---------- */
+  function resolveMode(m) { return m === "light" ? "light" : m === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : "dark"; }
+  function syncThemeMeta() {
+    const cs = getComputedStyle(document.documentElement);
+    const tc = $('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", cs.getPropertyValue("--deep").trim());
+    if (window.__rqSparkColor) window.__rqSparkColor(cs.getPropertyValue("--emerald").trim());
+  }
+  function setTheme(mode, save) {
+    document.documentElement.setAttribute("data-theme", mode);
+    if (save) safeLS(() => localStorage.setItem("rq_theme", mode));
+    syncThemeMeta();
+  }
+  function toggleTheme(e) {
+    const next = document.documentElement.getAttribute("data-theme") === "light" ? "dark" : "light";
+    if (!document.startViewTransition || reduce) { setTheme(next, true); return; }
+    const r = e.currentTarget.getBoundingClientRect(), x = r.left + r.width / 2, y = r.top + r.height / 2;
+    const end = Math.hypot(Math.max(x, innerWidth - x), Math.max(y, innerHeight - y));
+    const vt = document.startViewTransition(() => setTheme(next, true));
+    vt.ready.then(() => document.documentElement.animate({ clipPath: [`circle(0px at ${x}px ${y}px)`, `circle(${end}px at ${x}px ${y}px)`] }, { duration: 750, easing: "cubic-bezier(.22,1,.36,1)", pseudoElement: "::view-transition-new(root)" })).catch(() => {});
+  }
+
   /* ---------- settings → page ---------- */
   function applySettings() {
-    const s = state.s, root = document.documentElement.style, t = s.theme;
-    ["pearl", "paper", "emerald", "deep", "silver", "accent", "ink"].forEach((k) => { if (t[k]) root.setProperty(`--${k}`, t[k]); });
+    const s = state.s, t = s.theme, tl = s.theme_light || {};
+    const keys = ["pearl", "paper", "emerald", "deep", "silver", "accent", "ink"];
+    const ok = (v) => /^#[0-9a-f]{3,8}$/i.test(v || "");
+    let tv = $("#themeVars"); if (!tv) { tv = document.createElement("style"); tv.id = "themeVars"; document.head.appendChild(tv); }
+    tv.textContent = `:root{${keys.filter((k) => ok(t[k])).map((k) => `--${k}:${t[k]}`).join(";")}}` +
+      `:root[data-theme="light"]{${keys.filter((k) => ok(tl[k])).map((k) => `--${k}:${tl[k]}`).join(";")}}`;
     document.body.classList.toggle("no-aurora", t.floral === false);
+    document.body.classList.toggle("no-jasmine", t.jasmine === false);
+    if (!safeLS(() => localStorage.getItem("rq_theme"), null)) setTheme(resolveMode(t.mode), false);
     document.title = s.seo.title || s.brand.full;
     const md = $('meta[name="description"]'); if (md) md.setAttribute("content", s.seo.description || "");
-    const tc = $('meta[name="theme-color"]'); if (tc) tc.setAttribute("content", t.deep);
-    if (s.brand.favicon || s.brand.logo) $("#favicon").href = s.brand.favicon || s.brand.logo;
+    syncThemeMeta();
+    if (s.brand.favicon) $("#favicon").href = s.brand.favicon;
 
     // brand
     const logo = $("#brandLogo");
-    if (s.brand.logo) { logo.src = s.brand.logo; logo.alt = s.brand.full; logo.hidden = false; } else logo.hidden = true;
+    logo.src = s.brand.logo || LOGO_MARK; logo.alt = `شعار ${s.brand.full}`; logo.hidden = false;
     $("#brandName").textContent = s.brand.name;
     $("#brandSub").textContent = /عليها السلام/.test(s.brand.full) ? "عليها السلام" : s.brand.tagline;
 
@@ -146,10 +178,10 @@
 
   function renderFooter() {
     const s = state.s;
-    $("#footer").innerHTML = `<div class="wrap">
+    $("#footer").innerHTML = `<div class="jas j-foot">${A.jasmine()}</div><div class="wrap">
       <p class="mark grad" aria-hidden="true">${esc(s.brand.name)}</p>
       <div class="cols">
-        <div>${s.brand.logo ? `<img class="f-logo" src="${esc(s.brand.logo)}" alt="${esc(s.brand.full)}">` : ""}<h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
+        <div><img class="f-logo" src="${esc(s.brand.logo || LOGO_FULL)}" alt="${esc(s.brand.full)}" loading="lazy"><h4>${esc(s.brand.full)}</h4><p>${esc(s.footer.text)}</p><div class="socials">${socialLinks()}</div></div>
         <div><h4>الأقسام</h4><ul>${state.cats.slice(0, 6).map((c) => `<li><a href="#/c/${esc(c.slug)}">${esc(c.name)}</a></li>`).join("")}</ul></div>
         <div><h4>تواصل</h4><ul>
           ${s.contact.address ? `<li>${esc(s.contact.address)}</li>` : ""}
@@ -202,17 +234,14 @@
     const logo = $("#introLogo");
     $("#introName").textContent = s.brand.name;
     $("#introSub").textContent = s.intro.subtitle || s.brand.tagline;
-    if (s.brand.logo) { logo.src = s.brand.logo; logo.hidden = false; $("#introArch").style.display = "none"; }
+    logo.src = s.brand.logo || LOGO_FULL; logo.hidden = false; $("#introArch").style.display = "none"; $("#introName").hidden = true;
     if (!G) { $$("#introMark > *").forEach((e) => (e.style.opacity = 1)); setTimeout(finish, 1200); return; }
     const paths = $$("#introArch circle, #introArch path");
     paths.forEach((p) => { const l = p.getTotalLength(); p.style.strokeDasharray = l; p.style.strokeDashoffset = l; });
     const tl = G.timeline({ onComplete: () => setTimeout(finish, 450) });
     tl.to("#introBloom", { scale: 1, duration: 2.4, ease: "expo.out" }, 0);
-    if (!s.brand.logo) tl.to(paths, { strokeDashoffset: 0, duration: 1.5, ease: "power2.inOut", stagger: 0.18 }, 0.1)
-      .to("#introArch", { rotate: 45, duration: 2.4, ease: "expo.inOut" }, 0.2);
-    else tl.fromTo(logo, { opacity: 0, scale: 0.6, filter: "blur(16px) brightness(2.2)" }, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)", duration: 1.6, ease: "expo.out" }, 0.2);
-    tl.fromTo("#introName", { opacity: 0, y: 40, filter: "blur(14px)" }, { opacity: 1, y: 0, filter: "blur(0px)", duration: 1.2, ease: "expo.out" }, "-=1.1")
-      .fromTo("#introSub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.7");
+    tl.fromTo(logo, { opacity: 0, scale: 0.6, filter: "blur(16px) brightness(2.2)" }, { opacity: 1, scale: 1, filter: "blur(0px) brightness(1)", duration: 1.6, ease: "expo.out" }, 0.2);
+    tl.fromTo("#introSub", { opacity: 0, y: 14 }, { opacity: 1, y: 0, duration: 0.8, ease: "power3.out" }, "-=0.7");
   }
 
   /* ---------- small renderers ---------- */
@@ -245,8 +274,8 @@
   function splitWords(text, wordCls = "") {
     return esc(text).split(/\s+/).filter(Boolean).map((w) => `<span class="wl"><span class="w ${wordCls}">${w}</span></span>`).join(" ");
   }
-  function titleBlock(eb, title, text) {
-    return `<div class="title">${eb ? `<div data-rv>${eyebrow(eb)}</div>` : ""}
+  function titleBlock(eb, title, text, flower) {
+    return `<div class="title">${flower ? `<span class="jas j-title">${A.jasmine("flower")}</span>` : ""}${eb ? `<div data-rv>${eyebrow(eb)}</div>` : ""}
       <h2 data-split>${splitWords(title)}</h2>${text ? `<p data-rv>${esc(text)}</p>` : ""}</div>`;
   }
   const orbitSVG = () => `<svg viewBox="0 0 500 500" aria-hidden="true">
@@ -278,7 +307,9 @@
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
     if (state.cats.length) stats.push({ value: num(state.cats.length), label: "أقسام في المعرض" });
 
-    let html = `<header class="hero" id="top"><div class="wrap hero-grid">
+    const petals = [[12, 0, 15, -50], [34, 4, 19, 40], [58, 7, 17, -70], [80, 2, 21, 30], [92, 9, 16, -40]].map(([x, d, dur, dx]) =>
+      `<span class="petal" style="left:${x}%;animation-delay:${d}s;animation-duration:${dur}s;--dx:${dx}px">${A.jasmine("flower")}</span>`).join("");
+    let html = `<header class="hero" id="top">${petals}<div class="wrap hero-grid">
         <div class="hero-txt">
           <div class="pill" data-hero><span class="dot"></span>${esc(s.hero.eyebrow)}</div>
           <h1>${splitWords(s.hero.title1)}<span class="line2">${splitWords(s.hero.title2, "grad")}</span></h1>
@@ -291,6 +322,7 @@
         </div>
         <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
           <div class="orbit" data-orbit>${orbitSVG()}</div>
+          <div class="jas j-hero-a">${A.jasmine()}</div><div class="jas j-hero-b">${A.jasmine()}</div>
           <div class="show-card" id="showCard" data-tilt>
             <div class="stage"></div>
             ${slides.map((sl, i) => `<a class="slide${i === 0 ? " on" : ""}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
@@ -309,7 +341,7 @@
       const w = (4 - ((n + 3) % 4)) % 4, wides = new Set();
       if (w && n > 6) wides.add(5);
       for (let k = n - 1; wides.size < w && k > 0; k--) if (k !== 5) wides.add(k);
-      html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text)}
+      html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text, true)}
         <div class="bento" data-stagger>${state.cats.map((c, i) => {
           const count = state.prods.filter((p) => p.category_id === c.id).length;
           const cls = i === 0 ? "big" : wides.has(i) ? "wide" : "";
@@ -339,6 +371,21 @@
       </div></div></section>`;
     }
 
+    const room = (state.prods.filter((p) => p.featured).length >= 3 ? state.prods.filter((p) => p.featured) : state.prods).slice(0, 6);
+    if (room.length >= 3) {
+      html += `<section class="showroom" id="showroom" aria-label="جولة في المعرض"><div class="room-pin">
+        <div class="wrap room-head"><div>${eyebrow("جولة في المعرض")}<h2 data-split>${splitWords("قطعٌ تُروى حكايتها")}</h2></div>
+          <p class="room-hint">${fine ? "مرّر للأسفل لتتجوّل بين القطع" : "اسحب لتتجوّل بين القطع"} ${A.ui.arrowL}</p></div>
+        <div class="room-track" id="roomTrack">${room.map((p, k) => {
+          const c = catOf(p);
+          return `<a class="room-card glass edge" href="#/p/${p.id}">
+            <span class="room-no" aria-hidden="true">${String(k + 1).padStart(2, "0")}</span>
+            <div class="room-ph">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
+            <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
+        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>كل القطع</b><span>${num(state.prods.length)} قطعة في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
+      </div></section>`;
+    }
+
     if (sec.collection.show) {
       const usedCats = state.cats.filter((c) => state.prods.some((p) => p.category_id === c.id));
       html += `<section class="block" id="collection" style="padding-top:0"><div class="wrap">${titleBlock(sec.collection.eyebrow, sec.collection.title, sec.collection.text)}
@@ -356,7 +403,7 @@
 
     if (sec.about.show) {
       html += `<section class="block" id="about"><div class="wrap about">
-        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="art">${A.ornament.replace('stroke-opacity=".14"', 'stroke-opacity=".55"')}</div>`}</div>
+        <div style="position:relative"><div class="jas j-about">${A.jasmine()}</div><div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div></div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p data-rv>${esc(sec.about.text)}</p>
           <div class="values" data-stagger>
             <div class="glass">${A.ui.shield}<span><b>أصالة مضمونة</b>فضة ٩٢٥ مدموغة وأحجار طبيعية</span></div>
@@ -390,7 +437,7 @@
       c.whatsapp && [A.ui.whatsapp, "واتساب", `<a href="${esc(waLink("السلام عليكم"))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
       c.email && [A.ui.mail, "البريد", `<a href="mailto:${esc(c.email)}">${esc(c.email)}</a>`]
     ].filter(Boolean);
-    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "")}
+    return `<section class="block" id="visit"><div class="wrap">${titleBlock("Visit us", sec.title, "", true)}
       <div class="visit">
         <div class="visit-card glass spot" data-rv><h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
@@ -769,6 +816,13 @@
     if (pic) G.fromTo(pic, { scale: 1.18, rotate: -6 }, { scale: 1, rotate: 0, ease: "none", scrollTrigger: { trigger: "[data-feature]", start: "top bottom", end: "bottom top", scrub: true } });
     const feat = $("[data-feature]");
     if (feat) G.fromTo(feat, { scale: 0.92, opacity: 0.4 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 45%", scrub: true } });
+    // showroom: vertical scroll drives a horizontal walk through the pieces (desktop)
+    const track = $("#roomTrack");
+    if (track && innerWidth > 920) {
+      const dist = () => Math.max(0, track.scrollWidth - track.clientWidth + 40);
+      G.to(track, { x: () => dist(), ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), pin: ".room-pin", scrub: 0.8, invalidateOnRefresh: true, anticipatePin: 1 } });
+      $$(".room-card .room-ph > svg, .room-card .room-ph > img", track).forEach((el) => G.fromTo(el, { rotate: -8 }, { rotate: 8, ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), scrub: true } }));
+    }
     // marquee leans with scroll speed
     const band = $("[data-band]");
     if (band) {
@@ -824,8 +878,7 @@
       const n = Math.round(Math.min(90, (innerWidth * innerHeight) / 16000));
       dots = Array.from({ length: n }, () => ({ x: Math.random() * W, y: Math.random() * H, r: (Math.random() * 1.3 + 0.4) * dpr, p: Math.random() * Math.PI * 2, s: 0.006 + Math.random() * 0.018, v: (Math.random() * 0.15 + 0.03) * dpr }));
     };
-    const css = getComputedStyle(document.documentElement);
-    let col = css.getPropertyValue("--emerald").trim() || "#34e3a8";
+    let col = getComputedStyle(document.documentElement).getPropertyValue("--emerald").trim() || "#34e3a8";
     const tick = () => {
       ctx.clearRect(0, 0, W, H);
       for (const d of dots) {
@@ -843,11 +896,21 @@
     document.addEventListener("visibilitychange", () => { cancelAnimationFrame(raf); if (!document.hidden) tick(); });
     window.__rqSparkColor = (c) => { col = c; };
   }
+  let lenis = null;
+  function smoothScroll() {
+    if (reduce || !window.Lenis || !G) return;
+    lenis = new window.Lenis({ duration: 1.15, easing: (t) => Math.min(1, 1.001 - Math.pow(2, -10 * t)), smoothWheel: true });
+    lenis.on("scroll", () => window.ScrollTrigger && window.ScrollTrigger.update());
+    G.ticker.add((t) => lenis.raf(t * 1000));
+    G.ticker.lagSmoothing(0);
+  }
+  function jumpTop() { if (lenis) lenis.scrollTo(0, { immediate: true, force: true }); else scrollTo(0, 0); }
   function scrollToId(id) {
     const el = document.getElementById(id);
     if (!el) return;
-    const y = el.getBoundingClientRect().top + scrollY - ($("#nav").offsetHeight + 10);
-    window.scrollTo({ top: y, behavior: reduce ? "auto" : "smooth" });
+    const off = -($("#nav").offsetHeight + 10);
+    if (lenis) { lenis.scrollTo(el, { offset: off, duration: 1.4 }); return; }
+    window.scrollTo({ top: el.getBoundingClientRect().top + scrollY + off, behavior: reduce ? "auto" : "smooth" });
   }
 
   /* nav hide / show */
@@ -886,19 +949,21 @@
     const { parts, to } = parse();
     closePanel("menu"); closePanel("cart"); closeSearch();
     if (!parts.length && state.view === "home" && to) { scrollToId(to); return; }
-    if (!G || busy) { render(); scrollTo(0, 0); if (to) setTimeout(() => scrollToId(to), 60); return; }
+    if (!G || busy) { render(); jumpTop(); if (to) setTimeout(() => scrollToId(to), 60); return; }
     busy = true;
     const cur = $("#curtain");
     G.timeline({ onComplete: () => { busy = false; } })
       .set(cur, { clipPath: "circle(0% at 50% 50%)" })
       .to(cur, { clipPath: "circle(75% at 50% 50%)", duration: 0.55, ease: "power3.in" })
-      .add(() => { scrollTo(0, 0); render(); if (to) setTimeout(() => scrollToId(to), 60); })
+      .add(() => { jumpTop(); render(); if (to) setTimeout(() => scrollToId(to), 120); })
       .to(cur, { clipPath: "circle(0% at 50% 50%)", duration: 0.75, ease: "power3.out" });
   }
   addEventListener("hashchange", navigate);
 
   /* ---------- static bindings ---------- */
   $("#menuBtn").innerHTML = A.ui.menu;
+  $("#themeBtn").innerHTML = A.ui.sun.replace("<svg ", '<svg class="i-sun" ') + A.ui.moon.replace("<svg ", '<svg class="i-moon" ');
+  $("#themeBtn").addEventListener("click", toggleTheme);
   $("#searchBtn").innerHTML = A.ui.search;
   $("#cartBtn").insertAdjacentHTML("afterbegin", A.ui.cart);
   $("#searchClose").innerHTML = A.ui.close;
@@ -919,6 +984,7 @@
     if (!hadCache) await Promise.race([loading, new Promise((r) => setTimeout(r, 1800))]);
     applySettings();
     ambient();
+    smoothScroll();
     introPromise = intro();
     if (state.ready) { render(); updateCartCount(); }
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;

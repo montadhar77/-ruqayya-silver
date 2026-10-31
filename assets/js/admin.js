@@ -150,19 +150,23 @@
      LOGIN
      ======================================================================= */
   function renderLogin(msg) {
-    root.innerHTML = `<div class="login"><form class="login-card" id="loginForm" novalidate>
-      <div class="mark">${I.sparkle}</div><h1>معرض رقية</h1><p class="sub">لوحة التحكم</p>
-      ${msg ? `<div class="notice" style="font-size:14px">${esc(msg)}</div>` : ""}
-      <div class="field"><label for="lEmail">البريد الإلكتروني</label><input id="lEmail" type="email" dir="ltr" autocomplete="username" required></div>
-      <div class="field"><label for="lPass">كلمة المرور</label><input id="lPass" type="password" dir="ltr" autocomplete="current-password" required></div>
-      <button class="btn block" type="submit">تسجيل الدخول</button>
-      <p style="text-align:center;margin:16px 0 0"><a href="${SITE}" style="color:var(--soft);font-size:14px">← العودة إلى الموقع</a></p>
-    </form></div>`;
+    root.innerHTML = `<div class="login"><div class="login-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <form class="login-card" id="loginForm" novalidate>
+        <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
+        <p class="sub">لوحة التحكم</p>
+        ${msg ? `<div class="notice" style="font-size:14px">${esc(msg)}</div>` : ""}
+        <div class="field"><label for="lEmail">البريد الإلكتروني</label><input id="lEmail" type="email" dir="ltr" autocomplete="username" required placeholder="name@example.com"></div>
+        <div class="field"><label for="lPass">كلمة المرور</label>
+          <div class="pw-wrap"><input id="lPass" type="password" dir="ltr" autocomplete="current-password" required><button class="pw-eye" type="button" id="pwEye" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
+        <button class="btn block login-btn" type="submit">تسجيل الدخول ${I.left}</button>
+        <p class="login-foot"><a href="${SITE}">العودة إلى الموقع</a><span>اتصال آمن ومشفّر</span></p>
+      </form></div>`;
+    $("#pwEye").onclick = () => { const i = $("#lPass"); i.type = i.type === "password" ? "text" : "password"; };
     $("#loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = $("button[type=submit]", e.target); btn.disabled = true; btn.textContent = "جارٍ الدخول…";
       const { error } = await db.auth.signInWithPassword({ email: $("#lEmail").value.trim(), password: $("#lPass").value });
-      if (error) { btn.disabled = false; btn.textContent = "تسجيل الدخول"; toast(errMsg(error), true); return; }
+      if (error) { btn.disabled = false; btn.innerHTML = `تسجيل الدخول ${I.left}`; toast(errMsg(error), true); return; }
       start();
     });
   }
@@ -178,7 +182,7 @@
   function renderShell() {
     root.innerHTML = `<div class="shell">
       <aside class="side" id="side" aria-label="القائمة">
-        <div class="brand"><b>${esc(state.s.brand.name)}</b><small>لوحة التحكم</small></div>
+        <div class="brand"><img src="${esc(state.s.brand.logo || "../assets/img/logo-mark.webp")}" alt=""><div><b>${esc(state.s.brand.name)}</b><small>لوحة التحكم</small></div></div>
         <nav>${NAV.map(([k, l, ic, pill]) => k === "sep" ? `<div class="sep">${l}</div>` : `<a href="#/${k}" data-nav="${k}">${ic}<span>${l}</span>${pill ? `<span class="pill" data-pill="${pill}" hidden></span>` : ""}</a>`).join("")}</nav>
         <div class="foot"><a href="${SITE}" target="_blank" rel="noopener">${I.eye} عرض الموقع</a><button type="button" id="logout">${I.logout} تسجيل الخروج</button></div>
       </aside>
@@ -595,13 +599,19 @@
     identity: {
       title: "الهوية والألوان والافتتاحية", sub: "الاسم، الشعار، فيديو الافتتاحية، ألوان الموقع بالكامل",
       groups: [
-        { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
+        { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true, fallback: "../assets/img/logo.webp", hint: "يُستخدم شعار معرض رقية الحالي إذا لم ترفع شعاراً آخر." }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
         { title: "الافتتاحية (عند فتح الموقع)", fields: [
           SH("intro.enabled", "تشغيل الافتتاحية", { t: "toggle" }),
           SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو تظهر حركة رسم القوس والاسم." }),
           SH("intro.subtitle", "السطر تحت الاسم (في الحركة بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
         ] },
-        { title: "ألوان الموقع", fields: [{ p: "theme", t: "colors" }, SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" })] },
+        { title: "الوضع الداكن والفاتح", fields: [
+          SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
+          SH("theme.floral", "أضواء الأورورا واللمعات المتحركة في الخلفية", { t: "toggle" }),
+          SH("theme.jasmine", "زهور الياسمين", { t: "toggle" })
+        ] },
+        { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
+        { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
         { title: "التذييل أسفل الموقع", fields: [SH("footer.text", "النص التعريفي", { t: "textarea" }), SH("footer.copyright", "سطر الحقوق")] },
         { title: "الظهور في Google وعند مشاركة الرابط", fields: [SH("seo.title", "عنوان الموقع"), SH("seo.description", "الوصف", { t: "textarea" })] }
       ]
@@ -628,10 +638,11 @@
       case "image": case "video": {
         const vid = f.t === "video";
         return `<div class="field" data-fp="${f.p}"><span class="lbl">${f.l}</span><div class="media-field">
-          <div class="media-prev ${f.logo ? "logo" : ""}">${v ? (vid ? `<video src="${esc(v)}" muted playsinline loop autoplay></video>` : `<img src="${esc(v)}" alt="">`) : vid ? "لا يوجد فيديو" : "لا توجد صورة"}</div>
+          <div class="media-prev ${f.logo ? "logo" : ""}">${v ? (vid ? `<video src="${esc(v)}" muted playsinline loop autoplay></video>` : `<img src="${esc(v)}" alt="">`) : f.fallback ? `<img src="${esc(f.fallback)}" alt="">` : vid ? "لا يوجد فيديو" : "لا توجد صورة"}</div>
           <label class="btn light up-btn">${vid ? I.video : I.img} ${v ? "تغيير" : "رفع"}<input type="file" accept="${vid ? "video/*" : "image/*"}" data-up="${f.p}" data-folder="${f.folder || "media"}"></label>
           ${v ? `<button class="btn danger" type="button" data-clear="${f.p}">إزالة</button>` : ""}</div>${hint}</div>`;
       }
+      case "select": return `<div class="field"><label for="${id}">${f.l}</label><select id="${id}" data-p="${f.p}">${f.options.map(([val, lab]) => `<option value="${val}" ${v === val ? "selected" : ""}>${lab}</option>`).join("")}</select>${hint}</div>`;
       case "product": return `<div class="field"><label for="${id}">${f.l}</label><select id="${id}" data-p="${f.p}"><option value="">تلقائي</option>${state.prods.map((p) => `<option value="${p.id}" ${v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>${hint}</div>`;
       case "strings": {
         const arr = Array.isArray(v) ? v : [];
@@ -647,10 +658,11 @@
           <button class="btn ghost sm" type="button" data-additem="${f.p}" style="margin-top:8px">${I.plus} ${f.add || "إضافة"}</button></div>`;
       }
       case "colors": {
-        const t = getPath(d, "theme") || {};
-        return `<div data-fp="theme-colors"><div class="colors">${Object.keys(COLOR_LABELS).map((k) => `<label class="color"><input type="color" data-p="theme.${k}" value="${esc(t[k] || DEF.theme[k])}" aria-label="${COLOR_LABELS[k][0]}"><div><b>${COLOR_LABELS[k][0]}</b><input type="text" data-p="theme.${k}" value="${esc(t[k] || DEF.theme[k])}" aria-label="رمز ${COLOR_LABELS[k][0]}"></div></label>`).join("")}</div>
-          <div class="preview-strip" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc(t[k] || DEF.theme[k])}"></div>`).join("")}</div>
-          <button class="btn ghost sm" type="button" id="resetColors" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
+        const base = f.p, t = getPath(d, base) || {}, def = getPath(DEF, base) || {};
+        const val = (k) => esc(t[k] || def[k]);
+        return `<div data-fp="${base}-colors"><div class="colors">${Object.keys(COLOR_LABELS).map((k) => `<label class="color"><input type="color" data-p="${base}.${k}" value="${val(k)}" aria-label="${COLOR_LABELS[k][0]}"><div><b>${COLOR_LABELS[k][0]}</b><input type="text" data-p="${base}.${k}" value="${val(k)}" aria-label="رمز ${COLOR_LABELS[k][0]}"></div></label>`).join("")}</div>
+          <div class="preview-strip" data-strip="${base}" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${val(k)}"></div>`).join("")}</div>
+          <button class="btn ghost sm" type="button" data-reset="${base}" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
       }
       default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""}>${hint}</div>`;
     }
@@ -675,9 +687,9 @@
     const dirty = () => { state.dirty = true; showSave(true); };
     pg.addEventListener("click", (e) => {
       const h = e.target.closest(".collapsible > h2"); if (h) { h.parentElement.classList.toggle("open"); return; }
-      const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],#resetColors");
+      const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],[data-reset]");
       if (!t) return;
-      if (t.id === "resetColors") { d.theme = { ...clone(DEF.theme), floral: d.theme.floral }; pg.querySelector('[data-fp="theme-colors"]').outerHTML = fieldHTML({ p: "theme", t: "colors" }, d); dirty(); return; }
+      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode", "jasmine"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
       if (t.dataset.clear) { setPath(d, t.dataset.clear, ""); redraw(t.dataset.clear); dirty(); return; }
       const p = t.dataset.addstr || t.dataset.additem || t.dataset.del || t.dataset.move;
       const arr = Array.isArray(getPath(d, p)) ? getPath(d, p) : [];
@@ -698,9 +710,10 @@
       let v = el.type === "checkbox" ? el.checked : el.value;
       if (el.dataset.type === "num") { const n = parseFloat(toLatin(v).replace(/[^\d.]/g, "")); v = isNaN(n) ? 0 : n; }
       setPath(d, p, v); dirty();
-      if (/^theme\./.test(p) && el.type !== "checkbox") {
+      const tm = p.match(/^(theme(?:_light)?)\.(\w+)$/);
+      if (tm && el.type !== "checkbox" && el.tagName !== "SELECT") {
         $$(`[data-p="${p}"]`, pg).forEach((x) => { if (x !== el && (/^#[0-9a-f]{6}$/i.test(v) || x.type !== "color")) x.value = v; });
-        const strip = pg.querySelector(".preview-strip"); if (strip) strip.innerHTML = ["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc(d.theme[k])}"></div>`).join("");
+        const strip = pg.querySelector(`[data-strip="${tm[1]}"]`); if (strip) strip.innerHTML = ["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc((d[tm[1]] || {})[k])}"></div>`).join("");
       }
     };
     pg.addEventListener("input", onInput);

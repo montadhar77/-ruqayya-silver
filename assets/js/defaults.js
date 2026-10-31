@@ -24,7 +24,18 @@ window.RQ_DEFAULTS = {
     silver: "#c7d3cf",
     accent: "#e3bd72",
     ink: "#ecf6f2",
-    floral: true
+    floral: true,
+    mode: "dark",
+    jasmine: true
+  },
+  theme_light: {
+    deep: "#f3f8f5",
+    pearl: "#e4efe9",
+    paper: "#ffffff",
+    emerald: "#0c8a5d",
+    silver: "#55685f",
+    accent: "#a87a25",
+    ink: "#0b2119"
   },
   announcement: {
     enabled: true,

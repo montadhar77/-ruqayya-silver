@@ -26,7 +26,9 @@
     tiktok: S('<path d="M14 3v11.5a3.5 3.5 0 1 1-3.5-3.5"/><path d="M14 3c.5 2.8 2.3 4.5 5 4.8"/>'),
     telegram: S('<path d="m21 4-18 7 6 2 2 6 3-4 5 4z"/><path d="m9 13 9-7"/>'),
     snapchat: S('<path d="M12 3c3 0 5 2.2 5 5v2.5l2 .8-1.8 1.4c.6 1.6 1.8 2.6 3.3 3-1 .9-2.4.8-3 1.3-.3.6-.2 1.5-1 1.5-.9 0-1.7-.6-3.2-.1-.8.3-1.3 1.1-1.3 1.1s-.5-.8-1.3-1.1c-1.5-.5-2.3.1-3.2.1-.8 0-.7-.9-1-1.5-.6-.5-2-.4-3-1.3 1.5-.4 2.7-1.4 3.3-3L4 11.3l2-.8V8c0-2.8 2-5 6-5z"/>'),
-    map: S('<path d="m9 4-6 2.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>')
+    map: S('<path d="m9 4-6 2.5v13.5l6-2.5 6 2.5 6-2.5V4l-6 2.5z"/><path d="M9 4v13.5M15 6.5V20"/>'),
+    sun: S('<circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.6 4.6l1.6 1.6M17.8 17.8l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.6 19.4l1.6-1.6M17.8 6.2l1.6-1.6"/>'),
+    moon: S('<path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/>')
   };
 
   const L = (d) => `<g fill="none" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round">${d}</g>`;
@@ -99,5 +101,26 @@
   /* large corner ornament (arabesque flower) used in the hero */
   const ornament = `<svg viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width=".8">${Array.from({ length: 12 }, (_, k) => `<ellipse cx="100" cy="58" rx="16" ry="42" transform="rotate(${k * 30} 100 100)"/>`).join("")}${Array.from({ length: 8 }, (_, k) => `<ellipse cx="100" cy="76" rx="8" ry="24" transform="rotate(${k * 45 + 22.5} 100 100)"/>`).join("")}<circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="12"/></svg>`;
 
-  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament };
+  /* white jasmine (ياسمين): five soft petals, a honey centre, buds and leaves */
+  let jid = 0;
+  function jasmine(kind = "sprig") {
+    const i = ++jid;
+    const defs = `<defs><radialGradient id="jp${i}" cx=".5" cy=".95" r="1"><stop offset="0" stop-color="#f3efd9"/><stop offset=".35" stop-color="#ffffff"/><stop offset="1" stop-color="#fbfbf6"/></radialGradient>
+      <linearGradient id="jb${i}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#f1d9de"/></linearGradient>
+      <linearGradient id="jl${i}" x1="0" x2="1"><stop offset="0" stop-color="#2f7a52"/><stop offset="1" stop-color="#5aa877"/></linearGradient></defs>`;
+    const flower = (cx, cy, r, rot = 0) => `<g transform="translate(${cx} ${cy}) rotate(${rot})">${Array.from({ length: 5 }, (_, k) =>
+      `<path transform="rotate(${k * 72})" d="M0 0C${(r * .46).toFixed(1)} ${(-r * .28).toFixed(1)} ${(r * .4).toFixed(1)} ${(-r * .92).toFixed(1)} 0 ${-r}C${(-r * .4).toFixed(1)} ${(-r * .92).toFixed(1)} ${(-r * .46).toFixed(1)} ${(-r * .28).toFixed(1)} 0 0Z" fill="url(#jp${i})" stroke="#d6dfd2" stroke-width=".7"/>`).join("")}
+      <circle r="${(r * .17).toFixed(1)}" fill="#e7d27c"/><circle r="${(r * .07).toFixed(1)}" fill="#b89a3c"/></g>`;
+    const bud = (x, y, rot, s = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})"><path d="M0 0C4 -6 4.4 -17 0 -24C-4.4 -17 -4 -6 0 0Z" fill="url(#jb${i})" stroke="#e0d2d5" stroke-width=".6"/><path d="M-3 2 0 -5 3 2Z" fill="#4c9467"/></g>`;
+    const leaf = (x, y, rot, s = 1) => `<g transform="translate(${x} ${y}) rotate(${rot}) scale(${s})"><path d="M0 0C10 -7 28 -7 40 0C28 7 10 7 0 0Z" fill="url(#jl${i})"/><path d="M2 0H36" stroke="#9fd3b1" stroke-width=".7" opacity=".7"/></g>`;
+    if (kind === "flower") return `<svg viewBox="-30 -30 60 60" aria-hidden="true">${defs}${flower(0, 0, 26, 18)}</svg>`;
+    return `<svg viewBox="0 0 220 200" aria-hidden="true">${defs}
+      <path d="M14 192C60 150 92 120 120 92S176 40 206 22" fill="none" stroke="#4f8f63" stroke-width="2.2" stroke-linecap="round"/>
+      <path d="M120 92C112 70 98 58 84 52M160 58C170 46 186 40 200 40" fill="none" stroke="#4f8f63" stroke-width="1.6" stroke-linecap="round"/>
+      ${leaf(40, 168, -40, 1.1)}${leaf(70, 140, 200, 1)}${leaf(132, 82, -70, .9)}${leaf(150, 70, 170, .85)}
+      ${bud(200, 40, 70, 1)}${bud(206, 22, 50, .8)}${bud(84, 52, -40, .9)}
+      ${flower(160, 58, 24, 10)}${flower(104, 108, 20, -14)}${flower(66, 150, 15, 30)}</svg>`;
+  }
+
+  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, jasmine };
 })();
