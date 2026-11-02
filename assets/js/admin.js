@@ -11,6 +11,7 @@
   });
   const SITE = new URL("../", location.href).href;
   const root = document.getElementById("root");
+  if (window.top !== window.self) { try { window.top.location = window.location.href; } catch (e) { document.body.innerHTML = ""; } return; }
 
   /* ---------- helpers ---------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -175,6 +176,62 @@
   }
 
   /* =======================================================================
+     TWO-STEP VERIFICATION (TOTP: Google / Microsoft Authenticator…)
+     ======================================================================= */
+  function renderMfa(mode, f) {
+    root.innerHTML = `<div class="login"><div class="login-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <form class="login-card" id="mfaForm" novalidate>
+        <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
+        <p class="sub">${mode === "enroll" ? "تفعيل التحقق بخطوتين" : "التحقق بخطوتين"}</p>
+        ${mode === "enroll" ? `<p class="mfa-help">لحماية لوحة التحكم، افتح تطبيق المصادقة على هاتفك (Google Authenticator أو Microsoft Authenticator)، امسح الرمز، ثم اكتب الرقم المكوّن من ٦ خانات. يُطلب هذا الرقم عند كل دخول.</p>
+          <div class="mfa-qr"><img src="${esc(f.qr)}" alt="رمز QR لتفعيل التحقق بخطوتين" width="184" height="184"></div>
+          <p class="mfa-help">لا تستطيع المسح؟ أدخل هذا المفتاح يدوياً:<br><code dir="ltr" id="mfaSecret">${esc(f.secret)}</code></p>`
+          : `<p class="mfa-help">اكتب الرقم المكوّن من ٦ خانات الظاهر الآن في تطبيق المصادقة على هاتفك.</p>`}
+        <div class="field"><label for="mfaCode">رمز التحقق</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" required placeholder="••••••"></div>
+        <button class="btn block login-btn" type="submit">تأكيد ${I.left}</button>
+        <p class="login-foot"><button type="button" class="link-btn" id="mfaOut">تسجيل الخروج</button><span>اتصال آمن ومشفّر</span></p>
+      </form></div>`;
+    setTimeout(() => $("#mfaCode") && $("#mfaCode").focus(), 50);
+    $("#mfaOut").onclick = async () => { manualOut = true; await db.auth.signOut(); renderLogin(); };
+    $("#mfaForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = toLatin($("#mfaCode").value).replace(/\D/g, "");
+      if (code.length !== 6) { toast("اكتب الرمز المكوّن من ٦ أرقام", true); return; }
+      const btn = $("button[type=submit]", e.target); btn.disabled = true;
+      const { error } = await db.auth.mfa.challengeAndVerify({ factorId: f.factorId, code });
+      btn.disabled = false;
+      if (error) { toast("الرمز غير صحيح أو انتهت صلاحيته، اكتب الرقم الجديد", true); $("#mfaCode").select(); return; }
+      if (mode === "enroll") toast("تم تفعيل التحقق بخطوتين ✓");
+      start();
+    });
+  }
+  // true when the session may open the dashboard now; otherwise shows the code / enrolment screen
+  async function mfaReady() {
+    const { data: gate, error } = await db.rpc("admin_gate");
+    if (error || !gate || !gate.admin || !gate.mfa_required || gate.aal === "aal2") return true;   // older database, non-admin, or done
+    const { data: fl, error: e1 } = await db.auth.mfa.listFactors();
+    if (e1) { renderLogin("تعذّر التحقق من الحساب: " + errMsg(e1)); return false; }
+    const verified = (fl.all || []).filter((x) => x.factor_type === "totp" && x.status === "verified");
+    if (verified.length) { renderMfa("verify", { factorId: verified[0].id }); return false; }
+    for (const x of (fl.all || []).filter((x) => x.status !== "verified")) await db.auth.mfa.unenroll({ factorId: x.id });   // half-finished set-ups
+    const { data: en, error: e2 } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName: "لوحة معرض رقية" });
+    if (e2) { renderLogin("تعذّر بدء التحقق بخطوتين: " + errMsg(e2)); return false; }
+    renderMfa("enroll", { factorId: en.id, qr: en.totp.qr_code, secret: en.totp.secret });
+    return false;
+  }
+
+  /* ---------- automatic sign-out after 30 minutes without activity ---------- */
+  const IDLE_MS = Math.min(Number((() => { try { return sessionStorage.getItem("rq_idle_ms"); } catch (e) { return 0; } })()) || 30 * 60e3, 30 * 60e3);
+  let lastActive = Date.now(), manualOut = false;
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true, capture: true }));
+  setInterval(async () => {
+    if (!state.user || Date.now() - lastActive < IDLE_MS) return;
+    state.user = null; clearInterval(poll); manualOut = true;
+    await db.auth.signOut();
+    renderLogin("خرجت تلقائياً بعد فترة بلا نشاط، حمايةً للوحة. سجّل الدخول من جديد.");
+  }, Math.min(15e3, IDLE_MS / 2));
+
+  /* =======================================================================
      SHELL + ROUTER
      ======================================================================= */
   const NAV = [
@@ -200,7 +257,7 @@
     $("#menuBtn").onclick = () => { side.classList.add("open"); sbg.classList.add("open"); };
     sbg.onclick = () => { side.classList.remove("open"); sbg.classList.remove("open"); };
     $$("[data-nav]").forEach((a) => a.addEventListener("click", () => { side.classList.remove("open"); sbg.classList.remove("open"); }));
-    $("#logout").onclick = async () => { if (state.dirty && !(await confirmBox("لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟", "خروج"))) return; state.dirty = false; await db.auth.signOut(); renderLogin(); };
+    $("#logout").onclick = async () => { if (state.dirty && !(await confirmBox("لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟", "خروج"))) return; state.dirty = false; manualOut = true; state.user = null; clearInterval(poll); await db.auth.signOut(); renderLogin(); };
     $("#saveBtn").onclick = saveSettings;
     $("#discard").onclick = () => { state.dirty = false; showSave(false); route(true); };
     updatePills();
@@ -623,6 +680,7 @@
         { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
         { title: "نموذج إتمام الطلب", fields: [TX("co_title", "العنوان"), TX("co_name", "خانة الاسم"), TX("co_phone", "خانة الهاتف"), TX("co_country", "خانة الدولة"), TX("co_other", "خيار «دولة أخرى»"), TX("co_other_name", "خانة اسم الدولة"), TX("co_city", "خانة المحافظة"), TX("co_city_intl", "خانة المدينة (خارج العراق)"), TX("co_addr", "خانة العنوان"), TX("co_addr_intl", "خانة العنوان (خارج العراق)"), TX("co_addr_ph", "مثال داخل خانة العنوان"), TX("co_addr_ph_intl", "مثال داخل خانة العنوان (خارج العراق)"), TX("co_notes", "خانة الملاحظات"), TX("co_notes_ph", "مثال داخل خانة الملاحظات"), TX("co_sub", "المجموع"), TX("co_delivery", "التوصيل"), TX("co_intl_shipping", "الشحن الدولي"), TX("co_total", "الإجمالي"), TX("co_plus_shipping", "«+ الشحن»"), TX("co_submit", "زر تأكيد الطلب"), TX("co_sending", "أثناء الإرسال")] },
         { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال"), TX("co_err_busy", "طلبات كثيرة من نفس الجهاز/الرقم"), TX("co_err_human", "فشل التحقق من أن الزائر ليس روبوتاً")] },
+        { title: "انقطاع الاتصال", fields: [TX("net_down", "رسالة تعذّر الاتصال"), TX("net_retry", "زر إعادة المحاولة"), TX("net_retrying", "أثناء المحاولة"), TX("form_busy", "رسائل كثيرة من نفس الجهاز")] },
         { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
         { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
         { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
@@ -817,7 +875,12 @@
         <div class="field"><label for="pw1">كلمة المرور الجديدة</label><input type="password" id="pw1" dir="ltr" autocomplete="new-password" minlength="8"><span class="hint">٨ أحرف على الأقل — اجمع بين حروف وأرقام.</span></div>
         <div class="field"><label for="pw2">أعد كتابتها</label><input type="password" id="pw2" dir="ltr" autocomplete="new-password"></div>
         <button class="btn" type="submit">حفظ كلمة المرور</button></form>
-      <div class="card" style="max-width:520px"><h2>الجلسة</h2><button class="btn danger" type="button" id="out2">${I.logout} تسجيل الخروج</button></div>`;
+      <div class="card" style="max-width:520px"><h2>التحقق بخطوتين</h2><p class="hint" id="mfaState">…</p></div>
+      <div class="card" style="max-width:520px"><h2>الجلسة</h2><p class="hint">تخرج اللوحة تلقائياً بعد ٣٠ دقيقة بلا نشاط.</p><button class="btn danger" type="button" id="out2">${I.logout} تسجيل الخروج</button></div>`;
+    db.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data }) => {
+      const el = $("#mfaState"); if (!el) return;
+      el.textContent = data && data.currentLevel === "aal2" ? "مفعّل ✓ — يُطلب رمز تطبيق المصادقة عند كل دخول." : "غير مفعّل لهذا الحساب بعد.";
+    }).catch(() => {});
     $("#pwForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const a = $("#pw1").value, b = $("#pw2").value;
@@ -850,11 +913,12 @@
   async function start() {
     const { data: { session } } = await db.auth.getSession();
     if (!session) { renderLogin(); return; }
-    state.user = session.user;
+    if (!(await mfaReady())) return;
+    state.user = session.user; lastActive = Date.now(); manualOut = false;
     const { data: ok, error } = await db.rpc("am_i_admin");
     if (error || !ok) { await db.auth.signOut(); renderLogin("هذا الحساب لا يملك صلاحية إدارة الموقع."); return; }
     root.innerHTML = `<div class="loading"><div class="spin"></div></div>`;
-    try { await loadAll(); } catch (e) { root.innerHTML = `<div class="loading"><div class="empty">تعذّر تحميل البيانات: ${esc(errMsg(e))}<br><br><button class="btn" onclick="location.reload()">إعادة المحاولة</button></div></div>`; return; }
+    try { await loadAll(); } catch (e) { root.innerHTML = `<div class="loading"><div class="empty">تعذّر تحميل البيانات: ${esc(errMsg(e))}<br><br><button class="btn" type="button" id="reloadBtn">إعادة المحاولة</button></div></div>`; $("#reloadBtn").onclick = () => location.reload(); return; }
     renderShell();
     route(true);
     clearInterval(poll); poll = setInterval(checkNew, 45000);
@@ -868,6 +932,12 @@
     b.disabled = false;
     toast(r && r.ok ? "وصلت الرسالة التجريبية إلى تيليجرام ✓" : r && r.error === "not_configured" ? "لم يُربط بوت تيليجرام بعد — راجع دليل التشغيل" : "تعذّر إرسال الرسالة التجريبية", !(r && r.ok));
   });
-  db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") { clearInterval(poll); } });
+  // session ended without the admin asking (expired / revoked / signed out in another tab)
+  db.auth.onAuthStateChange((ev) => {
+    if (ev !== "SIGNED_OUT") return;
+    clearInterval(poll);
+    if (state.user && !manualOut) { state.user = null; renderLogin("انتهت الجلسة، سجّل الدخول من جديد."); }
+    manualOut = false;
+  });
   start();
 })();

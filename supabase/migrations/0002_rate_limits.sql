@@ -52,6 +52,7 @@ as $function$
     h->>'cf-connecting-ip', h->>'x-real-ip', split_part(coalesce(h->>'x-forwarded-for', ''), ',', 1))), '')
   from (select coalesce(nullif(current_setting('request.headers', true), ''), '{}')::jsonb as h) x
 $function$;
+revoke all on function private.request_ip() from public, anon, authenticated, service_role;
 
 -- Count one attempt against every rule of `kind`; raise 'rate_limited' if any rule is exceeded.
 create function private.hit(p_kind text, p_ip text, p_phone text)

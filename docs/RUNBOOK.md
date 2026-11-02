@@ -119,3 +119,42 @@ update private.rate_rules set max_count = 10 where kind = 'order' and scope = 'i
 الأسرار: `SB_SECRET_KEY` (مفتاح `sb_secret_…`؛ إن لم يوجد تُستخدم `SUPABASE_SERVICE_ROLE_KEY` التلقائية)، `SB_PUBLISHABLE_KEY`، `TURNSTILE_SECRET`، `ALLOWED_ORIGINS` (نطاقات الموقع مفصولة بفواصل)، `TELEGRAM_BOT_TOKEN`، `TELEGRAM_CHAT_ID`، `CRON_SECRET`.
 
 نشر (بعد موافقة): `supabase functions deploy submit-order --no-verify-jwt` (وكذا البقية) مع `--project-ref`.
+
+## 9. لوحة التحكم: التحقق بخطوتين ورؤوس الأمان (المرحلة 4)
+
+- بعد الترحيل `0005` لا تكفي كلمة المرور: قاعدة البيانات نفسها ترفض أي تعديل أو قراءة للطلبات أو رفع صور ما لم تكن الجلسة `aal2` (كلمة مرور + رمز تطبيق المصادقة).
+- أول دخول بعد التفعيل: تظهر شاشة «تفعيل التحقق بخطوتين» مع رمز QR ومفتاح يدوي؛ امسحه بـ Google Authenticator أو Microsoft Authenticator واكتب الرقم. بعدها يُطلب الرقم عند كل دخول.
+- خروج تلقائي بعد ٣٠ دقيقة بلا نشاط، ورسالة واضحة عند انتهاء الجلسة.
+- **فقدت الهاتف؟** في SQL Editor:
+  ```sql
+  update private.admin_policy set require_mfa = false;   -- مؤقتاً
+  ```
+  ثم Supabase ← Authentication ← Users ← المستخدم ← احذف عامل MFA، ادخل وفعّل من جديد، ثم أعدها `true`.
+- سياسة أمان المحتوى (CSP) في رأس `index.html` و`admin/index.html`: لا سكربتات مضمّنة، ولا سكربتات إلا من الموقع نفسه (و Cloudflare Turnstile للمتجر). الكود الذي كان مضمّناً انتقل إلى `assets/js/boot.js`.
+- اللوحة ترفض العمل داخل إطار (iframe) لمنع الخداع بالنقر؛ على Cloudflare Pages تُضاف رؤوس `X-Frame-Options` و`frame-ancestors` من `_headers`.
+- صلاحيات API: لا `TRUNCATE`/`TRIGGER`/`REFERENCES` لأدوار الواجهة على أي جدول (`0004`). اختبار آلي يمنع ظهور أي دالة جديدة متاحة للزوار دون قصد.
+
+**إعدادات Supabase Auth (يدوياً، بانتظار موافقة):** إيقاف التسجيل العام (Authentication ← Providers ← Email ← Allow new users to sign up = off)، تفعيل Leaked password protection، أقل طول لكلمة المرور ١٢، وبريد SMTP خاص للرسائل.
+
+## 10. المراقبة والتعافي من الأخطاء (المرحلة 5)
+
+- المتجر يعيد محاولة جلب البيانات تلقائياً (٤ محاولات بتباعد)، ويعرض آخر نسخة محفوظة في المتصفح إن وُجدت؛ وإن لم توجد يظهر تنبيه هادئ مع زر «إعادة المحاولة» ويعيد المحاولة تلقائياً عند عودة الإنترنت.
+- أخطاء JavaScript في متصفحات الزوار تُسجَّل (بلا بيانات شخصية، ٢٠ لكل جهاز/١٠ دقائق) في `private.client_errors`؛ ملخصها للمدير:
+  ```sql
+  select public.client_error_summary();   -- من جلسة المدير، أو: select * from private.client_errors order by created_at desc limit 20;
+  ```
+- **مراقبة التوفر (بانتظار إنشاء حساب مجاني):** UptimeRobot أو Better Stack، فحص كل ٥ دقائق لـ:
+  1. صفحة المتجر الرئيسية (نص متوقع: «معرض رقية»).
+  2. `https://<PROJECT_REF>.supabase.co/functions/v1/health` (يرجع `200` و`"ok":true` حين تجيب قاعدة البيانات، و`503` غير ذلك).
+  مع تنبيه على البريد/تيليجرام.
+- ملاحظة الخطة المجانية: مشروع Supabase المجاني يتوقف بعد أسبوع بلا نشاط؛ مراقبة التوفر نفسها تبقيه نشطاً، والترقية لـ Pro تزيل القيد.
+
+## 11. النسخ الاحتياطي والاستعادة
+
+- **تلقائي (بانتظار تفعيل):** `.github/workflows/backup.yml` كل ليلة: `pg_dump` لمخططات المتجر ← تشفير بـ age بمفتاح المالك العام ← حفظ ٣٠ يوماً في GitHub (+ نسخة خارجية اختيارية على Cloudflare R2). لا يُخزَّن أي ملف غير مشفّر.
+  - التفعيل: أنشئ مفتاحاً على جهازك `age-keygen -o ruqayya-backup-key.txt` (احفظه في مكان آمن خارج الإنترنت!)، ثم في GitHub ← Settings ← Secrets: `SUPABASE_DB_URL`، `AGE_RECIPIENT` (السطر `public key: age1…`)، وفي Variables: `BACKUP_ENABLED=true`.
+- يدوي: `SUPABASE_DB_URL=… AGE_RECIPIENT=age1… scripts/backup.sh backups/`
+- **تمرين الاستعادة (مُختبر آلياً):** `scripts/restore-drill.sh backups/ruqayya-….dump.age ruqayya-backup-key.txt` — يبني قاعدة مؤقتة من الترحيلات ويستعيد البيانات ويطبع الأعداد والفحوص. لا يلمس أي قاعدة حية.
+- **استعادة كارثية إلى مشروع جديد:** `staging/bootstrap.sql` ← كل الترحيلات ← `scripts/restore-drill.sh ملف مفتاح "<رابط قاعدة المشروع الجديد>"` ← أنشئ مستخدم المدير في Auth ← `insert into public.admins select id from auth.users where email = '…';` ← ارفع صور المنتجات من نسخة التخزين.
+- الصور والفيديو في Storage ليست ضمن نسخة قاعدة البيانات؛ نسخ Supabase اليومية (خطة Pro) أو تنزيل الحاوية `media` دورياً يغطيها.
+- خطة Pro تضيف نسخاً يومية تلقائية لسبعة أيام (PITR اختياري مدفوع).

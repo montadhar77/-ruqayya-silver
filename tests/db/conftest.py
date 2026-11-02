@@ -42,7 +42,15 @@ def visitor(db):
 
 @pytest.fixture
 def admin(db):
-    with harness.session(db, "authenticated", harness.ADMIN_ID) as s:
+    """The shop owner after password + authenticator code (aal2)."""
+    with harness.session(db, "authenticated", harness.ADMIN_ID, claims={"aal": "aal2"}) as s:
+        yield s
+
+
+@pytest.fixture
+def admin_password_only(db):
+    """The owner's account signed in with the password alone (aal1)."""
+    with harness.session(db, "authenticated", harness.ADMIN_ID, claims={"aal": "aal1"}) as s:
         yield s
 
 

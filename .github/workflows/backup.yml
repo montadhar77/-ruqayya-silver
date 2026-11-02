@@ -1,0 +1,48 @@
+# Nightly encrypted database backup. OFF until the owner sets it up (see docs/RUNBOOK.md §9):
+#   repository variable  BACKUP_ENABLED = true
+#   secrets              SUPABASE_DB_URL (session pooler connection string, read access is enough)
+#                        AGE_RECIPIENT   (age public key; the private key stays with the owner, offline)
+#   optional, off-site:  R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET
+# Only the encrypted file is stored; GitHub keeps it 30 days, R2 as long as you choose.
+name: backup
+on:
+  schedule:
+    - cron: "23 1 * * *"      # 04:23 Baghdad time
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency: { group: backup, cancel-in-progress: false }
+jobs:
+  backup:
+    if: ${{ vars.BACKUP_ENABLED == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools (pg_dump 17, age)
+        run: |
+          sudo install -d /usr/share/postgresql-common/pgdg
+          sudo curl -sSfo /usr/share/postgresql-common/pgdg/apt.postgresql.org.asc https://www.postgresql.org/media/keys/ACCC4CF8.asc
+          echo "deb [signed-by=/usr/share/postgresql-common/pgdg/apt.postgresql.org.asc] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" | sudo tee /etc/apt/sources.list.d/pgdg.list >/dev/null
+          sudo apt-get update -qq && sudo apt-get install -y -qq postgresql-client-17 age >/dev/null
+      - name: Dump and encrypt
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          AGE_RECIPIENT: ${{ secrets.AGE_RECIPIENT }}
+        run: |
+          PATH=/usr/lib/postgresql/17/bin:$PATH scripts/backup.sh out
+          ls -l out
+      - uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ github.run_id }}
+          path: out/
+          retention-days: 30
+          if-no-files-found: error
+      - name: Copy off-site (Cloudflare R2)
+        if: ${{ env.R2_BUCKET != '' }}
+        env:
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+        run: aws s3 cp out/ "s3://$R2_BUCKET/db/" --recursive --endpoint-url "https://${{ secrets.R2_ACCOUNT_ID }}.r2.cloudflarestorage.com"

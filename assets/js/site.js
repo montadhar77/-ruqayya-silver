@@ -109,6 +109,11 @@
     const n = waNumber(state.s.contact.whatsapp || state.s.contact.phone);
     return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : "";
   };
+  // links typed in the dashboard: only web, mail, phone and in-site links are ever rendered
+  const safeUrl = (u) => {
+    const v = String(u || "").trim();
+    return /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(v) ? v : "";
+  };
   const isAr = (t) => /[\u0600-\u06FF]/.test(t || "");
   const eyebrow = (t, attrs = "") => t ? `<span class="${isAr(t) ? "eyebrow" : "latin"}" ${attrs}>${esc(t)}</span>` : "";
   const catOf = (p) => state.cats.find((c) => c.id === p.category_id);
@@ -146,11 +151,19 @@
     const row = Array.isArray(s.data) ? s.data[0] : s.data;
     return { settings: (row && row.data) || {}, cats: Array.isArray(c.data) ? c.data : [], prods: Array.isArray(p.data) ? p.data : [] };
   }
+  async function fetchWithRetry(tries) {
+    let wait = 700, last;
+    for (let i = 0; i < tries; i++) {
+      try { return await fetchAll(); } catch (e) { last = e; if (i < tries - 1) { await new Promise((r) => setTimeout(r, wait)); wait *= 2; } }
+    }
+    throw last;
+  }
   async function load() {
     const cached = safeLS(() => JSON.parse(localStorage.getItem("rq_cache") || "null"), null);
     if (cached) { applyData(cached.settings, cached.cats, cached.prods); state.sig = JSON.stringify(cached); state.ready = true; }
     try {
-      const fresh = await fetchAll();
+      const fresh = await fetchWithRetry(cached ? 2 : 4);
+      state.offline = false;
       const sig = JSON.stringify(fresh);
       safeLS(() => localStorage.setItem("rq_cache", sig));
       const changed = sig !== state.sig;
@@ -160,10 +173,45 @@
       return changed;
     } catch (e) {
       console.warn("Could not load data", e);
+      state.offline = !cached;
       state.ready = true;
       return !cached;
     }
   }
+  // shown only when the shop could not be reached and nothing was saved from an earlier visit
+  function offlineNote() {
+    if (!state.offline || $("#netNote")) return;
+    app.insertAdjacentHTML("afterbegin", `<div class="wrap net-note" id="netNote" role="alert"><div class="glass">
+      <span>${ui("net_down")}</span><button class="btn glass-btn" type="button" id="netRetry">${ui("net_retry")}</button></div></div>`);
+    $("#netRetry").addEventListener("click", retryLoad);
+  }
+  let retrying = false;
+  async function retryLoad() {
+    if (retrying) return; retrying = true;
+    const b = $("#netRetry"); if (b) { b.disabled = true; b.textContent = uiRaw("net_retrying"); }
+    const changed = await load();
+    retrying = false;
+    if (!state.offline) { applySettings(); render(); updateCartCount(); }
+    else if (b) { b.disabled = false; b.textContent = uiRaw("net_retry"); }
+    return changed;
+  }
+  addEventListener("online", () => { if (state.offline) retryLoad(); });
+
+  /* ---------- error reports (no personal data; the database rate-limits them) ---------- */
+  let reported = 0;
+  const seenErr = new Set();
+  function report(message, source) {
+    const m = String(message || "").slice(0, 300);
+    if (!m || reported >= 5 || seenErr.has(m) || /ResizeObserver loop|Script error\.?$/.test(m)) return;
+    seenErr.add(m); reported++;
+    db.rpc("log_client_error", { p_page: location.hash.slice(0, 120) || "/", p_message: m, p_source: String(source || "").slice(0, 200) }).catch(() => {});
+  }
+  addEventListener("error", (e) => {
+    const f = e.filename || "";
+    if (f && !f.startsWith(location.origin)) return;     // browser extensions, third-party scripts
+    report(e.message, f ? `${f.replace(location.origin, "")}:${e.lineno}:${e.colno}` : "");
+  });
+  addEventListener("unhandledrejection", (e) => report(e.reason && (e.reason.message || e.reason), "promise"));
 
   /* ---------- light / dark ---------- */
   function resolveMode(m) { return m === "light" ? "light" : m === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : "dark"; }
@@ -232,7 +280,7 @@
   function socialLinks(cls = "icon-btn") {
     const c = state.s.contact;
     const map = [["instagram", "انستغرام"], ["facebook", "فيسبوك"], ["tiktok", "تيك توك"], ["telegram", "تيليغرام"], ["snapchat", "سناب شات"]];
-    let out = map.filter(([k]) => c[k]).map(([k, n]) => `<a class="${cls}" href="${esc(c[k])}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
+    let out = map.filter(([k]) => safeUrl(c[k])).map(([k, n]) => `<a class="${cls}" href="${esc(safeUrl(c[k]))}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
     const wl = waLink(uiRaw("wa_hello"));
     if (wl) out = `<a class="${cls}" href="${esc(wl)}" target="_blank" rel="noopener" aria-label="${ui("lbl_whatsapp")}">${A.ui.whatsapp}</a>` + out;
     return out;
@@ -390,7 +438,7 @@
         <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
           <div class="orbit" data-orbit>${orbitSVG()}</div>
           <div class="deck" id="deck" data-tilt>
-            ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
+            ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${safeUrl(sl.link) ? `href="${esc(safeUrl(sl.link))}"` : ""} aria-label="${esc(sl.title || "")}">
               ${slides.length > 1 ? `<span class="deck-no" aria-hidden="true">${String(i + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}</span>` : ""}
               ${sl.img ? `<img src="${esc(sl.img)}" alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
               ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
@@ -513,7 +561,7 @@
   function visitSection() {
     const s = state.s, c = s.contact, sec = s.sections.visit;
     const rows = [
-      c.address && [A.ui.pin, ui("lbl_address"), esc(c.address) + (c.map_url ? ` · <a href="${esc(c.map_url)}" target="_blank" rel="noopener" style="color:var(--emerald)">${ui("map_link")}</a>` : "")],
+      c.address && [A.ui.pin, ui("lbl_address"), esc(c.address) + (safeUrl(c.map_url) ? ` · <a href="${esc(safeUrl(c.map_url))}" target="_blank" rel="noopener" style="color:var(--emerald)">${ui("map_link")}</a>` : "")],
       c.hours && [A.ui.clock, ui("lbl_hours"), esc(c.hours)],
       c.phone && [A.ui.phone, ui("lbl_phone"), `<a href="tel:${esc(toLatin(c.phone).replace(/[^\d+]/g, ""))}" dir="ltr">${esc(c.phone)}</a>`],
       c.whatsapp && [A.ui.whatsapp, ui("lbl_whatsapp"), `<a href="${esc(waLink(uiRaw("wa_hello")))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
@@ -1233,6 +1281,7 @@
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;
     const changed = await loading;
     if (changed) { applySettings(); render(); updateCartCount(); }
+    offlineNote();
     await introPromise;
     if (window.ScrollTrigger) window.ScrollTrigger.refresh();
     if (state.s.shop.intl_enabled) {

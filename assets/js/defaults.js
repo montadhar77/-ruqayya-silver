@@ -104,6 +104,7 @@ window.RQ_DEFAULTS = {
     lbl_address: "العنوان", map_link: "الموقع على الخريطة", lbl_hours: "أوقات الدوام", lbl_phone: "الهاتف", lbl_whatsapp: "واتساب", lbl_email: "البريد",
     form_name: "الاسم", form_phone: "رقم الهاتف", form_body: "رسالتك", form_send: "إرسال الرسالة", form_sending: "جارٍ الإرسال…",
     form_ok: "وصلتنا رسالتك، شكراً لك", form_err: "تعذّر الإرسال، حاول مرة أخرى", form_busy: "أرسلت رسائل كثيرة، يرجى المحاولة بعد قليل", form_need_name: "يرجى كتابة الاسم", form_need_body: "يرجى كتابة الرسالة",
+    net_down: "تعذّر الاتصال بالمتجر الآن. تحقّق من الإنترنت ثم أعد المحاولة.", net_retry: "إعادة المحاولة", net_retrying: "جارٍ المحاولة…",
     footer_departments: "الأقسام", footer_contact: "تواصل", footer_shop: "المتجر",
     wa_hello: "السلام عليكم", wa_inquiry: "السلام عليكم، أودّ الاستفسار من {brand}", wa_product: "السلام عليكم، أريد طلب: {name} — {price}"
   },

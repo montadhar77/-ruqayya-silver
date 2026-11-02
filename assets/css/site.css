@@ -701,3 +701,8 @@ html.lenis, html.lenis body { height: auto; }
 .hp{position:absolute!important;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;opacity:0;pointer-events:none}
 .ts-holder:empty{display:none}
 .ts-holder{display:flex;justify-content:center;margin:4px 0 12px;min-height:0}
+
+/* shown only when the shop cannot be reached and nothing is cached */
+.net-note{padding-top:18px;position:relative;z-index:3}
+.net-note .glass{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-radius:16px}
+.net-note span{color:var(--soft);min-width:0}

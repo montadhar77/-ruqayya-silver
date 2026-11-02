@@ -83,19 +83,28 @@ def schema_dump(db: str) -> str:
         check=True, capture_output=True, text=True).stdout
     lines = [l for l in out.splitlines() if l and not l.startswith("--") and not l.startswith("\\")
              and not l.startswith("SET ") and not l.startswith("SELECT pg_catalog.set_config")]
-    return "\n".join(lines)
+    # privileges are a set: after revoke + grant the same rights may be listed in another order
+    out_lines, block = [], []
+    for l in lines + [""]:
+        if l.startswith(("GRANT ", "REVOKE ")):
+            block.append(l)
+            continue
+        out_lines += sorted(block)
+        block = []
+        out_lines.append(l)
+    return "\n".join(out_lines)
 
 
 class Session:
     """One connection that runs statements as an API role, the way PostgREST does
     (SET LOCAL ROLE + request.jwt.claims inside a transaction)."""
 
-    def __init__(self, db: str, role: str = "anon", uid: str | None = None, headers: dict | None = None):
+    def __init__(self, db: str, role: str = "anon", uid: str | None = None, headers: dict | None = None, claims: dict | None = None):
         self.conn = psycopg.connect(dsn(db), autocommit=False)
-        self.role, self.uid, self.headers = role, uid, headers or {}
+        self.role, self.uid, self.headers, self.extra = role, uid, headers or {}, claims or {}
 
     def _prepare(self, cur):
-        claims = {"role": self.role}
+        claims = {"role": self.role, **self.extra}
         if self.uid:
             claims["sub"] = self.uid
         cur.execute("select set_config('request.jwt.claims', %s, true), set_config('request.headers', %s, true)",
@@ -133,8 +142,8 @@ class Session:
 
 
 @contextmanager
-def session(db: str, role: str = "anon", uid: str | None = None, headers: dict | None = None):
-    s = Session(db, role, uid, headers)
+def session(db: str, role: str = "anon", uid: str | None = None, headers: dict | None = None, claims: dict | None = None):
+    s = Session(db, role, uid, headers, claims)
     try:
         yield s
     finally:

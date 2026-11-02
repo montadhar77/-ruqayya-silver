@@ -6,12 +6,29 @@ import harness
 import stack
 
 
-def login(t, stk, who=stack.ADMIN, path=""):
+def login(t, stk, who=stack.ADMIN, path="", mfa=True):
+    """Password, then (for the admin) the authenticator code — enrolling on first use."""
     t.page.goto(f"{stk['site']}/admin/index.html{path}")
     t.page.wait_for_selector("#lEmail")
     t.page.fill("#lEmail", who["email"])
     t.page.fill("#lPass", who["password"])
     t.page.click("#loginForm button[type=submit]")
+    if not mfa or who is not stack.ADMIN:
+        return
+    t.page.wait_for_selector("#side, #mfaCode", timeout=10000)
+    if t.page.query_selector("#mfaCode"):
+        enter_code(t)
+
+
+def enter_code(t, code=None):
+    if code is None:
+        if t.page.query_selector("#mfaSecret"):
+            secret = t.page.inner_text("#mfaSecret").strip()
+        else:
+            secret = next(f["secret"] for f in stack.AUTH.factors.values() if f["user"] == stack.ADMIN["id"] and f["status"] == "verified")
+        code = stack.totp(secret)
+    t.page.fill("#mfaCode", code)
+    t.page.click("#mfaForm button[type=submit]")
 
 
 def logged_in(t):

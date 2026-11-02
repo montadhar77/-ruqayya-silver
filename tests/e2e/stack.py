@@ -344,8 +344,11 @@ class Gateway(BaseHTTPRequestHandler):
         claims = verify_jwt(tok) if tok else None
         is_admin = False
         if claims and claims.get("role") == "authenticated":
-            row = harness.admin_sql(STACK["db"], "select exists(select 1 from public.admins where user_id = %s)", (claims["sub"],))
-            is_admin = bool(row and row[0][0])
+            # same rule as the storage policies: private.is_admin() under the caller's own token (aal2 needed)
+            import psycopg
+            with psycopg.connect(harness.dsn(STACK["db"])) as c:
+                c.execute("select set_config('request.jwt.claims', %s, true)", (json.dumps(claims),))
+                is_admin = bool(c.execute("select private.is_admin()").fetchone()[0])
         if claims and claims.get("role") == "service_role":
             is_admin = True
         if parts[0] == "object" and self.command in ("POST", "PUT") and len(parts) >= 3:
