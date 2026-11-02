@@ -30,7 +30,7 @@
       key: "local-publishable-key",
       bucket: "media",
       gateway: "edge",
-      turnstile: ""
+      turnstile: "1x00000000000000000000AA"   // Cloudflare's public always-pass test key
     }
   };
   var PRODUCTION_HOSTS = [];   // e.g. "ruqayya-silver.pages.dev", custom domain — see docs/DEPLOY.md
@@ -48,5 +48,7 @@
   if (!ENVS[name] || !ENVS[name].url) name = "production";
   var c = ENVS[name], out = { env: name };
   for (var k in c) out[k] = c[k];
+  // automated tests on the local stack exercise both order paths
+  if (name === "local") try { var g = sessionStorage.getItem("rq_gateway"); if (g === "rpc" || g === "edge") out.gateway = g; } catch (e) { /* no storage */ }
   window.RQ_CONFIG = out;
 })();

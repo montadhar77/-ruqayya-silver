@@ -696,3 +696,8 @@ html.lenis, html.lenis body { height: auto; }
 :root[data-theme="light"] .info-card .watermark { opacity: .06; }
 .info-card > :not(.watermark) { position: relative; }
 .info-card .card-photo { display: block; width: 100%; max-width: 100%; aspect-ratio: 16 / 10; object-fit: cover; border-radius: calc(var(--r) - 8px); margin-bottom: 20px; border: 1px solid var(--line); }
+
+/* anti-spam: honeypot field (invisible to people) and the Cloudflare Turnstile box (empty unless a check is needed) */
+.hp{position:absolute!important;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;opacity:0;pointer-events:none}
+.ts-holder:empty{display:none}
+.ts-holder{display:flex;justify-content:center;margin:4px 0 12px;min-height:0}

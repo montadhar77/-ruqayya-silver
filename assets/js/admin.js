@@ -41,6 +41,7 @@
     if (/duplicate key.*slug/i.test(m)) return "الرابط المختصر مستخدم لقسم آخر";
     if (/Payload too large|exceeded the maximum/i.test(m)) return "الملف أكبر من الحد المسموح (٥٠ ميغابايت)";
     if (/Failed to fetch|NetworkError/i.test(m)) return "تعذّر الاتصال بالإنترنت";
+    if (/out_of_stock_on_restore/.test(m)) return "لا يمكن إعادة هذا الطلب: قطعه بيعت لطلب آخر ولم يعد المخزون يكفي. عدّل المخزون أولاً.";
     return m || "حدث خطأ غير متوقع";
   }
   const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
@@ -518,6 +519,7 @@
         <dl class="kv"><dt>الزبون</dt><dd>${esc(o.customer_name)}</dd><dt>الهاتف</dt><dd dir="ltr" style="text-align:right">${esc(o.phone)}</dd><dt>الدولة</dt><dd>${esc(o.country || "العراق")}</dd><dt>${o.country && o.country !== "العراق" ? "المدينة" : "المحافظة"}</dt><dd>${esc(o.city)}</dd><dt>العنوان</dt><dd>${esc(o.address) || "—"}</dd>${o.notes ? `<dt>ملاحظات</dt><dd>${esc(o.notes)}</dd>` : ""}<dt>التاريخ</dt><dd>${when(o.created_at)}</dd></dl>
         <div class="o-items">${(o.items || []).map((i) => `<div class="o-item"><div class="th">${i.image ? `<img src="${esc(i.image)}" alt="">` : ""}</div><div><b>${esc(i.name)}</b><div style="color:var(--soft);font-size:13px">${money(i.price)} × ${num(i.qty)}</div></div><div class="price">${money(i.price * i.qty)}</div></div>`).join("")}</div>
         <dl class="kv"><dt>المجموع</dt><dd>${money(o.subtotal)}</dd><dt>${o.country && o.country !== "العراق" ? "الشحن الدولي" : "التوصيل"}</dt><dd>${o.delivery ? money(o.delivery) : o.country && o.country !== "العراق" ? "يُحدَّد مع الزبون" : "مجاني"}</dd><dt><b>الإجمالي</b></dt><dd class="price">${money(o.total)}</dd></dl>
+        ${"notified_at" in o ? `<p class="hint no-print" id="oAlert" style="margin:-4px 0 14px">إشعار تيليجرام: ${o.notified_at ? (o.notify_error === "disabled" ? "الإشعارات متوقفة" : "أُرسل ✓") : o.notify_error ? `لم يصل بعد — ستُعاد المحاولة تلقائياً (${esc(o.notify_error.slice(0, 60))})` : "قيد الإرسال"}</p>` : ""}
         <div class="field no-print"><label for="oNote">ملاحظة داخلية (لا يراها الزبون)</label><textarea id="oNote" style="min-height:70px">${esc(o.admin_note)}</textarea></div>
       </div>
       <div class="modal-f">
@@ -529,14 +531,22 @@
       </div>`);
     $("#oStatus", m.el).addEventListener("click", async (e) => {
       const b = e.target.closest("[data-set]"); if (!b || b.dataset.set === o.status) return;
-      try { await q(db.from("orders").update({ status: b.dataset.set }).eq("id", o.id)); o.status = b.dataset.set; $$("[data-set]", m.el).forEach((x) => x.classList.toggle("on", x === b)); updatePills(); toast(`حالة الطلب: ${STATUS[o.status]}`); refreshOrderViews(); }
+      try {
+        const was = o.status;
+        await q(db.from("orders").update({ status: b.dataset.set }).eq("id", o.id)); o.status = b.dataset.set; $$("[data-set]", m.el).forEach((x) => x.classList.toggle("on", x === b)); updatePills();
+        const moved = (was === "cancelled") !== (o.status === "cancelled") && (o.stock_state === "reserved" || o.stock_state === "released");
+        if (moved) o.stock_state = o.status === "cancelled" ? "released" : "reserved";
+        toast(`حالة الطلب: ${STATUS[o.status]}${moved ? (o.status === "cancelled" ? " — أُعيدت القطع إلى المخزون" : " — حُجزت القطع من المخزون مجدداً") : ""}`);
+        if (moved) await loadProds().catch(() => {});
+        refreshOrderViews();
+      }
       catch (err) { toast(errMsg(err), true); }
     });
     $("#oNoteSave", m.el).onclick = async () => { try { const v = $("#oNote", m.el).value; await q(db.from("orders").update({ admin_note: v }).eq("id", o.id)); o.admin_note = v; toast("حُفظت الملاحظة"); } catch (err) { toast(errMsg(err), true); } };
     $("#oPrint", m.el).onclick = () => print();
     $("#oDel", m.el).onclick = async () => {
       if (!(await confirmBox(`حذف الطلب #${o.order_no} نهائياً؟`))) return;
-      try { await q(db.from("orders").delete().eq("id", o.id)); state.orders = state.orders.filter((x) => x.id !== o.id); m.close(); updatePills(); refreshOrderViews(); toast("حُذف الطلب"); }
+      try { await q(db.from("orders").delete().eq("id", o.id)); state.orders = state.orders.filter((x) => x.id !== o.id); m.close(); updatePills(); await loadProds().catch(() => {}); refreshOrderViews(); toast(o.stock_state === "reserved" ? "حُذف الطلب وأُعيدت قطعه إلى المخزون" : "حُذف الطلب"); }
       catch (err) { toast(errMsg(err), true); }
     };
   }
@@ -612,7 +622,7 @@
         { title: "صفحة المنتج", fields: [TX("spec_category", "خانة: القسم"), TX("spec_metal", "خانة: المعدن"), TX("spec_stone", "خانة: الحجر"), TX("spec_weight", "خانة: الوزن"), TX("spec_size", "خانة: المقاس"), TX("spec_stock", "خانة: التوفر"), TX("in_stock", "متوفر"), TX("in_stock_n", "متوفر مع العدد", { hint: "{n} = الكمية" }), TX("qty", "كلمة «الكمية»"), TX("add_to_cart", "زر «أضف إلى السلة»"), TX("buy_now", "زر «اطلب الآن»"), TX("ask_whatsapp", "زر السؤال على واتساب"), TX("out_note", "رسالة نفاد الكمية"), TX("assure_1", "الضمان الأول"), TX("assure_2", "الضمان الثاني (مع الشحن الدولي)"), TX("assure_2_local", "الضمان الثاني (بدون شحن دولي)"), TX("assure_3", "الضمان الثالث"), TX("related", "عنوان «قد يعجبك أيضاً»"), TX("notfound_title", "منتج غير موجود — العنوان"), TX("notfound_text", "منتج غير موجود — النص"), TX("notfound_btn", "منتج غير موجود — الزر")] },
         { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
         { title: "نموذج إتمام الطلب", fields: [TX("co_title", "العنوان"), TX("co_name", "خانة الاسم"), TX("co_phone", "خانة الهاتف"), TX("co_country", "خانة الدولة"), TX("co_other", "خيار «دولة أخرى»"), TX("co_other_name", "خانة اسم الدولة"), TX("co_city", "خانة المحافظة"), TX("co_city_intl", "خانة المدينة (خارج العراق)"), TX("co_addr", "خانة العنوان"), TX("co_addr_intl", "خانة العنوان (خارج العراق)"), TX("co_addr_ph", "مثال داخل خانة العنوان"), TX("co_addr_ph_intl", "مثال داخل خانة العنوان (خارج العراق)"), TX("co_notes", "خانة الملاحظات"), TX("co_notes_ph", "مثال داخل خانة الملاحظات"), TX("co_sub", "المجموع"), TX("co_delivery", "التوصيل"), TX("co_intl_shipping", "الشحن الدولي"), TX("co_total", "الإجمالي"), TX("co_plus_shipping", "«+ الشحن»"), TX("co_submit", "زر تأكيد الطلب"), TX("co_sending", "أثناء الإرسال")] },
-        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال")] },
+        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال"), TX("co_err_busy", "طلبات كثيرة من نفس الجهاز/الرقم"), TX("co_err_human", "فشل التحقق من أن الزائر ليس روبوتاً")] },
         { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
         { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
         { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
@@ -651,6 +661,11 @@
           SH("shop.intl_note", "ملاحظة الشحن الدولي (تظهر عند اختيار دولة أخرى)", { t: "textarea" }),
           SH("shop.intl_payment_note", "ملاحظة الدفع للطلبات الدولية"),
           SH("shop.countries", "الدول في نموذج الطلب", { t: "strings", add: "إضافة دولة", hint: "العراق يظهر أولاً دائماً، ويستطيع الزبون اختيار «دولة أخرى» وكتابة اسمها." })
+        ] },
+        { title: "إشعارات تيليجرام", fields: [
+          SH("notify.orders", "رسالة فورية على تيليجرام عند كل طلب جديد", { t: "toggle" }),
+          SH("notify.inquiries", "رسالة على تيليجرام عند كل رسالة جديدة من الموقع", { t: "toggle" }),
+          { p: "notify._note", t: "note", l: `إذا تعذّر الإرسال (انقطاع أو خطأ) تُعاد المحاولة تلقائياً كل دقيقة حتى يصل الإشعار. ربط البوت يتم مرة واحدة من إعدادات الخادم (دليل التشغيل).<br><button class="btn light" type="button" id="tgTest" style="margin-top:10px">${I.check} إرسال رسالة تجريبية</button>` }
         ] }
       ]
     }
@@ -844,6 +859,15 @@
     route(true);
     clearInterval(poll); poll = setInterval(checkNew, 45000);
   }
+  // dashboard button: ask the notify-test function (admins only) to send a Telegram test message
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("#tgTest"); if (!b) return;
+    b.disabled = true;
+    let r = null;
+    try { const { data, error } = await db.functions.invoke("notify-test", { body: {} }); r = error ? { ok: false, error: "failed" } : data; } catch (err) { r = null; }
+    b.disabled = false;
+    toast(r && r.ok ? "وصلت الرسالة التجريبية إلى تيليجرام ✓" : r && r.error === "not_configured" ? "لم يُربط بوت تيليجرام بعد — راجع دليل التشغيل" : "تعذّر إرسال الرسالة التجريبية", !(r && r.ok));
+  });
   db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") { clearInterval(poll); } });
   start();
 })();

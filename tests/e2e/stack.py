@@ -38,6 +38,7 @@ import harness  # noqa: E402
 JWT_SECRET = "local-e2e-jwt-secret-not-used-anywhere-else-0123456789"
 PUBLISHABLE = "local-publishable-key"
 SECRET_KEY = "local-secret-key"
+CRON_SECRET = "local-cron-secret-0123456789"
 ADMIN = {"id": harness.ADMIN_ID, "email": "admin@test.invalid", "password": "local-admin-pass-123"}
 VISITOR = {"id": harness.USER_ID, "email": "visitor@test.invalid", "password": "local-visitor-pass-123"}
 
@@ -124,6 +125,8 @@ class AuthState:
 
 AUTH = AuthState()
 LOG: list[dict] = []          # every request the gateway saw (method, path, status)
+TELEGRAM: list[dict] = []     # messages "sent" to the fake Telegram API
+FAKE = {"telegram_down": False, "turnstile_tokens": []}
 STORE = Path(tempfile.mkdtemp(prefix="rq_storage_"))
 
 
@@ -145,6 +148,7 @@ class Gateway(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Max-Age", "600")
 
     def reply(self, status: int, body=b"", ctype="application/json", extra: dict | None = None):
+        self.body()   # drain the request body so keep-alive connections stay in sync
         if isinstance(body, (dict, list)) or body is None and ctype == "application/json":
             body = json.dumps(body).encode()
         elif isinstance(body, str):
@@ -162,8 +166,10 @@ class Gateway(BaseHTTPRequestHandler):
         LOG.append({"method": self.command, "path": self.path, "status": status})
 
     def body(self) -> bytes:
-        n = int(self.headers.get("Content-Length") or 0)
-        return self.rfile.read(n) if n else b""
+        if getattr(self, "_body", None) is None:
+            n = int(self.headers.get("Content-Length") or 0)
+            self._body = self.rfile.read(n) if n else b""
+        return self._body
 
     def bearer(self) -> str | None:
         """Translate the API key / user token the way the Supabase gateway does."""
@@ -178,6 +184,10 @@ class Gateway(BaseHTTPRequestHandler):
         if k == PUBLISHABLE or not k:
             return ANON_JWT if k else None
         return None
+
+    def parse_request(self):
+        self._body = None            # one handler serves many requests on a keep-alive connection
+        return super().parse_request()
 
     def do_OPTIONS(self):
         self.reply(204)
@@ -200,6 +210,10 @@ class Gateway(BaseHTTPRequestHandler):
                 return self.storage(urllib.parse.urlsplit(p[len("/storage/v1"):]).path)
             if p.startswith("/functions/v1/"):
                 return self.functions(p[len("/functions/v1"):])
+            if p.startswith("/__turnstile"):
+                return self.fake_turnstile()
+            if p.startswith("/__telegram/"):
+                return self.fake_telegram()
             return self.reply(404, {"message": "not found"})
         except BrokenPipeError:
             pass
@@ -236,6 +250,23 @@ class Gateway(BaseHTTPRequestHandler):
         except OSError:
             return self.reply(503, {"error": "functions_offline"})
         self.reply(r.status, out, r.getheader("Content-Type") or "application/json")
+
+    # -- Cloudflare Turnstile siteverify stand-in (test-key semantics: 1x... passes, 2x... fails)
+    def fake_turnstile(self):
+        form = urllib.parse.parse_qs(self.body().decode())
+        secret, token = form.get("secret", [""])[0], form.get("response", [""])[0]
+        FAKE["turnstile_tokens"].append(token)
+        ok = secret.startswith("1x") and token not in ("", "invalid") and not token.startswith("fail")
+        return self.reply(200, {"success": ok, "error-codes": [] if ok else ["invalid-input-response"]})
+
+    # -- Telegram Bot API stand-in
+    def fake_telegram(self):
+        raw = self.body()
+        if FAKE["telegram_down"]:
+            return self.reply(502, {"ok": False, "description": "Bad Gateway"})
+        msg = json.loads(raw or b"{}")
+        TELEGRAM.append({"path": self.path, "chat_id": msg.get("chat_id"), "text": msg.get("text", "")})
+        return self.reply(200, {"ok": True, "result": {"message_id": len(TELEGRAM)}})
 
     # -- GoTrue stand-in
     def auth_user(self) -> tuple[str, dict] | None:
@@ -395,42 +426,50 @@ def start(db: str | None = None, functions: bool = True) -> dict:
                PGRST_SERVER_HOST="127.0.0.1", PGRST_SERVER_PORT=str(REST_PORT), PGRST_DB_POOL=os.environ.get("RQ_POOL", "15"),
                PGRST_DB_MAX_ROWS="1000", PGRST_DB_EXTRA_SEARCH_PATH="public,extensions", PGRST_LOG_LEVEL="warn",
                PGRST_DB_CHANNEL_ENABLED="true")
-    procs = [subprocess.Popen([POSTGREST], env=env, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)]
+    logs = Path(tempfile.mkdtemp(prefix="rq_logs_"))
+    procs = [subprocess.Popen([POSTGREST], env=env, stdout=subprocess.DEVNULL, stderr=open(logs / "postgrest.log", "wb"))]
     if functions and (ROOT / "supabase" / "functions" / "_dev" / "serve.ts").exists():
-        fenv = dict(os.environ, SUPABASE_URL=f"http://127.0.0.1:{GW_PORT}", SB_SECRET_KEY=SECRET_KEY,
-                    TURNSTILE_SECRET="1x0000000000000000000000000000000AA", RQ_LOCAL="1",
-                    TELEGRAM_API=f"http://127.0.0.1:{GW_PORT}/__telegram", PORT=str(FN_PORT))
+        fenv = dict(os.environ, SUPABASE_URL=f"http://127.0.0.1:{GW_PORT}", SB_SECRET_KEY=SECRET_KEY, SB_PUBLISHABLE_KEY=PUBLISHABLE,
+                    TURNSTILE_SECRET="1x0000000000000000000000000000000AA", TURNSTILE_VERIFY_URL=f"http://127.0.0.1:{GW_PORT}/__turnstile",
+                    TELEGRAM_API=f"http://127.0.0.1:{GW_PORT}/__telegram", TELEGRAM_BOT_TOKEN="local-bot-token", TELEGRAM_CHAT_ID="1001",
+                    CRON_SECRET=CRON_SECRET, ALLOWED_ORIGINS=f"http://127.0.0.1:{SITE_PORT}", PORT=str(FN_PORT),
+                    NO_PROXY="127.0.0.1,localhost", no_proxy="127.0.0.1,localhost")
         deno = os.environ.get("RQ_DENO") or shutil.which("deno") or str(
             Path("/tmp/claude-0/-home-claude/b9834369-8d56-5eee-b70e-e6b01d8d4a10/scratchpad/tools/node_modules/.bin/deno"))
         procs.append(subprocess.Popen([deno, "run", "--allow-net", "--allow-env", "--no-prompt",
                                        str(ROOT / "supabase" / "functions" / "_dev" / "serve.ts")],
-                                      env=fenv, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE))
+                                      env=fenv, stdout=open(logs / "functions.log", "wb"), stderr=subprocess.STDOUT))
     gw = ThreadingHTTPServer(("127.0.0.1", GW_PORT), Gateway)
     site = ThreadingHTTPServer(("127.0.0.1", SITE_PORT), Quiet)
     for s in (gw, site):
         threading.Thread(target=s.serve_forever, daemon=True).start()
-    STACK.update(db=db, procs=procs, servers=[gw, site], site=f"http://127.0.0.1:{SITE_PORT}",
+    STACK.update(db=db, procs=procs, servers=[gw, site], logs=logs, site=f"http://127.0.0.1:{SITE_PORT}",
                  gateway=f"http://127.0.0.1:{GW_PORT}")
-    # wait for PostgREST
-    for _ in range(100):
+    # wait for PostgREST (it answers 503 while it loads the schema cache) and the functions
+    def ready(port, path, headers=None):
         try:
-            c = http.client.HTTPConnection("127.0.0.1", REST_PORT, timeout=1)
-            c.request("GET", "/", headers={"Authorization": f"Bearer {ANON_JWT}"})
-            if c.getresponse().status < 500:
-                break
+            c = http.client.HTTPConnection("127.0.0.1", port, timeout=2)
+            c.request("GET", path, headers=headers or {})
+            r = c.getresponse()
+            r.read()
+            return r.status < 500 or path == "/health"
         except OSError:
-            time.sleep(0.1)
-    else:
-        raise RuntimeError("PostgREST did not start: " + procs[0].stderr.read(2000).decode(errors="replace"))
+            return False
+    deadline = time.time() + 40
+    while not ready(REST_PORT, "/", {"Authorization": f"Bearer {ANON_JWT}"}):
+        if time.time() > deadline or procs[0].poll() is not None:
+            err = (logs / "postgrest.log").read_text(errors="replace")[-2000:]
+            stop()
+            raise RuntimeError("PostgREST did not start: " + err)
+        time.sleep(0.2)
     if len(procs) > 1:
-        for _ in range(200):
-            try:
-                c = http.client.HTTPConnection("127.0.0.1", FN_PORT, timeout=1)
-                c.request("GET", "/health")
-                c.getresponse().read()
-                break
-            except OSError:
-                time.sleep(0.1)
+        deadline = time.time() + 60
+        while not ready(FN_PORT, "/health"):
+            if time.time() > deadline or procs[1].poll() is not None:
+                err = (logs / "functions.log").read_text(errors="replace")[-2000:]
+                stop()
+                raise RuntimeError("Edge Functions did not start: " + err)
+            time.sleep(0.2)
     return STACK
 
 

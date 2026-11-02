@@ -49,12 +49,16 @@ def test_admin_edits_a_product_price(tab, stk):
     t.page.goto(f"{stk['site']}/admin/index.html#/products")
     t.page.wait_for_selector("[data-pid] [data-act=edit]")
     pid = t.page.get_attribute("[data-pid]", "data-pid")
-    t.page.click(f"[data-pid='{pid}'] [data-act=edit]")
-    t.page.wait_for_selector("#fPrice")
-    t.page.fill("#fPrice", "٢٥٠٬٠٠٠")
-    t.page.click("#pSave")
-    assert wait_db(stk, f"select price from public.products where id = '{pid}'", [(250000,)]) == [(250000,)]
-    assert not t.errors, t.errors
+    old = harness.admin_sql(stk["db"], "select price from public.products where id = %s", (pid,))[0][0]
+    try:
+        t.page.click(f"[data-pid='{pid}'] [data-act=edit]")
+        t.page.wait_for_selector("#fPrice")
+        t.page.fill("#fPrice", "٢٥٠٬٠٠٠")
+        t.page.click("#pSave")
+        assert wait_db(stk, f"select price from public.products where id = '{pid}'", [(250000,)]) == [(250000,)]
+        assert not t.errors, t.errors
+    finally:   # other tests rely on the catalogue prices
+        harness.admin_sql(stk["db"], "update public.products set price = %s where id = %s", (old, pid))
 
 
 def test_admin_confirms_an_order(tab, stk):

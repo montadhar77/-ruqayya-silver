@@ -125,6 +125,12 @@ class Session:
     def close(self):
         self.conn.close()
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
 
 @contextmanager
 def session(db: str, role: str = "anon", uid: str | None = None, headers: dict | None = None):
@@ -140,3 +146,8 @@ def admin_sql(db: str, sql: str, params=None):
     with psycopg.connect(dsn(db), autocommit=True) as c:
         cur = c.execute(sql, params)
         return cur.fetchall() if cur.description else None
+
+
+def real_limits(db: str) -> None:
+    """Restore the rate limits exactly as shipped in the migration (fixtures relax them)."""
+    admin_sql(db, "delete from private.rate_rules; insert into private.rate_rules select * from private.rate_rules_shipped")

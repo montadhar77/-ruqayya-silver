@@ -14,9 +14,50 @@
       const r = await fetch(`${cfg.url}/rest/v1/${path}`, { ...opts, headers: { apikey: cfg.key, "Content-Type": "application/json", Accept: "application/json", ...(opts.headers || {}) } });
       const txt = await r.text();
       let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
-      return r.ok ? { data, error: null } : { data: null, error: data || { message: r.statusText || "request_failed" } };
-    } catch (e) { return { data: null, error: { message: String(e && e.message || e) } }; }
+      return r.ok ? { data, error: null } : { data: null, error: { ...(data || { message: r.statusText || "request_failed" }), status: r.status } };
+    } catch (e) { return { data: null, error: { message: String(e && e.message || e), network: true } }; }
   }
+  // Protected path (cfg.gateway === "edge"): Edge Functions with Cloudflare Turnstile + rate limits.
+  async function edge(name, body) {
+    try {
+      const r = await fetch(`${cfg.url}/functions/v1/${name}`, { method: "POST", headers: { apikey: cfg.key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      let data = null; try { data = await r.json(); } catch (e) { data = null; }
+      return r.ok ? { data, error: null } : { data: null, error: { message: (data && (data.error || data.message)) || r.statusText || "request_failed", status: r.status } };
+    } catch (e) { return { data: null, error: { message: String(e && e.message || e), network: true } }; }
+  }
+  // Cloudflare Turnstile, loaded only when a form is used. "interaction-only": invisible unless Cloudflare needs a click.
+  let tsLib = null;
+  const loadTurnstile = () => tsLib || (tsLib = new Promise((res) => {
+    if (!cfg.turnstile) return res(null);
+    window.rqTurnstileReady = () => res(window.turnstile || null);
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=rqTurnstileReady";
+    s.async = true; s.onerror = () => res(null);
+    document.head.appendChild(s);
+    setTimeout(() => res(window.turnstile || null), 12000);
+  }));
+  function humanCheck(holder, action) {
+    let token = "", widget = null, waiters = [];
+    const settle = (t) => { token = t || ""; waiters.splice(0).forEach((w) => w(token)); };
+    const ready = loadTurnstile().then((ts) => {
+      if (!ts || !holder.isConnected) return null;
+      widget = ts.render(holder, { sitekey: cfg.turnstile, action, appearance: "interaction-only", language: "ar",
+        theme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
+        callback: settle, "expired-callback": () => settle(""), "error-callback": () => { settle(""); return true; } });
+      return ts;
+    });
+    return {
+      // current token (waits up to 10 s for Cloudflare); "" when Turnstile is off or unavailable
+      async get() {
+        const ts = await ready; if (!ts) return "";
+        if (token) return token;
+        return new Promise((r) => { waiters.push(r); setTimeout(() => r(token), 10000); });
+      },
+      async reset() { const ts = await ready; token = ""; if (ts && widget !== null) try { ts.reset(widget); } catch (e) { /* gone */ } }
+    };
+  }
+  const HONEYPOT = `<div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>`;
+
   const db = {
     rpc: (fn, args) => api(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }),
     insert: (table, row) => api(table, { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } })
@@ -489,6 +530,7 @@
           <div class="two"><div class="field"><label for="cfName">${ui("form_name")}</label><input id="cfName" name="name" required maxlength="120" autocomplete="name"></div>
           <div class="field"><label for="cfPhone">${ui("form_phone")}</label><input id="cfPhone" name="phone" type="tel" inputmode="tel" maxlength="30" dir="ltr" autocomplete="tel"></div></div>
           <div class="field"><label for="cfBody">${ui("form_body")}</label><textarea id="cfBody" name="body" required maxlength="3000"></textarea></div>
+          ${HONEYPOT}<div class="ts-holder" id="cfHuman"></div>
           <button class="btn shine block" type="submit">${ui("form_send")}</button>
         </form>
       </div></div></section>`;
@@ -554,15 +596,24 @@
   function bindContactForm() {
     const f = $("#contactForm");
     if (!f) return;
+    let human = null;
+    const wake = () => { if (!human && cfg.gateway === "edge" && cfg.turnstile) human = humanCheck($("#cfHuman", f), "inquiry"); };
+    f.addEventListener("focusin", wake, { once: true });
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = f.name.value.trim(), phone = f.phone.value.trim(), body = f.body.value.trim();
       if (name.length < 2) { toast(uiRaw("form_need_name")); f.name.focus(); return; }
       if (body.length < 2) { toast(uiRaw("form_need_body")); f.body.focus(); return; }
       const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("form_sending");
-      const { error } = await db.insert("inquiries", { name, phone, body });
+      let res;
+      if (cfg.gateway === "edge") {
+        wake();
+        res = await edge("submit-inquiry", { name, phone, body, website: f.website.value, turnstile: human ? await human.get() : "" });
+        if (res.error && res.error.status === 404) res = await db.insert("inquiries", { name, phone, body });   // function not deployed yet
+        if (human) human.reset();
+      } else res = await db.insert("inquiries", { name, phone, body });
       btn.disabled = false; btn.textContent = uiRaw("form_send");
-      if (error) { toast(uiRaw("form_err")); return; }
+      if (res.error) { toast(uiRaw(/rate_limited/.test(res.error.message || "") ? "form_busy" : "form_err")); return; }
       f.reset(); toast(uiRaw("form_ok"));
     });
   }
@@ -774,6 +825,7 @@
         </div>
         <div class="field"><label for="coNotes">${ui("co_notes")}</label><textarea id="coNotes" name="notes" maxlength="1000" style="min-height:80px" placeholder="${ui("co_notes_ph")}"></textarea></div>
         <div id="coSum"></div>
+        ${HONEYPOT}<div class="ts-holder" id="coHuman"></div>
         <button class="btn shine block" type="submit">${ui("co_submit")}</button>
       </form>`;
     const f = $("#coForm");
@@ -793,6 +845,7 @@
     };
     if (f.country) { f.country.addEventListener("change", refresh); f.other.addEventListener("input", refresh); }
     refresh();
+    checkoutHuman = cfg.gateway === "edge" && cfg.turnstile ? humanCheck($("#coHuman"), "order") : null;
     $("#checkoutBg").classList.add("open"); lock(true);
     setTimeout(() => $("#coName").focus(), 100);
     $("#coClose").addEventListener("click", closeCheckout);
@@ -800,6 +853,48 @@
   }
   function closeCheckout() { $("#checkoutBg").classList.remove("open"); lock(false); }
   $("#checkoutBg").addEventListener("click", (e) => { if (e.target.id === "checkoutBg") closeCheckout(); });
+
+  /* One random key per checkout. If the connection drops after the order was saved,
+     sending the same key again returns that same order instead of creating a second one. */
+  const uuid4 = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & 15) >> (c / 4)).toString(16));
+  function checkoutKey(items) {
+    const sig = JSON.stringify(items);
+    const saved = safeLS(() => JSON.parse(sessionStorage.getItem("rq_ck") || "null"), null);
+    if (saved && saved.sig === sig && saved.key) return saved.key;
+    const key = uuid4();
+    safeLS(() => sessionStorage.setItem("rq_ck", JSON.stringify({ sig, key })));
+    return key;
+  }
+  const forgetCheckoutKey = () => safeLS(() => sessionStorage.removeItem("rq_ck"));
+  const retryable = (err) => err && (err.network || err.status >= 500 || err.status === 408);
+  let checkoutHuman = null;
+  async function viaRpc(cust, items, key) {
+    let res = await db.rpc("place_order", { p_customer: cust, p_items: items, p_idempotency_key: key });
+    // database not upgraded yet (function without the key): same call as before
+    if (res.error && (res.error.code === "PGRST202" || /p_idempotency_key/.test(res.error.message || "")))
+      res = await db.rpc("place_order", { p_customer: cust, p_items: items });
+    return res;
+  }
+  async function viaEdge(cust, items, key, website) {
+    const turnstile = checkoutHuman ? await checkoutHuman.get() : "";
+    const res = await edge("submit-order", { customer: cust, items, key, turnstile, website });
+    if (checkoutHuman) checkoutHuman.reset();          // a Turnstile token works once
+    if (res.error && res.error.status === 404) return viaRpc(cust, items, key);   // function not deployed yet: previous path
+    return res;
+  }
+  async function sendOrder(cust, items, website = "") {
+    const key = checkoutKey(items);
+    let res;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 800 * attempt));
+      res = cfg.gateway === "edge" ? await viaEdge(cust, items, key, website) : await viaRpc(cust, items, key);
+      if (!retryable(res.error)) break;
+    }
+    // a definite "no" from the server created nothing: the next attempt may use a fresh key
+    if (res.error && !retryable(res.error)) forgetCheckoutKey();
+    return res;
+  }
 
   async function submitOrder(e, getCountry) {
     e.preventDefault();
@@ -813,13 +908,15 @@
     if (intl && cust.address.length < 6) { toast(uiRaw("co_err_addr")); f.address.focus(); return; }
     const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("co_sending");
     const items = cartLines().map((l) => ({ id: l.id, qty: l.qty }));
-    const { data, error } = await db.rpc("place_order", { p_customer: cust, p_items: items });
+    const { data, error } = await sendOrder(cust, items, f.website ? f.website.value : "");
     if (error) {
       btn.disabled = false; btn.textContent = uiRaw("co_submit");
       const m = String(error.message || "");
-      toast(uiRaw(m.includes("out_of_stock") ? "co_err_stock" : m.includes("product_unavailable") ? "co_err_gone" : m.includes("invalid_phone") ? "co_err_phone" : "co_err_failed"));
+      toast(uiRaw(m.includes("out_of_stock") ? "co_err_stock" : m.includes("product_unavailable") ? "co_err_gone" : m.includes("invalid_phone") ? "co_err_phone"
+        : m.includes("rate_limited") ? "co_err_busy" : m.includes("captcha_failed") ? "co_err_human" : "co_err_failed"));
       return;
     }
+    forgetCheckoutKey();
     const s = state.s;
     const msg = [`السلام عليكم، طلب جديد من موقع ${s.brand.full}`, `رقم الطلب: #${data.order_no}`, `الاسم: ${cust.name}`, `الهاتف: ${cust.phone}`, intl ? `الدولة: ${country} — ${cust.city}${cust.address ? " — " + cust.address : ""}` : `المحافظة: ${cust.city}${cust.address ? " — " + cust.address : ""}`, "", "المنتجات:",
       ...data.items.map((i) => `• ${i.name} × ${i.qty} — ${num(i.price * i.qty)} ${s.shop.currency}`), "",

@@ -29,6 +29,15 @@ def open_product_and_add(page, site, pid):
     time.sleep(0.3)
 
 
+def wait_success(page, timeout=15000):
+    """Wait for the order confirmation; on failure report what the customer saw."""
+    try:
+        page.wait_for_selector(".success .no", timeout=timeout)
+    except Exception:
+        raise AssertionError("no confirmation; toast: " + page.inner_text("#toast"))
+    return int(page.inner_text(".success .no").strip("#"))
+
+
 def checkout(page):
     page.click("#cartBtn")
     page.wait_for_selector("#toCheckout", state="visible")
@@ -71,8 +80,7 @@ def test_local_order_is_saved_with_server_prices(tab, stk):
     t.page.fill("#coPhone", "0770 000 0001")
     t.page.fill("#coAddr", "شارع الاختبار")
     t.page.click("#coForm button[type=submit]")
-    t.page.wait_for_selector(".success .no", timeout=10000)
-    no = int(t.page.inner_text(".success .no").strip("#"))
+    no = wait_success(t.page)
     row = db_rows(stk, "select customer_name, subtotal, delivery, total, country from public.orders where order_no = %s", (no,))
     assert row == [("زبون تجريبي", 240000 + 320000, 5000, 565000, "العراق")]
     assert not t.errors, t.errors
@@ -90,8 +98,7 @@ def test_international_order(tab, stk):
     t.page.fill("#coAddr", "Teststr. 1, 10115")
     assert not t.layout_problems()
     t.page.click("#coForm button[type=submit]")
-    t.page.wait_for_selector(".success .no", timeout=10000)
-    no = int(t.page.inner_text(".success .no").strip("#"))
+    no = wait_success(t.page)
     row = db_rows(stk, "select country, city, delivery from public.orders where order_no = %s", (no,))
     assert row == [("ألمانيا", "Berlin", 0)]
 

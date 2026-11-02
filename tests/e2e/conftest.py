@@ -32,6 +32,15 @@ LAYOUT_CHECK = """() => {
 }"""
 
 
+FAKE_TURNSTILE = """
+window.turnstile = {
+  render(el, o) { el.setAttribute('data-ts', o.sitekey); setTimeout(() => o.callback('XXXX.DUMMY.TOKEN.' + Math.random().toString(36).slice(2)), 60); return 'w' + Math.random(); },
+  reset() {}, remove() {}
+};
+(function () { var m = /onload=([\\w$]+)/.exec(document.currentScript && document.currentScript.src || ''); if (m && window[m[1]]) window[m[1]](); })();
+"""
+
+
 @pytest.fixture(scope="session")
 def stk():
     s = stack.start()
@@ -50,14 +59,17 @@ def browser():
 class Page:
     """A browser tab pointed at the local stack, collecting JS errors."""
 
-    def __init__(self, browser, width=1366, height=860, theme="dark", intro=False):
+    def __init__(self, browser, width=1366, height=860, theme="dark", intro=False, gateway=None):
         mobile = width < 700
         self.ctx = browser.new_context(viewport={"width": width, "height": height}, is_mobile=mobile, has_touch=mobile,
                                        device_scale_factor=2 if mobile else 1)
         self.ctx.add_init_script(
             "try{sessionStorage.setItem('rq_backend','local');localStorage.setItem('rq_theme','%s');%s}catch(e){}"
-            % (theme, "" if intro else "sessionStorage.setItem('rq_intro','1');"))
+            % (theme, ("" if intro else "sessionStorage.setItem('rq_intro','1');")
+               + (f"sessionStorage.setItem('rq_gateway','{gateway}');" if gateway else "")))
         self.ctx.route("**/fonts.g*/**", lambda r: r.abort())
+        # offline stand-in for Cloudflare's Turnstile script (behaves like the public test key: always passes)
+        self.ctx.route("https://challenges.cloudflare.com/**", lambda r: r.fulfill(content_type="text/javascript", body=FAKE_TURNSTILE))
         self.page = self.ctx.new_page()
         self.errors: list[str] = []
         self.page.on("pageerror", lambda e: self.errors.append(f"JS ERROR {e}"))

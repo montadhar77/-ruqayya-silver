@@ -98,14 +98,16 @@ window.RQ_DEFAULTS = {
     co_submit: "تأكيد الطلب", co_sending: "جارٍ إرسال الطلب…",
     co_err_name: "يرجى كتابة الاسم", co_err_phone: "يرجى كتابة رقم هاتف صحيح", co_err_country: "يرجى كتابة اسم الدولة", co_err_city: "يرجى كتابة المدينة", co_err_addr: "يرجى كتابة العنوان الكامل للشحن",
     co_err_stock: "إحدى القطع نفدت كميتها، يرجى مراجعة السلة", co_err_gone: "إحدى القطع لم تعد متوفرة", co_err_failed: "تعذّر إرسال الطلب، حاول مرة أخرى",
+    co_err_busy: "وصلتنا طلبات كثيرة من هذا الجهاز أو الرقم، يرجى المحاولة بعد قليل أو مراسلتنا على واتساب", co_err_human: "تعذّر التحقق من الطلب، يرجى المحاولة مرة أخرى",
     ok_title: "تمّ استلام طلبك", ok_text: "شكراً لك يا {name}، سنتواصل معك قريباً لتأكيد الطلب.", ok_no: "رقم طلبك", ok_wa: "أرسل تفاصيل الطلب على واتساب", ok_continue: "متابعة التسوق",
     search_results: "{n} نتيجة", search_none: "لا توجد نتائج لـ «{q}»",
     lbl_address: "العنوان", map_link: "الموقع على الخريطة", lbl_hours: "أوقات الدوام", lbl_phone: "الهاتف", lbl_whatsapp: "واتساب", lbl_email: "البريد",
     form_name: "الاسم", form_phone: "رقم الهاتف", form_body: "رسالتك", form_send: "إرسال الرسالة", form_sending: "جارٍ الإرسال…",
-    form_ok: "وصلتنا رسالتك، شكراً لك", form_err: "تعذّر الإرسال، حاول مرة أخرى", form_need_name: "يرجى كتابة الاسم", form_need_body: "يرجى كتابة الرسالة",
+    form_ok: "وصلتنا رسالتك، شكراً لك", form_err: "تعذّر الإرسال، حاول مرة أخرى", form_busy: "أرسلت رسائل كثيرة، يرجى المحاولة بعد قليل", form_need_name: "يرجى كتابة الاسم", form_need_body: "يرجى كتابة الرسالة",
     footer_departments: "الأقسام", footer_contact: "تواصل", footer_shop: "المتجر",
     wa_hello: "السلام عليكم", wa_inquiry: "السلام عليكم، أودّ الاستفسار من {brand}", wa_product: "السلام عليكم، أريد طلب: {name} — {price}"
   },
+  notify: { orders: true, inquiries: true },
   contact: {
     phone: "",
     whatsapp: "",

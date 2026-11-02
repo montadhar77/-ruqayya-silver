@@ -59,3 +59,63 @@ scripts/test.sh e2e        # الموقع ولوحة التحكم في متصف�
 - الوسم `v1.0-pre-hardening` والفرع `checkpoint/v1.0-pre-hardening` = الموقع قبل أعمال التحصين (commit `e92c914`).
 - كل الأعمال الجديدة على الفرع `hardening`. الفرع `main` (المنشور) لم يُلمس.
 - الرجوع الكامل للموقع: `git checkout main && git reset --hard v1.0-pre-hardening` ثم النشر (بعد موافقة).
+
+## 5. الطلبات والمخزون (المرحلة 1)
+
+- `place_order` يحجز المخزون داخل نفس العملية التي تُنشئ الطلب: آخر قطعة لا تُباع مرتين مهما ضغط الزبائن معاً.
+- كل نموذج طلب يحمل مفتاحاً عشوائياً (`p_idempotency_key`)؛ إعادة الإرسال (ضغطتان، انقطاع إنترنت) تعيد **نفس** الطلب.
+- إلغاء الطلب من اللوحة يعيد قطعه للمخزون، وإرجاعه من الإلغاء يحجزها من جديد (ويرفض إن بيعت لغيره)، وحذف طلب محجوز يعيد قطعه.
+- سجل كل حركة: جدول `stock_movements` (للمدير فقط):
+  ```sql
+  select m.created_at, p.name, m.delta, m.reason, m.order_no from stock_movements m join products p on p.id = m.product_id order by m.created_at desc limit 50;
+  ```
+- المنتج بلا كمية (`stock` فارغ) = غير محدود ولا يُحجز.
+
+## 6. الحماية من السبام والإغراق (المرحلة 2)
+
+ثلاث طبقات:
+1. **Cloudflare Turnstile** (في الدوال `submit-order` و`submit-inquiry`): خفي للزبون الحقيقي، يظهر مربع فقط عند الاشتباه.
+2. **حقل مصيدة (honeypot)** مخفي في النموذجين: الروبوت الذي يملؤه يُرفض.
+3. **حدود في قاعدة البيانات** تسري على كل الطرق (حتى الاتصال المباشر بالـ API):
+
+| النوع | النطاق | الحد |
+|---|---|---|
+| طلب | نفس العنوان IP | ٦ / ١٠ دقائق، ٣٠ / يوم |
+| طلب | نفس رقم الهاتف | ٤ / ١٠ دقائق، ١٢ / يوم |
+| طلب | المتجر كله (قاطع طوارئ) | ٣٠٠ / ١٠ دقائق |
+| رسالة | نفس العنوان IP | ٥ / ١٠ دقائق، ٣٠ / يوم |
+| رسالة | الكل | ٢٠٠ / ١٠ دقائق |
+
+تُخزَّن بصمات (sha256) فقط، لا عناوين ولا أرقام. تعديل حد:
+```sql
+update private.rate_rules set max_count = 10 where kind = 'order' and scope = 'ip' and window_seconds = 600;
+```
+
+**التفعيل على الإنتاج (بانتظار موافقة):** إنشاء مفاتيح Turnstile في Cloudflare ← سرّ `TURNSTILE_SECRET` في دوال Supabase ← نشر الدوال ← وضع مفتاح الموقع في `config.js` (`turnstile`) وتغيير `gateway` إلى `"edge"`. الموقع يرجع تلقائياً للطريق القديم إن لم تكن الدوال منشورة، فترتيب النشر آمن.
+
+## 7. إشعارات تيليجرام (المرحلة 3)
+
+- الطلب/الرسالة يُرسَل فوراً من الدالة؛ وإن فشل (تيليجرام معطل، انقطاع) يعيد `notify-retry` المحاولة كل دقيقة (pg_cron) بتباعد ١، ٢، ٤… دقائق حتى ساعة، لمدة ٣ أيام. لا يضيع أي إشعار (قد يتكرر نادراً).
+- حالة الإشعار تظهر داخل الطلب في اللوحة. مفاتيح التشغيل/الإيقاف: «التواصل والمتجر ← إشعارات تيليجرام»، مع زر «إرسال رسالة تجريبية».
+- **الإعداد (مرة واحدة، بانتظار موافقة):**
+  1. أنشئ بوتاً عبر @BotFather واحفظ التوكن. أرسل أي رسالة للبوت، ثم افتح `https://api.telegram.org/bot<TOKEN>/getUpdates` لمعرفة `chat.id`.
+  2. أسرار الدوال (Supabase ← Edge Functions ← Secrets): `TELEGRAM_BOT_TOKEN`، `TELEGRAM_CHAT_ID`، `CRON_SECRET` (عشوائي: `openssl rand -hex 24`).
+  3. شغّل `supabase/scheduled/notify_cron.sql` في SQL Editor بعد استبدال `<PROJECT_REF>` و`<CRON_SECRET>`.
+- فحص المعلّق:
+  ```sql
+  select order_no, created_at, notify_attempts, notify_error from orders where notified_at is null order by created_at desc;
+  ```
+
+## 8. الدوال (Edge Functions)
+
+| الدالة | من يستدعيها | verify_jwt |
+|---|---|---|
+| `submit-order` | الموقع | false (تتحقق بنفسها: Turnstile + الأصل + حدود القاعدة) |
+| `submit-inquiry` | الموقع | false |
+| `notify-retry` | pg_cron (ترويسة `x-cron-secret`) | false |
+| `notify-test` | لوحة التحكم (المدير فقط، تتحقق عبر `am_i_admin`) | false |
+| `health` | مراقبة التوفر | false |
+
+الأسرار: `SB_SECRET_KEY` (مفتاح `sb_secret_…`؛ إن لم يوجد تُستخدم `SUPABASE_SERVICE_ROLE_KEY` التلقائية)، `SB_PUBLISHABLE_KEY`، `TURNSTILE_SECRET`، `ALLOWED_ORIGINS` (نطاقات الموقع مفصولة بفواصل)، `TELEGRAM_BOT_TOKEN`، `TELEGRAM_CHAT_ID`، `CRON_SECRET`.
+
+نشر (بعد موافقة): `supabase functions deploy submit-order --no-verify-jwt` (وكذا البقية) مع `--project-ref`.

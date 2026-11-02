@@ -24,3 +24,19 @@ insert into public.products (id, category_id, name, description, price, old_pric
   ('20000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000002', 'مسبحة يُسر أسود', 'يُسر', 120000, null, 1, false, true, 3, '{}'),
   ('20000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000002', 'قطعة متوقفة', '', 50000, null, null, false, false, 4, '{}'),
   ('20000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000002', 'مسبحة كهرب', 'كهرب', 90000, null, 0, false, true, 5, '{}');
+
+-- Ordinary tests place many orders from one phone; keep the real limits aside and relax them.
+-- Rate-limit tests call harness.real_limits(db) to restore the shipped values.
+do $$ begin
+  if to_regclass('private.rate_rules') is not null then
+    create table private.rate_rules_shipped as select * from private.rate_rules;
+    update private.rate_rules set max_count = 1000000;
+  end if;
+end $$;
+
+-- Tests age rows to simulate time passing; let alerts cover rows "older" than the migration.
+do $$ begin
+  if to_regclass('private.notify_state') is not null then
+    update private.notify_state set since = '2000-01-01';
+  end if;
+end $$;
