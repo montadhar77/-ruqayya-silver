@@ -18,5 +18,19 @@ Static site (no build step) · Supabase (Postgres + Auth + Storage, row level se
 
 ```
 python3 -m http.server 8000
-# open http://localhost:8000  and  http://localhost:8000/admin/
+# open http://localhost:8000  and  http://localhost:8000/admin/   (uses the production backend)
 ```
+
+Against a local, throw-away backend with test data (needs PostgreSQL + PostgREST, see docs/RUNBOOK.md):
+
+```
+scripts/local-db.sh start
+python3 tests/e2e/stack.py      # then open http://127.0.0.1:8765/?backend=local
+```
+
+## Tests
+
+`scripts/test.sh` runs the database tests (`tests/db`, every migration, RLS, checkout) and the
+browser tests (`tests/e2e`, storefront + dashboard in Chrome) against local services only.
+Database changes live in `supabase/migrations/` with rollbacks in `supabase/rollbacks/`.
+Operations guide (environments, staging, migrations, backups, incidents): `docs/RUNBOOK.md`.
