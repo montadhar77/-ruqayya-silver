@@ -34,7 +34,8 @@ def wait_success(page, timeout=15000):
     try:
         page.wait_for_selector(".success .no", timeout=timeout)
     except Exception:
-        raise AssertionError("no confirmation; toast: " + page.inner_text("#toast"))
+        vals = page.evaluate("() => Array.from(document.querySelectorAll('#coForm input,#coForm select')).map(e => e.name + '=' + e.value).join(' | ')") if page.query_selector("#coForm") else "-"
+        raise AssertionError("no confirmation; toast: " + page.inner_text("#toast") + " ; form: " + vals)
     return int(page.inner_text(".success .no").strip("#"))
 
 

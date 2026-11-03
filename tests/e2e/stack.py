@@ -239,7 +239,8 @@ class Gateway(BaseHTTPRequestHandler):
 
     # -- Edge Functions proxy (local Deno server)
     def functions(self, path: str):
-        hdrs = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length", "connection")}
+        # accept-encoding is not forwarded: Deno would gzip the reply and this proxy relays raw bytes
+        hdrs = {k: v for k, v in self.headers.items() if k.lower() not in ("host", "content-length", "connection", "accept-encoding")}
         hdrs["X-Forwarded-For"] = self.headers.get("X-Forwarded-For") or self.client_address[0]
         data = self.body()
         try:

@@ -895,7 +895,7 @@
     refresh();
     checkoutHuman = cfg.gateway === "edge" && cfg.turnstile ? humanCheck($("#coHuman"), "order") : null;
     $("#checkoutBg").classList.add("open"); lock(true);
-    setTimeout(() => $("#coName").focus(), 100);
+    setTimeout(() => { if (!f.contains(document.activeElement)) $("#coName").focus(); }, 100);   // never steal focus from a field already in use
     $("#coClose").addEventListener("click", closeCheckout);
     f.addEventListener("submit", (e) => submitOrder(e, country));
   }
