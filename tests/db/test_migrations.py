@@ -44,3 +44,22 @@ def test_rollback_with_data(mig):
         harness.run_sql_file(db, mig)
     finally:
         harness.drop_db(db)
+
+
+def test_fast_launch_order_0001_0006_0007_then_the_rest():
+    """The launch order in docs/PRODUCTION.md allows 0006/0007 before 0002-0005 (no outside accounts needed)."""
+    db = harness.create_db()
+    try:
+        harness.run_sql_file(db, harness.STUB)
+        order = ["0000", "0001", "0006", "0007", "0002", "0003", "0004", "0005", "0008"]
+        for n in order[:4]:
+            harness.run_sql_file(db, next(m for m in harness.migrations() if m.name.startswith(n)))
+        harness.run_sql_file(db, harness.FIXTURES)
+        with harness.session(db, "anon") as s:
+            assert s.one("select public.catalog_home()")["total"] == 4
+        for n in order[4:]:
+            harness.run_sql_file(db, next(m for m in harness.migrations() if m.name.startswith(n)))
+        with harness.session(db, "anon") as s:
+            assert s.one("select public.search_products('عقيق')")["total"] == 1
+    finally:
+        harness.drop_db(db)
