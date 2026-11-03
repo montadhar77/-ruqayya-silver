@@ -94,8 +94,12 @@ def test_catalogue_proxy_caches_and_survives_a_database_outage(pages, stk):
     s1, h1, b1 = get("/api/rpc/catalog_home?p_limit=60&ignored=1")
     assert s1 == 200 and h1["x-rq-proxy"] == "1" and h1["x-rq-cache"] in ("MISS", "HIT", "STALE")
     assert json.loads(b1)["total"] >= 1 and "max-age=2" in h1["cache-control"]      # (TTL shortened to 2 s for this test)
-    s2, h2, b2 = get("/api/rpc/catalog_home?p_limit=60")
-    assert s2 == 200 and h2["x-rq-cache"] == "HIT" and b2 == b1                 # second visitor: from the edge cache
+    for _ in range(10):                                                          # the copy is stored just after the reply
+        s2, h2, b2 = get("/api/rpc/catalog_home?p_limit=60")
+        if h2.get("x-rq-cache") == "HIT":
+            break
+        time.sleep(0.1)
+    assert s2 == 200 and h2["x-rq-cache"] == "HIT" and b2 == b1                 # next visitors: from the edge cache
     # database down after the entry went stale: the last good catalogue is still served at once
     time.sleep(2.5)
     procs = stk["procs"]
