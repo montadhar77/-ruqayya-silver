@@ -30,5 +30,9 @@ jobs:
         run: scripts/test.sh db
       - name: Edge Function tests
         run: scripts/test.sh functions
-      - name: End-to-end tests (storefront + dashboard in Chrome)
+      - name: Production build for Cloudflare Pages (public files only, no secrets)
+        run: node scripts/build.mjs
+      - name: Wrangler (Cloudflare's local runtime, for the Pages build tests)
+        run: npm install -g wrangler@3.114.17 >/dev/null && echo "RQ_WRANGLER=$(command -v wrangler)" >> "$GITHUB_ENV"
+      - name: End-to-end tests (storefront + dashboard in Chrome, Pages build with wrangler)
         run: scripts/test.sh e2e
