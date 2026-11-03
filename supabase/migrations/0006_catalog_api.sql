@@ -35,7 +35,7 @@ create extension if not exists pg_trgm with schema extensions;
 -- ---------- normalisation ----------
 -- COST tells the planner these are expensive per row (regex + translate), so it prefers the trigram indexes
 create function private.ar_norm(t text)
- returns text language sql immutable parallel safe cost 200
+ returns text language sql immutable parallel safe cost 200 set search_path to ''
 as $function$
   select btrim(regexp_replace(lower(translate(
            regexp_replace(coalesce(t, ''), '[ً-ٰٟـ]', '', 'g'),
@@ -45,20 +45,20 @@ $function$;
 
 -- searchable text of a product (name first, so a name hit ranks highest)
 create function private.product_doc(p_name text, p_stone text, p_metal text, p_badge text, p_description text)
- returns text language sql immutable parallel safe cost 500
+ returns text language sql immutable parallel safe cost 500 set search_path to ''
 as $function$
   select private.ar_norm(concat_ws(' ', p_name, p_stone, p_metal, p_badge, p_description))
 $function$;
 
 create function private.order_doc(p_no bigint, p_name text, p_phone text, p_city text, p_country text)
- returns text language sql immutable parallel safe cost 500
+ returns text language sql immutable parallel safe cost 500 set search_path to ''
 as $function$
   select private.ar_norm(concat_ws(' ', p_no::text, p_name, regexp_replace(private.ar_norm(p_phone), '\D', '', 'g'), p_city, p_country))
 $function$;
 
 -- LIKE pattern for "contains", with the user's % and _ taken literally
 create function private.like_any(q text)
- returns text language sql immutable parallel safe
+ returns text language sql immutable parallel safe set search_path to ''
 as $function$
   select '%' || replace(replace(replace(coalesce(q, ''), '\', '\\'), '%', '\%'), '_', '\_') || '%'
 $function$;
@@ -142,11 +142,11 @@ begin
     where p.active and private.product_doc(p.name, p.stone, p.metal, p.badge, p.description) like v_pat
     union
     select p.id from public.products p where p.active and p.category_id in (select id from cats)),
+  -- ranking: name matches first, then how closely the name matches, then the shop's own order
   hits as (
-    select p.*,
-           private.ar_norm(p.name) like v_pat as name_hit,
-           extensions.word_similarity(v_s, private.product_doc(p.name, p.stone, p.metal, p.badge, p.description)) as score
-    from public.products p join matched m on m.id = p.id),
+    select p.*, n.nn like v_pat as name_hit, extensions.word_similarity(v_s, n.nn) as score
+    from public.products p join matched m on m.id = p.id
+    cross join lateral (select private.ar_norm(p.name) as nn) n),
   page as (
     select h.*, row_number() over (order by h.name_hit desc, h.score desc, h.sort, h.created_at desc, h.id) as rn
     from hits h

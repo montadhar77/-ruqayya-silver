@@ -54,12 +54,12 @@ as $function$
 $function$;
 
 create function private.inquiry_payload(i public.inquiries)
- returns jsonb language sql immutable
+ returns jsonb language sql immutable set search_path to ''
 as $function$ select jsonb_build_object('name', i.name, 'phone', i.phone, 'body', i.body) $function$;
 
 -- wait before retrying: 1, 2, 4, 8 ... minutes, at most one hour
 create function private.notify_due(p_claimed timestamp with time zone, p_attempts integer)
- returns boolean language sql stable
+ returns boolean language sql stable set search_path to ''
 as $function$
   select p_claimed is null or p_claimed < now() - make_interval(mins => least(power(2, greatest(p_attempts - 1, 0))::integer, 60))
 $function$;
