@@ -83,7 +83,7 @@ window.RQ_DEFAULTS = {
     nav_home: "الرئيسية", nav_shop: "المتجر", nav_departments: "الأقسام", nav_contact: "تواصل معنا",
     menu_title: "القائمة", menu_all: "كل المنتجات", search_placeholder: "ابحث عن خاتم، مسبحة، عطر…", intro_skip: "تخطّي",
     soon: "قريباً", filter_all: "الكل", collection_empty: "ستُعرض المنتجات هنا فور إضافتها من لوحة التحكم.", collection_more: "عرض كل المنتجات ({n})", featured_add: "أضف للسلة",
-    shop_title: "كل المنتجات", shop_count: "{n} منتج", sort_label: "ترتيب", sort_default: "المقترح", sort_new: "الأحدث", sort_low: "السعر: من الأقل", sort_high: "السعر: من الأعلى",
+    shop_title: "كل المنتجات", shop_count: "{n} منتج", shop_more: "عرض المزيد ({n})", sort_label: "ترتيب", sort_default: "المقترح", sort_new: "الأحدث", sort_low: "السعر: من الأقل", sort_high: "السعر: من الأعلى",
     empty_category: "لا توجد منتجات في هذا القسم حالياً — قريباً بإذن الله.", out_of_stock: "نفدت الكمية",
     spec_category: "القسم", spec_metal: "المعدن", spec_stone: "الحجر", spec_weight: "الوزن", spec_size: "المقاس", spec_stock: "التوفر", in_stock: "متوفر", in_stock_n: "متوفر ({n})",
     qty: "الكمية", add_to_cart: "أضف إلى السلة", buy_now: "اطلب الآن", ask_whatsapp: "اسأل عنه على واتساب", out_note: "نفدت الكمية حالياً — راسلنا ليصلك خبر توفّرها.",

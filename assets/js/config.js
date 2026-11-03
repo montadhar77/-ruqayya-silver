@@ -48,7 +48,16 @@
   if (!ENVS[name] || !ENVS[name].url) name = "production";
   var c = ENVS[name], out = { env: name };
   for (var k in c) out[k] = c[k];
+  // Cloudflare Pages: read-only catalogue calls go through the site's own cached proxy
+  // (functions/api/rpc). Only when this host's default backend is the one in use, since
+  // the proxy is configured per deployment (production / preview).
+  var host = location.hostname, onPages = /\.pages\.dev$/.test(host) || PRODUCTION_HOSTS.indexOf(host) >= 0;
+  var hostDefault = /\.pages\.dev$/.test(host) && PRODUCTION_HOSTS.indexOf(host) < 0 ? "staging" : "production";
+  out.api = onPages && name === hostDefault ? "/api/rpc" : "";
   // automated tests on the local stack exercise both order paths
-  if (name === "local") try { var g = sessionStorage.getItem("rq_gateway"); if (g === "rpc" || g === "edge") out.gateway = g; } catch (e) { /* no storage */ }
+  if (name === "local") try {
+    var g = sessionStorage.getItem("rq_gateway"); if (g === "rpc" || g === "edge") out.gateway = g;
+    var a = sessionStorage.getItem("rq_api"); if (a) out.api = a;          // local stand-in of the Cloudflare proxy
+  } catch (e) { /* no storage */ }
   window.RQ_CONFIG = out;
 })();

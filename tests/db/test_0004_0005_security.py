@@ -44,7 +44,10 @@ def test_no_function_is_open_to_anon_by_accident(db):
         select n.nspname || '.' || p.proname from pg_proc p join pg_namespace n on n.oid = p.pronamespace
         where n.nspname in ('public', 'private') and has_function_privilege('anon', p.oid, 'EXECUTE') order by 1""")
     # am_i_admin: open to PUBLIC on the live project already; answers false for visitors
-    allowed = {"public.place_order", "public.log_client_error", "private.is_admin", "public.am_i_admin", "public.touch_updated_at"}
+    allowed = {"public.place_order", "public.log_client_error", "private.is_admin", "public.am_i_admin", "public.touch_updated_at",
+               # 0006: read-only storefront catalogue (row level security still applies) and pure text helpers
+               "public.catalog_home", "public.list_products", "public.search_products", "public.product_page", "public.products_by_ids",
+               "private.ar_norm", "private.product_doc", "private.order_doc", "private.like_any"}
     assert {r[0] for r in rows} <= allowed, {r[0] for r in rows} - allowed
 
 

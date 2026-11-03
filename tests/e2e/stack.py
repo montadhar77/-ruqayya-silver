@@ -368,6 +368,10 @@ class Gateway(BaseHTTPRequestHandler):
             f.parent.mkdir(parents=True, exist_ok=True)
             f.write_bytes(data)
             f.with_name(f.name + ".type").write_text(ctype or "application/octet-stream")
+            # like Supabase Storage, every file is also a row in storage.objects
+            harness.admin_sql(STACK["db"], """insert into storage.objects (bucket_id, name, metadata) values (%s, %s, jsonb_build_object('size', %s::bigint, 'mimetype', %s::text))
+                on conflict (bucket_id, name) do update set metadata = excluded.metadata, updated_at = now()""",
+                              (parts[1], "/".join(parts[2:]), len(data), ctype))
             return self.reply(200, {"Key": "/".join(parts[1:]), "Id": str(uuid.uuid4())})
         if parts[0] == "object" and self.command == "DELETE" and len(parts) == 2:
             if not is_admin:
@@ -378,6 +382,7 @@ class Gateway(BaseHTTPRequestHandler):
                 if f.is_file():
                     f.unlink()
                     removed.append({"name": pfx, "bucket_id": parts[1]})
+                harness.admin_sql(STACK["db"], "delete from storage.objects where bucket_id = %s and name = %s", (parts[1], pfx))
             return self.reply(200, removed)
         if parts[:2] == ["object", "list"] and self.command == "POST":
             body = json.loads(self.body() or b"{}")
@@ -388,12 +393,41 @@ class Gateway(BaseHTTPRequestHandler):
         return self.reply(404, {"error": "unsupported storage endpoint in local stack"})
 
 
+# Stand-in for the Cloudflare Pages function functions/api/rpc/[fn].js (same allow-list and
+# response marker) so browser tests also exercise the cached catalogue path.
+PROXY_FNS = {"catalog_home", "list_products", "search_products", "product_page"}
+PROXY_LOG: list[str] = []
+
+
 class Quiet(SimpleHTTPRequestHandler):
     def __init__(self, *a, **k):
         super().__init__(*a, directory=str(ROOT), **k)
 
     def log_message(self, *a):
         pass
+
+    def do_GET(self):
+        if self.path.startswith("/api/rpc/"):
+            return self.proxy_rpc()
+        return super().do_GET()
+
+    def proxy_rpc(self):
+        fn, _, qs = self.path[len("/api/rpc/"):].partition("?")
+        if fn not in PROXY_FNS:
+            status, body, ctype = 404, b'{"message":"not_found"}', "application/json"
+        else:
+            c = http.client.HTTPConnection("127.0.0.1", GW_PORT, timeout=30)
+            c.request("GET", f"/rest/v1/rpc/{fn}" + (f"?{qs}" if qs else ""), headers={"apikey": PUBLISHABLE, "Accept": "application/json"})
+            r = c.getresponse()
+            status, body, ctype = r.status, r.read(), r.getheader("Content-Type") or "application/json"
+            c.close()
+            PROXY_LOG.append(fn)
+        self.send_response(status)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("x-rq-proxy", "1")
+        self.end_headers()
+        self.wfile.write(body)
 
     def end_headers(self):
         self.send_header("Cache-Control", "no-store")
