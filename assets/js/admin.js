@@ -11,6 +11,7 @@
   });
   const SITE = new URL("../", location.href).href;
   const root = document.getElementById("root");
+  if (window.top !== window.self) { try { window.top.location = window.location.href; } catch (e) { document.body.innerHTML = ""; } return; }
 
   /* ---------- helpers ---------- */
   const $ = (s, r = document) => r.querySelector(s);
@@ -22,6 +23,14 @@
   const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
   const when = (d) => { try { return new Date(d).toLocaleString("ar-IQ", { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return d; } };
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  /* Sign-in by user name: "name" means the account name@admin.ruqaya.invalid (a reserved
+     domain that can never receive mail, so no password-reset link can be sent anywhere).
+     An e-mail address typed in full still works. */
+  const ADMIN_DOMAIN = "admin.ruqaya.invalid";
+  const loginEmail = (v) => { v = toLatin(String(v || "")).trim().toLowerCase(); return v.includes("@") ? v : `${v}@${ADMIN_DOMAIN}`; };
+  // same Arabic rules as private.ar_norm() in the database (أ/إ/آ → ا, ة → ه, ى → ي, no harakat…)
+  const arNorm = (t) => toLatin(String(t ?? "")).replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و").replace(/ئ/g, "ي").toLowerCase().replace(/\s+/g, " ").trim();
   const waNumber = (p) => {
     let d = toLatin(p).replace(/\D/g, "");
     if (!d) return "";
@@ -41,6 +50,7 @@
     if (/duplicate key.*slug/i.test(m)) return "الرابط المختصر مستخدم لقسم آخر";
     if (/Payload too large|exceeded the maximum/i.test(m)) return "الملف أكبر من الحد المسموح (٥٠ ميغابايت)";
     if (/Failed to fetch|NetworkError/i.test(m)) return "تعذّر الاتصال بالإنترنت";
+    if (/out_of_stock_on_restore/.test(m)) return "لا يمكن إعادة هذا الطلب: قطعه بيعت لطلب آخر ولم يعد المخزون يكفي. عدّل المخزون أولاً.";
     return m || "حدث خطأ غير متوقع";
   }
   const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
@@ -85,45 +95,122 @@
   };
 
   /* ---------- state ---------- */
-  const state = { user: null, raw: {}, s: clone(DEF), cats: [], prods: [], orders: [], inq: [], page: "", dirty: false, draft: null, pf: { q: "", cat: "", st: "" }, of: { st: "", q: "" }, counts: { orders: 0, inq: 0 } };
+  const state = { user: null, raw: {}, s: clone(DEF), cats: [], prods: [], orders: [], recent: [], inq: [], page: "", dirty: false, draft: null, pf: { q: "", cat: "", st: "", n: 60 }, of: { st: "", q: "" }, counts: { orders: 0, inq: 0 },
+    stats: null, oList: { total: 0, counts: null }, legacy: false, inqMore: false };
   const STATUS = { new: "جديد", confirmed: "مؤكد", shipped: "قيد التوصيل", delivered: "تم التسليم", cancelled: "ملغي" };
 
   /* ---------- data ---------- */
   async function q(promise) { const { data, error } = await promise; if (error) throw error; return data; }
   async function loadSettings() { const d = await q(db.from("settings").select("data").eq("id", 1).maybeSingle()); state.raw = (d && d.data) || {}; state.s = window.rqMerge(DEF, state.raw); }
   async function loadCats() { state.cats = await q(db.from("categories").select("*").order("sort").order("created_at")); }
-  async function loadProds() { state.prods = await q(db.from("products").select("*").order("sort").order("created_at", { ascending: false })); }
-  async function loadOrders() { state.orders = await q(db.from("orders").select("*").order("created_at", { ascending: false }).limit(500)); }
-  async function loadInq() { state.inq = await q(db.from("inquiries").select("*").order("created_at", { ascending: false }).limit(500)); }
-  async function loadAll() { await Promise.all([loadSettings(), loadCats(), loadProds(), loadOrders(), loadInq()]); updatePills(); }
+  /* Products: the list needs only these columns (the editor loads the full row). Fetched
+     1000 at a time, because the database API returns at most 1000 rows per request. */
+  const LEAN = "id,category_id,name,price,old_price,images,badge,metal,stone,stock,featured,active,sort,created_at,updated_at";
+  let leanCols = LEAN + ",subcategory_id";
+  async function loadProds() {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      let r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      if (r.error && leanCols !== LEAN && /subcategory_id/.test(r.error.message || "")) {   // database before 0009
+        leanCols = LEAN;
+        r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      }
+      if (r.error) throw r.error;
+      const part = r.data || [];
+      out.push(...part);
+      if (part.length < 1000) break;
+    }
+    state.prods = out;
+  }
+  async function fullProduct(p) { return "description" in p ? p : q(db.from("products").select("*").eq("id", p.id).single()); }
+  const missingFn = (e) => e && (e.code === "PGRST202" || e.code === "42883" || /Could not find the function/i.test(e.message || ""));
+  /* Orders: one page at a time from admin_orders() (filter, search and per-status counts on
+     the server). Before that database function exists: the previous 500 most recent. */
+  const OPAGE = 50;
+  async function fetchOrders(offset = 0, f = state.of) {
+    const { data, error } = await db.rpc("admin_orders", { p_status: f.st || null, p_q: f.q.trim() || null, p_limit: OPAGE, p_offset: offset });
+    if (error) { if (missingFn(error)) { state.legacy = true; return null; } throw error; }
+    return data;
+  }
+  async function loadOrders() {
+    if (!state.legacy) {
+      const d = await fetchOrders(0);
+      if (d) { state.orders = d.items; state.oList = { total: d.total, counts: d.counts }; if (!state.of.st && !state.of.q.trim()) state.recent = d.items.slice(0, 6); return; }
+    }
+    state.orders = await q(db.from("orders").select("*").order("created_at", { ascending: false }).limit(500));
+    state.recent = state.orders.slice(0, 6);
+  }
+  async function loadRecent() {
+    if (state.legacy) return loadOrders();
+    const d = await fetchOrders(0, { st: "", q: "" });
+    if (d) state.recent = d.items.slice(0, 6);
+  }
+  async function loadStats() {
+    if (state.legacy) { state.stats = null; return; }
+    const { data, error } = await db.rpc("admin_stats");
+    if (error) { if (missingFn(error)) state.stats = null; else throw error; return; }
+    state.stats = data;
+  }
+  const IPAGE = 200;
+  async function loadInq(more = false) {
+    const from = more ? state.inq.length : 0;
+    const part = await q(db.from("inquiries").select("*").order("created_at", { ascending: false }).range(from, from + IPAGE - 1));
+    state.inq = more ? state.inq.concat(part) : part;
+    state.inqMore = part.length === IPAGE;
+  }
+  async function loadAll() { await Promise.all([loadSettings(), loadCats(), loadProds(), loadOrders(), loadInq()]); await loadStats().catch(() => {}); updatePills(); }
   const catName = (id) => (state.cats.find((c) => c.id === id) || {}).name || "بدون قسم";
+  // departments and their sub-departments (0009); older databases have no parent_id
+  const subsOK = () => state.cats.length > 0 && "parent_id" in state.cats[0];
+  const topCats = () => state.cats.filter((c) => !c.parent_id);
+  const subsOf = (id) => state.cats.filter((c) => c.parent_id === id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
   const iconOf = (p) => (state.cats.find((c) => c.id === p.category_id) || {}).icon || "star";
 
   /* ---------- uploads ---------- */
-  async function compress(file, max = 1800, quality = 0.86) {
+  /* Photos are re-encoded in the browser (WebP, JPEG where WebP is unavailable), which also
+     drops hidden metadata such as the phone's GPS location. Stored in three sizes:
+     <name>.v.webp (≤1800 px), <name>.v-1080.webp and <name>.v-480.webp; the site picks one with srcset. */
+  const SIZES = [[1800, ""], [1080, "-1080"], [480, "-480"]];
+  async function encodeSizes(file, quality = 0.86) {
     let bmp;
     try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { bmp = await createImageBitmap(file); }
-    const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
-    const c = document.createElement("canvas"); c.width = Math.round(bmp.width * k); c.height = Math.round(bmp.height * k);
-    c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
-    const blob = (t, qy) => new Promise((r) => c.toBlob(r, t, qy));
-    let b = await blob("image/webp", quality);
-    if (!b || b.type !== "image/webp") b = await blob("image/jpeg", quality);
-    return b && b.size < file.size ? b : file;
+    let type = null;
+    const out = [];
+    for (const [max, suffix] of SIZES) {
+      const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = (t, qy) => new Promise((r) => c.toBlob(r, t, qy));
+      let b = null;
+      if (type !== "image/jpeg") { b = await blob("image/webp", quality); if (b && b.type === "image/webp") type = "image/webp"; else b = null; }
+      if (!b) { b = await blob("image/jpeg", quality); type = "image/jpeg"; }
+      if (!b) return null;
+      out.push({ suffix, blob: b });
+    }
+    if (bmp.close) bmp.close();
+    return { type, files: out };
   }
   async function upload(file, folder) {
     const isImg = /^image\//.test(file.type), isVid = /^video\//.test(file.type);
     if (!isImg && !isVid) throw new Error("نوع الملف غير مدعوم — اختر صورة أو فيديو");
     if (file.size > 50 * 1024 * 1024) throw new Error("الملف أكبر من ٥٠ ميغابايت — صغّر حجمه ثم أعد المحاولة");
-    let body = file;
     const keepAlpha = folder === "brand" && /png|svg|gif/.test(file.type);
-    if (isImg && !/svg|gif/.test(file.type) && !keepAlpha) body = await compress(file);
-    const type = body.type || file.type;
+    const name = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const put = async (path, body, type) => {
+      const { error } = await db.storage.from(cfg.bucket).upload(path, body, { contentType: type, cacheControl: "31536000", upsert: false });
+      if (error) throw error;
+    };
+    const sized = isImg && !/svg|gif/.test(file.type) && !keepAlpha ? await encodeSizes(file).catch(() => null) : null;
+    if (sized) {
+      const ext = sized.type === "image/webp" ? "webp" : "jpg";
+      // smaller sizes first: the main address is only returned once every size exists
+      for (const f of sized.files.slice().reverse()) await put(`${name}.v${f.suffix}.${ext}`, f.blob, sized.type);
+      return db.storage.from(cfg.bucket).getPublicUrl(`${name}.v.${ext}`).data.publicUrl;
+    }
+    const type = file.type;
     const ext = { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" }[type] || (file.name.split(".").pop() || "bin").toLowerCase();
-    const path = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
-    const { error } = await db.storage.from(cfg.bucket).upload(path, body, { contentType: type, cacheControl: "31536000", upsert: false });
-    if (error) throw error;
-    return db.storage.from(cfg.bucket).getPublicUrl(path).data.publicUrl;
+    await put(`${name}.${ext}`, file, type);
+    return db.storage.from(cfg.bucket).getPublicUrl(`${name}.${ext}`).data.publicUrl;
   }
 
   /* ---------- modal helpers ---------- */
@@ -157,7 +244,7 @@
         <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
         <p class="sub">لوحة التحكم</p>
         ${msg ? `<div class="notice" style="font-size:14px">${esc(msg)}</div>` : ""}
-        <div class="field"><label for="lEmail">البريد الإلكتروني</label><input id="lEmail" type="email" dir="ltr" autocomplete="username" required placeholder="name@example.com"></div>
+        <div class="field"><label for="lEmail">اسم المستخدم</label><input id="lEmail" type="text" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
         <div class="field"><label for="lPass">كلمة المرور</label>
           <div class="pw-wrap"><input id="lPass" type="password" dir="ltr" autocomplete="current-password" required><button class="pw-eye" type="button" id="pwEye" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
         <button class="btn block login-btn" type="submit">تسجيل الدخول ${I.left}</button>
@@ -167,11 +254,67 @@
     $("#loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = $("button[type=submit]", e.target); btn.disabled = true; btn.textContent = "جارٍ الدخول…";
-      const { error } = await db.auth.signInWithPassword({ email: $("#lEmail").value.trim(), password: $("#lPass").value });
+      const { error } = await db.auth.signInWithPassword({ email: loginEmail($("#lEmail").value), password: $("#lPass").value });
       if (error) { btn.disabled = false; btn.innerHTML = `تسجيل الدخول ${I.left}`; toast(errMsg(error), true); return; }
       start();
     });
   }
+
+  /* =======================================================================
+     TWO-STEP VERIFICATION (TOTP: Google / Microsoft Authenticator…)
+     ======================================================================= */
+  function renderMfa(mode, f) {
+    root.innerHTML = `<div class="login"><div class="login-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <form class="login-card" id="mfaForm" novalidate>
+        <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
+        <p class="sub">${mode === "enroll" ? "تفعيل التحقق بخطوتين" : "التحقق بخطوتين"}</p>
+        ${mode === "enroll" ? `<p class="mfa-help">لحماية لوحة التحكم، افتح تطبيق المصادقة على هاتفك (Google Authenticator أو Microsoft Authenticator)، امسح الرمز، ثم اكتب الرقم المكوّن من ٦ خانات. يُطلب هذا الرقم عند كل دخول.</p>
+          <div class="mfa-qr"><img src="${esc(f.qr)}" alt="رمز QR لتفعيل التحقق بخطوتين" width="184" height="184"></div>
+          <p class="mfa-help">لا تستطيع المسح؟ أدخل هذا المفتاح يدوياً:<br><code dir="ltr" id="mfaSecret">${esc(f.secret)}</code></p>`
+          : `<p class="mfa-help">اكتب الرقم المكوّن من ٦ خانات الظاهر الآن في تطبيق المصادقة على هاتفك.</p>`}
+        <div class="field"><label for="mfaCode">رمز التحقق</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" required placeholder="••••••"></div>
+        <button class="btn block login-btn" type="submit">تأكيد ${I.left}</button>
+        <p class="login-foot"><button type="button" class="link-btn" id="mfaOut">تسجيل الخروج</button><span>اتصال آمن ومشفّر</span></p>
+      </form></div>`;
+    setTimeout(() => $("#mfaCode") && $("#mfaCode").focus(), 50);
+    $("#mfaOut").onclick = async () => { manualOut = true; await db.auth.signOut(); renderLogin(); };
+    $("#mfaForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = toLatin($("#mfaCode").value).replace(/\D/g, "");
+      if (code.length !== 6) { toast("اكتب الرمز المكوّن من ٦ أرقام", true); return; }
+      const btn = $("button[type=submit]", e.target); btn.disabled = true;
+      const { error } = await db.auth.mfa.challengeAndVerify({ factorId: f.factorId, code });
+      btn.disabled = false;
+      if (error) { toast("الرمز غير صحيح أو انتهت صلاحيته، اكتب الرقم الجديد", true); $("#mfaCode").select(); return; }
+      if (mode === "enroll") toast("تم تفعيل التحقق بخطوتين ✓");
+      start();
+    });
+  }
+  // true when the session may open the dashboard now; otherwise shows the code / enrolment screen
+  async function mfaReady() {
+    const { data: gate, error } = await db.rpc("admin_gate");
+    if (error || !gate || !gate.admin || !gate.mfa_required || gate.aal === "aal2") return true;   // older database, non-admin, or done
+    const { data: fl, error: e1 } = await db.auth.mfa.listFactors();
+    if (e1) { renderLogin("تعذّر التحقق من الحساب: " + errMsg(e1)); return false; }
+    const verified = (fl.all || []).filter((x) => x.factor_type === "totp" && x.status === "verified");
+    if (verified.length) { renderMfa("verify", { factorId: verified[0].id }); return false; }
+    for (const x of (fl.all || []).filter((x) => x.status !== "verified")) await db.auth.mfa.unenroll({ factorId: x.id });   // half-finished set-ups
+    const { data: en, error: e2 } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName: "لوحة معرض رقية" });
+    if (e2) { renderLogin("تعذّر بدء التحقق بخطوتين: " + errMsg(e2)); return false; }
+    renderMfa("enroll", { factorId: en.id, qr: en.totp.qr_code, secret: en.totp.secret });
+    return false;
+  }
+
+  /* ---------- automatic sign-out after 30 minutes without activity ---------- */
+  const IDLE_MS = Math.min(Number((() => { try { return sessionStorage.getItem("rq_idle_ms"); } catch (e) { return 0; } })()) || 30 * 60e3, 30 * 60e3);
+  let lastActive = Date.now(), manualOut = false;
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true, capture: true }));
+  setInterval(async () => {
+    if (!state.user || Date.now() - lastActive < IDLE_MS) return;
+    state.user = null; clearInterval(poll); manualOut = true;
+    await db.auth.signOut();
+    renderLogin("خرجت تلقائياً بعد فترة بلا نشاط، حمايةً للوحة. سجّل الدخول من جديد.");
+  }, Math.min(15e3, IDLE_MS / 2));
 
   /* =======================================================================
      SHELL + ROUTER
@@ -199,14 +342,14 @@
     $("#menuBtn").onclick = () => { side.classList.add("open"); sbg.classList.add("open"); };
     sbg.onclick = () => { side.classList.remove("open"); sbg.classList.remove("open"); };
     $$("[data-nav]").forEach((a) => a.addEventListener("click", () => { side.classList.remove("open"); sbg.classList.remove("open"); }));
-    $("#logout").onclick = async () => { if (state.dirty && !(await confirmBox("لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟", "خروج"))) return; state.dirty = false; await db.auth.signOut(); renderLogin(); };
+    $("#logout").onclick = async () => { if (state.dirty && !(await confirmBox("لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟", "خروج"))) return; state.dirty = false; manualOut = true; state.user = null; clearInterval(poll); await db.auth.signOut(); renderLogin(); };
     $("#saveBtn").onclick = saveSettings;
     $("#discard").onclick = () => { state.dirty = false; showSave(false); route(true); };
     updatePills();
   }
   function updatePills() {
-    state.counts.orders = state.orders.filter((o) => o.status === "new").length;
-    state.counts.inq = state.inq.filter((m) => !m.is_read).length;
+    state.counts.orders = state.stats ? state.stats.orders_new : state.orders.filter((o) => o.status === "new").length;
+    state.counts.inq = state.stats ? state.stats.inquiries_unread : state.inq.filter((m) => !m.is_read).length;
     $$("[data-pill]").forEach((p) => { const n = state.counts[p.dataset.pill]; p.textContent = num(n); p.hidden = !n; });
   }
   let lastHash = "";
@@ -235,9 +378,10 @@
      ======================================================================= */
   function pageDashboard() {
     const s = state.s;
-    const now = new Date(), month = state.orders.filter((o) => o.status !== "cancelled" && new Date(o.created_at).getMonth() === now.getMonth() && new Date(o.created_at).getFullYear() === now.getFullYear());
-    const sales = month.reduce((a, o) => a + (o.total || 0), 0);
-    const noPhotos = state.prods.filter((p) => !(p.images || []).length);
+    const now = new Date(), st = state.stats;
+    const sales = st ? st.sales_month : state.orders.filter((o) => o.status !== "cancelled" && new Date(o.created_at).getMonth() === now.getMonth() && new Date(o.created_at).getFullYear() === now.getFullYear()).reduce((a, o) => a + (o.total || 0), 0);
+    const noPhotos = { length: st ? st.products_no_photo : state.prods.filter((p) => !(p.images || []).length).length };
+    const active = st ? st.products_active : state.prods.filter((p) => p.active).length, allProds = st ? st.products_total : state.prods.length;
     const todo = [
       !s.contact.whatsapp && ["أضف رقم واتساب ليصلك تفاصيل كل طلب ويستطيع الزبائن مراسلتك", "#/contact"],
       !s.intro.video && ["ارفع فيديو الافتتاحية (ظهور الشعار)", "#/identity"],
@@ -248,12 +392,12 @@
       <div class="stats">
         <a class="stat" href="#/orders"><div class="ic">${I.receipt}</div><div><b>${num(state.counts.orders)}</b><span>طلبات جديدة</span></div></a>
         <div class="stat"><div class="ic">${I.sparkle}</div><div><b>${num(sales)}</b><span>مبيعات هذا الشهر (${esc(s.shop.currency)})</span></div></div>
-        <a class="stat" href="#/products"><div class="ic">${I.box}</div><div><b>${num(state.prods.filter((p) => p.active).length)}</b><span>منتج معروض من ${num(state.prods.length)}</span></div></a>
+        <a class="stat" href="#/products"><div class="ic">${I.box}</div><div><b>${num(active)}</b><span>منتج معروض من ${num(allProds)}</span></div></a>
         <a class="stat" href="#/inquiries"><div class="ic">${I.mail}</div><div><b>${num(state.counts.inq)}</b><span>رسائل غير مقروءة</span></div></a>
       </div>
       ${todo.length ? `<div class="card"><h2>خطوات لإكمال الموقع</h2><div class="rows">${todo.map(([t, h]) => `<a class="row click" href="${h}" style="grid-template-columns:auto 1fr auto;text-decoration:none"><span class="status s-new">مطلوب</span><span>${t}</span><span>${I.left}</span></a>`).join("")}</div></div>` : ""}
       <div class="card"><div class="card-h"><h2>آخر الطلبات</h2><a class="btn ghost sm" href="#/orders">كل الطلبات</a></div>
-        ${state.orders.length ? `<div class="rows">${state.orders.slice(0, 6).map(orderRow).join("")}</div>` : `<div class="empty">لا توجد طلبات بعد — ستظهر هنا فور وصولها.</div>`}</div>
+        ${state.recent.length ? `<div class="rows">${state.recent.map(orderRow).join("")}</div>` : `<div class="empty">لا توجد طلبات بعد — ستظهر هنا فور وصولها.</div>`}</div>
       <div class="card"><h2>روابط سريعة</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
         <a class="btn light" href="#/home">${I.home} تعديل الصفحة الرئيسية</a><a class="btn light" href="#/texts">${I.type} نصوص الموقع</a><a class="btn light" href="#/identity">${I.palette} الشعار والألوان</a>
         <a class="btn light" href="#/categories">${I.folder} الأقسام</a><a class="btn light" href="${SITE}" target="_blank" rel="noopener">${I.eye} عرض الموقع</a></div></div>`;
@@ -263,42 +407,45 @@
   /* =======================================================================
      PRODUCTS
      ======================================================================= */
+  const small = (u) => String(u || "").replace(/\.v\.(webp|jpg)$/i, ".v-480.$1");
   function thumb(p) {
     const img = (p.images || [])[0];
-    return img ? `<img src="${esc(img)}" alt="" loading="lazy">` : A.productArt(p, iconOf(p));
+    return img ? `<img src="${esc(small(img))}" alt="" loading="lazy">` : A.productArt(p, iconOf(p));
   }
   function pageProducts() {
     const f = state.pf;
     page().innerHTML = `<div class="page-title"><div><h1>المنتجات</h1><p>${num(state.prods.length)} منتج — اضغط على أي منتج لتعديله</p></div><button class="btn" type="button" id="addProd">${I.plus} إضافة منتج</button></div>
       <div class="toolbar">
         <input class="input" type="search" id="pSearch" placeholder="ابحث بالاسم أو الحجر…" value="${esc(f.q)}" aria-label="بحث">
-        <select class="input" id="pCat" aria-label="القسم"><option value="">كل الأقسام</option>${state.cats.map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}<option value="none" ${f.cat === "none" ? "selected" : ""}>بدون قسم</option></select>
+        <select class="input" id="pCat" aria-label="القسم"><option value="">كل الأقسام</option>${topCats().map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>` + subsOf(c.id).map((x) => `<option value="${x.id}" ${f.cat === x.id ? "selected" : ""}>— ${esc(x.name)}</option>`).join("")).join("")}<option value="none" ${f.cat === "none" ? "selected" : ""}>بدون قسم</option></select>
         <select class="input" id="pSt" aria-label="الحالة"><option value="">كل الحالات</option><option value="on" ${f.st === "on" ? "selected" : ""}>معروض</option><option value="off" ${f.st === "off" ? "selected" : ""}>مخفي</option><option value="feat" ${f.st === "feat" ? "selected" : ""}>مميز</option><option value="out" ${f.st === "out" ? "selected" : ""}>نفدت الكمية</option></select>
       </div>
       <div class="rows" id="pList"></div>`;
     const draw = () => {
-      const qy = f.q.trim();
-      let list = state.prods.filter((p) => (!qy || [p.name, p.stone, p.metal, p.badge].join(" ").includes(qy)) &&
-        (!f.cat || (f.cat === "none" ? !p.category_id : p.category_id === f.cat)) &&
+      const qy = arNorm(f.q.trim());
+      let list = state.prods.filter((p) => (!qy || arNorm([p.name, p.stone, p.metal, p.badge].join(" ")).includes(qy)) &&
+        (!f.cat || (f.cat === "none" ? !p.category_id : p.category_id === f.cat || p.subcategory_id === f.cat)) &&
         (!f.st || (f.st === "on" && p.active) || (f.st === "off" && !p.active) || (f.st === "feat" && p.featured) || (f.st === "out" && p.stock === 0)));
+      const total = list.length; list = list.slice(0, f.n);
       $("#pList").innerHTML = list.length ? list.map((p) => `<div class="row click ${p.active ? "" : "off"}" data-pid="${p.id}">
         <div class="th">${thumb(p)}</div>
         <div><h3>${esc(p.name)} ${p.featured ? `<span title="مميز" style="display:inline-block;width:16px;vertical-align:-2px">${I.starOn}</span>` : ""}</h3>
-          <div class="meta"><span>${esc(catName(p.category_id))}</span><span class="price">${money(p.price)}</span>${p.stock === 0 ? `<span class="status s-cancelled">نفدت</span>` : p.stock ? `<span>المخزون: ${num(p.stock)}</span>` : ""}${!p.active ? `<span class="status s-cancelled">مخفي</span>` : ""}${(p.images || []).length ? `<span>${num(p.images.length)} صورة</span>` : `<span style="color:var(--warn)">بدون صور</span>`}</div></div>
+          <div class="meta"><span>${esc(catName(p.category_id))}${p.subcategory_id ? ` · ${esc(catName(p.subcategory_id))}` : ""}</span><span class="price">${money(p.price)}</span>${p.stock === 0 ? `<span class="status s-cancelled">نفدت</span>` : p.stock ? `<span>المخزون: ${num(p.stock)}</span>` : ""}${!p.active ? `<span class="status s-cancelled">مخفي</span>` : ""}${(p.images || []).length ? `<span>${num(p.images.length)} صورة</span>` : `<span style="color:var(--warn)">بدون صور</span>`}</div></div>
         <div class="acts">
           ${toggleHTML(`data-act="active" aria-label="إظهار على الموقع"`, p.active, "معروض")}
           <button class="icon" type="button" data-act="feat" aria-label="${p.featured ? "إلغاء التمييز" : "تمييز"}" title="مميز">${p.featured ? I.starOn : I.star}</button>
           <button class="icon" type="button" data-act="edit" aria-label="تعديل">${I.edit}</button>
           <button class="icon" type="button" data-act="dup" aria-label="نسخ" title="نسخ">${I.copy}</button>
           <button class="icon danger" type="button" data-act="del" aria-label="حذف">${I.trash}</button>
-        </div></div>`).join("") : `<div class="empty">لا توجد منتجات مطابقة.</div>`;
+        </div></div>`).join("") + (total > list.length ? `<button class="btn light" type="button" id="pMore" style="align-self:center">عرض المزيد (${num(total - list.length)})</button>` : "") : `<div class="empty">لا توجد منتجات مطابقة.</div>`;
     };
     draw();
-    $("#pSearch").addEventListener("input", (e) => { f.q = e.target.value; draw(); });
-    $("#pCat").addEventListener("change", (e) => { f.cat = e.target.value; draw(); });
-    $("#pSt").addEventListener("change", (e) => { f.st = e.target.value; draw(); });
+    $("#pSearch").addEventListener("input", (e) => { f.q = e.target.value; f.n = 60; draw(); });
+    $("#pCat").addEventListener("change", (e) => { f.cat = e.target.value; f.n = 60; draw(); });
+    $("#pSt").addEventListener("change", (e) => { f.st = e.target.value; f.n = 60; draw(); });
     $("#addProd").onclick = () => editProduct(null);
     $("#pList").addEventListener("click", async (e) => {
+      if (e.target.closest("#pMore")) { f.n += 60; draw(); return; }
       const row = e.target.closest("[data-pid]"); if (!row) return;
       const p = state.prods.find((x) => x.id === row.dataset.pid);
       const act = (e.target.closest("[data-act]") || {}).dataset?.act;
@@ -306,9 +453,9 @@
       if (e.target.closest(".toggle")) return;
       try {
         if (act === "feat") { await q(db.from("products").update({ featured: !p.featured }).eq("id", p.id)); p.featured = !p.featured; draw(); toast(p.featured ? "أصبح المنتج مميزاً" : "أُلغي التمييز"); }
-        else if (act === "dup") { const c = clone(p); delete c.id; delete c.created_at; delete c.updated_at; c.name += " (نسخة)"; c.active = false; const n = await q(db.from("products").insert(c).select().single()); state.prods.unshift(n); draw(); toast("تم نسخ المنتج (مخفي حتى تعدّله)"); editProduct(n); }
+        else if (act === "dup") { const c = clone(await fullProduct(p)); delete c.id; delete c.created_at; delete c.updated_at; c.name += " (نسخة)"; c.active = false; const n = await q(db.from("products").insert(c).select().single()); state.prods.unshift(n); draw(); toast("تم نسخ المنتج (مخفي حتى تعدّله)"); editProduct(n); }
         else if (act === "del") { if (!(await confirmBox(`حذف «${esc(p.name)}» نهائياً؟`))) return; await q(db.from("products").delete().eq("id", p.id)); state.prods = state.prods.filter((x) => x.id !== p.id); draw(); toast("تم الحذف"); }
-        else editProduct(p);
+        else editProduct(await fullProduct(p));
       } catch (err) { toast(errMsg(err), true); }
     });
     $("#pList").addEventListener("change", async (e) => {
@@ -322,15 +469,17 @@
 
   function editProduct(p) {
     const isNew = !p;
-    const d = p ? clone(p) : { name: "", category_id: state.pf.cat && state.pf.cat !== "none" ? state.pf.cat : (state.cats[0] || {}).id || null, price: null, old_price: null, images: [], badge: "", description: "", metal: "", stone: "", weight: "", size: "", stock: null, featured: false, active: true, sort: Math.max(0, ...state.prods.map((x) => x.sort || 0)) + 1 };
+    const pfCat = state.cats.find((c) => c.id === state.pf.cat);
+    const d = p ? clone(p) : { name: "", category_id: pfCat ? pfCat.parent_id || pfCat.id : (topCats()[0] || {}).id || null, subcategory_id: pfCat && pfCat.parent_id ? pfCat.id : null, price: null, old_price: null, images: [], badge: "", description: "", metal: "", stone: "", weight: "", size: "", stock: null, featured: false, active: true, sort: Math.max(0, ...state.prods.map((x) => x.sort || 0)) + 1 };
     const m = modal(`<div class="modal-h"><h2>${isNew ? "منتج جديد" : "تعديل المنتج"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
       <form class="modal-b" id="pForm" novalidate>
         <div class="field"><span class="lbl">الصور</span><span class="hint">الصورة الأولى هي الرئيسية. تُضغط الصور تلقائياً لتفتح بسرعة. يمكنك اختيار عدة صور مرة واحدة.</span><div class="imgs" id="pImgs"></div></div>
         <div class="field"><label for="fName">اسم المنتج *</label><input type="text" id="fName" value="${esc(d.name)}" maxlength="200" required></div>
         <div class="grid2">
-          <div class="field"><label for="fCat">القسم</label><select id="fCat"><option value="">بدون قسم</option>${state.cats.map((c) => `<option value="${c.id}" ${d.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+          <div class="field"><label for="fCat">القسم</label><select id="fCat"><option value="">بدون قسم</option>${topCats().map((c) => `<option value="${c.id}" ${d.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
           <div class="field"><label for="fBadge">شارة (اختياري)</label><input type="text" id="fBadge" value="${esc(d.badge)}" maxlength="30" placeholder="جديد، الأكثر طلباً…"></div>
         </div>
+        <div class="field" id="fSubWrap" hidden><label for="fSub">القسم الفرعي</label><select id="fSub"></select><span class="hint">مثلاً «خواتم العقيق الرجالية». تُدار الأقسام الفرعية من صفحة «الأقسام».</span></div>
         <div class="grid2">
           <div class="field"><label for="fPrice">السعر (${esc(state.s.shop.currency)}) *</label><input type="text" inputmode="numeric" id="fPrice" value="${d.price ?? ""}" dir="ltr" placeholder="150000"></div>
           <div class="field"><label for="fOld">السعر قبل الخصم (اختياري)</label><input type="text" inputmode="numeric" id="fOld" value="${d.old_price ?? ""}" dir="ltr"></div>
@@ -351,8 +500,17 @@
       <div class="modal-f"><button class="btn" type="button" id="pSave">${I.check} حفظ المنتج</button><button class="btn light" type="button" data-x>إلغاء</button>
         ${isNew ? "" : `<a class="btn ghost" href="${SITE}#/p/${d.id}" target="_blank" rel="noopener" style="margin-inline-start:auto">${I.eye} عرض</a>`}</div>`);
     let busy = 0;
+    // sub-department list follows the chosen department
+    const drawSubs = () => {
+      const kids = subsOK() ? subsOf($("#fCat", m.el).value) : [];
+      $("#fSubWrap", m.el).hidden = !kids.length;
+      $("#fSub", m.el).innerHTML = `<option value="">— بدون قسم فرعي —</option>` + kids.map((x) => `<option value="${x.id}" ${d.subcategory_id === x.id ? "selected" : ""}>${esc(x.name)}${x.active ? "" : " (مخفي)"}</option>`).join("");
+    };
+    drawSubs();
+    $("#fCat", m.el).addEventListener("change", () => { d.subcategory_id = null; drawSubs(); });
+    $("#fSub", m.el).addEventListener("change", (e) => { d.subcategory_id = e.target.value || null; });
     const drawImgs = () => {
-      $("#pImgs", m.el).innerHTML = d.images.map((u, i) => `<div class="img-item"><img src="${esc(u)}" alt="">${i === 0 ? `<span class="main-tag">الرئيسية</span>` : ""}
+      $("#pImgs", m.el).innerHTML = d.images.map((u, i) => `<div class="img-item"><img src="${esc(small(u))}" alt="">${i === 0 ? `<span class="main-tag">الرئيسية</span>` : ""}
         <div class="ctrl"><button type="button" data-mv="${i}" data-d="-1" aria-label="تقديم">${I.right}</button><button type="button" data-rmimg="${i}" aria-label="حذف الصورة">${I.trash}</button><button type="button" data-mv="${i}" data-d="1" aria-label="تأخير">${I.left}</button></div></div>`).join("") +
         Array.from({ length: busy }, () => `<div class="img-item"><div class="uploading"><div class="spin"></div></div></div>`).join("") +
         `<label class="img-add">${I.img}<span>إضافة صور</span><input type="file" accept="image/*" multiple id="imgIn"></label>`;
@@ -377,14 +535,14 @@
       if (!name) { toast("اكتب اسم المنتج", true); $("#fName", m.el).focus(); return; }
       if (price === null) { toast("اكتب السعر بالأرقام", true); $("#fPrice", m.el).focus(); return; }
       const row = {
-        name, price, category_id: $("#fCat", m.el).value || null, badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
+        name, price, category_id: $("#fCat", m.el).value || null, ...(subsOK() ? { subcategory_id: $("#fSub", m.el).value || null } : {}), badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
         description: $("#fDesc", m.el).value.trim(), metal: $("#fMetal", m.el).value.trim(), stone: $("#fStone", m.el).value.trim(), weight: $("#fWeight", m.el).value.trim(), size: $("#fSize", m.el).value.trim(),
         stock: intOrNull($("#fStock", m.el).value), sort: intOrNull($("#fSort", m.el).value) || 0, active: $("#fActive", m.el).checked, featured: $("#fFeat", m.el).checked, images: d.images
       };
       const btn = $("#pSave", m.el); btn.disabled = true;
       try {
-        if (isNew) { const n = await q(db.from("products").insert(row).select().single()); state.prods.unshift(n); }
-        else { const n = await q(db.from("products").update(row).eq("id", d.id).select().single()); state.prods = state.prods.map((x) => (x.id === n.id ? n : x)); }
+        if (isNew) { const n = await q(db.from("products").insert(row).select(leanCols).single()); state.prods.unshift(n); }
+        else { const n = await q(db.from("products").update(row).eq("id", d.id).select(leanCols).single()); state.prods = state.prods.map((x) => (x.id === n.id ? n : x)); }
         state.prods.sort((a, b) => (a.sort - b.sort) || (b.created_at || "").localeCompare(a.created_at || ""));
         m.close(); toast(isNew ? "تمت إضافة المنتج — ظاهر على الموقع الآن" : "تم حفظ التعديلات");
         if (state.page === "products") pageProducts(); else if (state.page === "dashboard") pageDashboard();
@@ -396,38 +554,48 @@
      CATEGORIES
      ======================================================================= */
   function pageCategories() {
-    page().innerHTML = `<div class="page-title"><div><h1>الأقسام</h1><p>رتّب الأقسام وغيّر أسماءها وأيقوناتها أو صورها</p></div><button class="btn" type="button" id="addCat">${I.plus} إضافة قسم</button></div><div class="rows" id="cList"></div>`;
-    const draw = () => {
-      $("#cList").innerHTML = state.cats.length ? state.cats.map((c, i) => `<div class="row ${c.active ? "" : "off"}" data-cid="${c.id}">
+    page().innerHTML = `<div class="page-title"><div><h1>الأقسام</h1><p>رتّب الأقسام وأقسامها الفرعية، وغيّر أسماءها وأيقوناتها أو صورها</p></div><button class="btn" type="button" id="addCat">${I.plus} إضافة قسم</button></div><div class="rows" id="cList"></div>`;
+    const siblings = (c) => (c.parent_id ? subsOf(c.parent_id) : topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0)));
+    const countOf = (c) => state.prods.filter((p) => (c.parent_id ? p.subcategory_id === c.id : p.category_id === c.id)).length;
+    const rowHTML = (c, i, n) => `<div class="row ${c.active ? "" : "off"} ${c.parent_id ? "sub" : ""}" data-cid="${c.id}"${c.parent_id ? ' style="margin-inline-start:34px;padding-block:8px"' : ""}>
         <div class="th">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : A.depIcon(c.icon)}</div>
-        <div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.subtitle)}</span><span>${num(state.prods.filter((p) => p.category_id === c.id).length)} منتج</span>${c.active ? "" : `<span class="status s-cancelled">مخفي</span>`}</div></div>
+        <div><h3>${esc(c.name)}</h3><div class="meta">${c.subtitle ? `<span>${esc(c.subtitle)}</span>` : ""}<span>${num(countOf(c))} منتج</span>${!c.parent_id && subsOK() ? `<span>${num(subsOf(c.id).length)} قسم فرعي</span>` : ""}${c.active ? "" : `<span class="status s-cancelled">مخفي</span>`}</div></div>
         <div class="acts">
+          ${!c.parent_id && subsOK() ? `<button class="icon" type="button" data-act="addsub" aria-label="إضافة قسم فرعي" title="إضافة قسم فرعي">${I.plus}</button>` : ""}
           <button class="icon" type="button" data-act="up" aria-label="تحريك للأعلى" ${i === 0 ? "disabled" : ""}>${I.up}</button>
-          <button class="icon" type="button" data-act="down" aria-label="تحريك للأسفل" ${i === state.cats.length - 1 ? "disabled" : ""}>${I.down}</button>
+          <button class="icon" type="button" data-act="down" aria-label="تحريك للأسفل" ${i === n - 1 ? "disabled" : ""}>${I.down}</button>
           ${toggleHTML('data-act="active" aria-label="إظهار"', c.active, "ظاهر")}
           <button class="icon" type="button" data-act="edit" aria-label="تعديل">${I.edit}</button>
           <button class="icon danger" type="button" data-act="del" aria-label="حذف">${I.trash}</button>
-        </div></div>`).join("") : `<div class="empty">لا توجد أقسام.</div>`;
+        </div></div>`;
+    const draw = () => {
+      const tops = topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+      $("#cList").innerHTML = tops.length ? tops.map((c, i) => rowHTML(c, i, tops.length) + subsOf(c.id).map((x, k, all) => rowHTML(x, k, all.length)).join("")).join("") : `<div class="empty">لا توجد أقسام.</div>`;
     };
     draw();
     $("#addCat").onclick = () => editCategory(null);
     $("#cList").addEventListener("click", async (e) => {
       const row = e.target.closest("[data-cid]"); if (!row || e.target.closest(".toggle")) return;
-      const i = state.cats.findIndex((x) => x.id === row.dataset.cid), c = state.cats[i];
-      const act = (e.target.closest("[data-act]") || {}).dataset?.act; if (!act) return;
+      const c = state.cats.find((x) => x.id === row.dataset.cid);
+      const act = (e.target.closest("[data-act]") || {}).dataset?.act; if (!act || !c) return;
       try {
         if (act === "up" || act === "down") {
-          const j = act === "up" ? i - 1 : i + 1; if (j < 0 || j >= state.cats.length) return;
-          [state.cats[i], state.cats[j]] = [state.cats[j], state.cats[i]];
-          state.cats.forEach((x, k) => (x.sort = k + 1));
+          const list = siblings(c), i = list.indexOf(c), j = act === "up" ? i - 1 : i + 1; if (j < 0 || j >= list.length) return;
+          [list[i], list[j]] = [list[j], list[i]];
+          list.forEach((x, k) => (x.sort = k + 1));
           draw();
-          await Promise.all([state.cats[i], state.cats[j]].map((x) => q(db.from("categories").update({ sort: x.sort }).eq("id", x.id))));
-        } else if (act === "edit") editCategory(c);
+          await Promise.all([list[i], list[j]].map((x) => q(db.from("categories").update({ sort: x.sort }).eq("id", x.id))));
+        } else if (act === "addsub") editCategory(null, c.id);
+        else if (act === "edit") editCategory(c);
         else if (act === "del") {
-          const n = state.prods.filter((p) => p.category_id === c.id).length;
-          if (!(await confirmBox(`حذف قسم «${esc(c.name)}»؟${n ? `<br><small>منتجاته (${num(n)}) لن تُحذف، لكنها ستصبح «بدون قسم».</small>` : ""}`))) return;
+          const n = countOf(c), kids = c.parent_id ? [] : subsOf(c.id);
+          const note = [n ? `منتجاته (${num(n)}) لن تُحذف${c.parent_id ? "، وتبقى في القسم الرئيسي" : "، لكنها ستصبح «بدون قسم»"}.` : "", kids.length ? `ستُحذف أقسامه الفرعية (${num(kids.length)}) معه.` : ""].filter(Boolean).join("<br>");
+          if (!(await confirmBox(`حذف قسم «${esc(c.name)}»؟${note ? `<br><small>${note}</small>` : ""}`))) return;
           await q(db.from("categories").delete().eq("id", c.id));
-          state.cats.splice(i, 1); state.prods.forEach((p) => { if (p.category_id === c.id) p.category_id = null; }); draw(); toast("تم حذف القسم");
+          const gone = new Set([c.id, ...kids.map((x) => x.id)]);
+          state.cats = state.cats.filter((x) => !gone.has(x.id));
+          state.prods.forEach((p) => { if (gone.has(p.subcategory_id)) p.subcategory_id = null; if (p.category_id === c.id) p.category_id = null; });
+          draw(); toast("تم حذف القسم");
         }
       } catch (err) { toast(errMsg(err), true); }
     });
@@ -438,12 +606,16 @@
       catch (err) { cb.checked = !cb.checked; toast(errMsg(err), true); }
     });
   }
-  function editCategory(c) {
+  function editCategory(c, parentId) {
     const isNew = !c;
-    const d = c ? clone(c) : { name: "", subtitle: "", slug: "", icon: "gift", image_url: "", active: true, sort: state.cats.length + 1 };
-    const m = modal(`<div class="modal-h"><h2>${isNew ? "قسم جديد" : "تعديل القسم"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
+    const parent0 = c ? c.parent_id || null : parentId || null;
+    const d = c ? clone(c) : { name: "", subtitle: "", slug: "", icon: parentId ? (state.cats.find((x) => x.id === parentId) || {}).icon || "gift" : "gift", image_url: "", active: true, parent_id: parent0,
+      sort: (parent0 ? subsOf(parent0).length : topCats().length) + 1 };
+    const hasKids = c && !c.parent_id && subsOf(c.id).length > 0;
+    const m = modal(`<div class="modal-h"><h2>${isNew ? (parent0 ? "قسم فرعي جديد" : "قسم جديد") : "تعديل القسم"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
       <div class="modal-b">
-        <div class="field"><label for="cName">اسم القسم *</label><input type="text" id="cName" value="${esc(d.name)}" maxlength="120"></div>
+        <div class="field"><label for="cName">اسم القسم *</label><input type="text" id="cName" value="${esc(d.name)}" maxlength="120" placeholder="${parent0 ? "خواتم العقيق الرجالية" : ""}"></div>
+        ${subsOK() ? `<div class="field"><label for="cParent">يتبع قسم</label><select id="cParent" ${hasKids ? "disabled" : ""}><option value="">— قسم رئيسي —</option>${topCats().filter((x) => !c || x.id !== c.id).map((x) => `<option value="${x.id}" ${parent0 === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>${hasKids ? `<span class="hint">لهذا القسم أقسام فرعية، لذا يبقى قسماً رئيسياً.</span>` : `<span class="hint">اختر قسماً ليصبح هذا قسماً فرعياً داخله (مثل «خواتم العقيق» داخل «خواتم رجالية»).</span>`}</div>` : ""}
         <div class="field"><label for="cSub">وصف قصير</label><input type="text" id="cSub" value="${esc(d.subtitle)}" maxlength="120" placeholder="عقيق · فيروز"></div>
         <div class="field"><label for="cSlug">الرابط المختصر (بالإنجليزي)</label><input type="text" id="cSlug" value="${esc(d.slug)}" dir="ltr" placeholder="mens-rings" maxlength="60"><span class="hint">يظهر في رابط القسم. حروف إنجليزية صغيرة وأرقام وشرطة فقط — اتركه فارغاً ليُنشأ تلقائياً.</span></div>
         <div class="field"><span class="lbl">الأيقونة</span><div class="icons" id="cIcons">${Object.keys(A.dep).map((k) => `<button type="button" data-ic="${k}" class="${d.icon === k ? "on" : ""}" aria-label="${A.depNames[k] || k}" title="${A.depNames[k] || k}">${A.depIcon(k)}</button>`).join("")}</div></div>
@@ -468,9 +640,13 @@
       let slug = $("#cSlug", m.el).value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) slug = "cat-" + Date.now().toString(36);
       const row = { name, subtitle: $("#cSub", m.el).value.trim(), slug, icon: d.icon, image_url: d.image_url, active: $("#cActive", m.el).checked };
+      if (subsOK() && $("#cParent", m.el) && !$("#cParent", m.el).disabled) row.parent_id = $("#cParent", m.el).value || null;
       try {
         if (isNew) { row.sort = d.sort; const n = await q(db.from("categories").insert(row).select().single()); state.cats.push(n); }
-        else { const n = await q(db.from("categories").update(row).eq("id", d.id).select().single()); state.cats = state.cats.map((x) => (x.id === n.id ? n : x)); }
+        else {
+          const n = await q(db.from("categories").update(row).eq("id", d.id).select().single()); state.cats = state.cats.map((x) => (x.id === n.id ? n : x));
+          if ((c.parent_id || null) !== (n.parent_id || null)) await loadProds();   // its products moved with it
+        }
         m.close(); toast("تم حفظ القسم"); pageCategories();
       } catch (err) { toast(errMsg(err), true); }
     };
@@ -487,8 +663,10 @@
         <div class="meta"><span dir="ltr">${esc(o.phone)}</span><span>${o.country && o.country !== "العراق" ? `${esc(o.country)} · ` : ""}${esc(o.city)}</span><span>${num(n)} قطعة</span><span>${when(o.created_at)}</span></div></div>
       <div class="price">${money(o.total)}</div></div>`;
   }
-  function bindOrderRows() { $$("[data-oid]").forEach((r) => r.addEventListener("click", () => openOrder(state.orders.find((o) => o.id === r.dataset.oid)))); }
+  const findOrder = (id) => state.orders.find((o) => o.id === id) || state.recent.find((o) => o.id === id);
+  function bindOrderRows() { $$("[data-oid]").forEach((r) => r.addEventListener("click", () => openOrder(findOrder(r.dataset.oid)))); }
   function pageOrders() {
+    if (!state.legacy) return pageOrdersPaged();
     const f = state.of;
     const counts = Object.fromEntries(Object.keys(STATUS).map((k) => [k, state.orders.filter((o) => o.status === k).length]));
     page().innerHTML = `<div class="page-title"><div><h1>الطلبات</h1><p>${num(state.orders.length)} طلب</p></div><button class="btn light" type="button" id="oRef">${I.refresh} تحديث</button></div>
@@ -506,6 +684,38 @@
     $("#oSearch").addEventListener("input", (e) => { f.q = e.target.value; draw(); });
     $("#oRef").onclick = async () => { try { await loadOrders(); updatePills(); pageOrders(); toast("تم التحديث"); } catch (err) { toast(errMsg(err), true); } };
   }
+  function pageOrdersPaged() {
+    const f = state.of, c = state.oList.counts || {};
+    page().innerHTML = `<div class="page-title"><div><h1>الطلبات</h1><p id="oTotal">${num(c.all || 0)} طلب</p></div><button class="btn light" type="button" id="oRef">${I.refresh} تحديث</button></div>
+      <div class="tabs" role="tablist"><button class="tab ${!f.st ? "on" : ""}" data-st="">الكل<span class="n">${num(c.all || 0)}</span></button>${Object.entries(STATUS).map(([k, l]) => `<button class="tab ${f.st === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${num(c[k] || 0)}</span></button>`).join("")}</div>
+      <div class="toolbar"><input class="input" type="search" id="oSearch" placeholder="ابحث بالاسم أو الهاتف أو رقم الطلب…" value="${esc(f.q)}" aria-label="بحث"></div>
+      <div class="rows" id="oList"></div>`;
+    const draw = () => {
+      const more = state.oList.total > state.orders.length;
+      $("#oList").innerHTML = state.orders.length
+        ? state.orders.map(orderRow).join("") + (more ? `<button class="btn light" type="button" id="oMore" style="align-self:center">عرض المزيد (${num(state.oList.total - state.orders.length)})</button>` : "")
+        : `<div class="empty">لا توجد طلبات هنا.</div>`;
+      bindOrderRows();
+      const mb = $("#oMore");
+      if (mb) mb.onclick = async () => {
+        mb.disabled = true;
+        try { const d = await fetchOrders(state.orders.length); if (d) { state.orders = state.orders.concat(d.items); state.oList.total = d.total; } draw(); }
+        catch (err) { mb.disabled = false; toast(errMsg(err), true); }
+      };
+    };
+    draw();
+    const reload = async () => { await loadOrders(); if (state.page === "orders") pageOrders(); };
+    $$("[data-st]").forEach((b) => b.addEventListener("click", () => { f.st = b.dataset.st; reload().catch((err) => toast(errMsg(err), true)); }));
+    let t = 0;
+    $("#oSearch").addEventListener("input", (e) => {
+      f.q = e.target.value; clearTimeout(t);
+      t = setTimeout(async () => {
+        try { await loadOrders(); if (state.page !== "orders") return; const c2 = state.oList.counts || {}; $$("[data-st]").forEach((b) => { $(".n", b).textContent = num(b.dataset.st ? c2[b.dataset.st] || 0 : c2.all || 0); }); $("#oTotal").textContent = `${num(c2.all || 0)} طلب`; draw(); }
+        catch (err) { toast(errMsg(err), true); }
+      }, 300);
+    });
+    $("#oRef").onclick = async () => { try { await Promise.all([loadOrders(), loadStats()]); updatePills(); pageOrders(); toast("تم التحديث"); } catch (err) { toast(errMsg(err), true); } };
+  }
   function openOrder(o) {
     if (!o) return;
     const s = state.s;
@@ -516,8 +726,9 @@
       <div class="modal-b">
         <div class="field no-print"><span class="lbl">حالة الطلب</span><div class="status-btns" id="oStatus">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-set="${k}" class="s-${k} ${o.status === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
         <dl class="kv"><dt>الزبون</dt><dd>${esc(o.customer_name)}</dd><dt>الهاتف</dt><dd dir="ltr" style="text-align:right">${esc(o.phone)}</dd><dt>الدولة</dt><dd>${esc(o.country || "العراق")}</dd><dt>${o.country && o.country !== "العراق" ? "المدينة" : "المحافظة"}</dt><dd>${esc(o.city)}</dd><dt>العنوان</dt><dd>${esc(o.address) || "—"}</dd>${o.notes ? `<dt>ملاحظات</dt><dd>${esc(o.notes)}</dd>` : ""}<dt>التاريخ</dt><dd>${when(o.created_at)}</dd></dl>
-        <div class="o-items">${(o.items || []).map((i) => `<div class="o-item"><div class="th">${i.image ? `<img src="${esc(i.image)}" alt="">` : ""}</div><div><b>${esc(i.name)}</b><div style="color:var(--soft);font-size:13px">${money(i.price)} × ${num(i.qty)}</div></div><div class="price">${money(i.price * i.qty)}</div></div>`).join("")}</div>
+        <div class="o-items">${(o.items || []).map((i) => `<div class="o-item"><div class="th">${i.image ? `<img src="${esc(small(i.image))}" alt="">` : ""}</div><div><b>${esc(i.name)}</b><div style="color:var(--soft);font-size:13px">${money(i.price)} × ${num(i.qty)}</div></div><div class="price">${money(i.price * i.qty)}</div></div>`).join("")}</div>
         <dl class="kv"><dt>المجموع</dt><dd>${money(o.subtotal)}</dd><dt>${o.country && o.country !== "العراق" ? "الشحن الدولي" : "التوصيل"}</dt><dd>${o.delivery ? money(o.delivery) : o.country && o.country !== "العراق" ? "يُحدَّد مع الزبون" : "مجاني"}</dd><dt><b>الإجمالي</b></dt><dd class="price">${money(o.total)}</dd></dl>
+        ${"notified_at" in o ? `<p class="hint no-print" id="oAlert" style="margin:-4px 0 14px">إشعار تيليجرام: ${o.notified_at ? (o.notify_error === "disabled" ? "الإشعارات متوقفة" : "أُرسل ✓") : o.notify_error ? `لم يصل بعد — ستُعاد المحاولة تلقائياً (${esc(o.notify_error.slice(0, 60))})` : "قيد الإرسال"}</p>` : ""}
         <div class="field no-print"><label for="oNote">ملاحظة داخلية (لا يراها الزبون)</label><textarea id="oNote" style="min-height:70px">${esc(o.admin_note)}</textarea></div>
       </div>
       <div class="modal-f">
@@ -529,18 +740,31 @@
       </div>`);
     $("#oStatus", m.el).addEventListener("click", async (e) => {
       const b = e.target.closest("[data-set]"); if (!b || b.dataset.set === o.status) return;
-      try { await q(db.from("orders").update({ status: b.dataset.set }).eq("id", o.id)); o.status = b.dataset.set; $$("[data-set]", m.el).forEach((x) => x.classList.toggle("on", x === b)); updatePills(); toast(`حالة الطلب: ${STATUS[o.status]}`); refreshOrderViews(); }
+      try {
+        const was = o.status;
+        await q(db.from("orders").update({ status: b.dataset.set }).eq("id", o.id)); o.status = b.dataset.set; $$("[data-set]", m.el).forEach((x) => x.classList.toggle("on", x === b));
+        state.recent.forEach((x) => { if (x.id === o.id) x.status = o.status; }); state.orders.forEach((x) => { if (x.id === o.id) x.status = o.status; });
+        await loadStats().catch(() => {}); updatePills();
+        const moved = (was === "cancelled") !== (o.status === "cancelled") && (o.stock_state === "reserved" || o.stock_state === "released");
+        if (moved) o.stock_state = o.status === "cancelled" ? "released" : "reserved";
+        toast(`حالة الطلب: ${STATUS[o.status]}${moved ? (o.status === "cancelled" ? " — أُعيدت القطع إلى المخزون" : " — حُجزت القطع من المخزون مجدداً") : ""}`);
+        if (moved) await loadProds().catch(() => {});
+        refreshOrderViews();
+      }
       catch (err) { toast(errMsg(err), true); }
     });
     $("#oNoteSave", m.el).onclick = async () => { try { const v = $("#oNote", m.el).value; await q(db.from("orders").update({ admin_note: v }).eq("id", o.id)); o.admin_note = v; toast("حُفظت الملاحظة"); } catch (err) { toast(errMsg(err), true); } };
     $("#oPrint", m.el).onclick = () => print();
     $("#oDel", m.el).onclick = async () => {
       if (!(await confirmBox(`حذف الطلب #${o.order_no} نهائياً؟`))) return;
-      try { await q(db.from("orders").delete().eq("id", o.id)); state.orders = state.orders.filter((x) => x.id !== o.id); m.close(); updatePills(); refreshOrderViews(); toast("حُذف الطلب"); }
+      try { await q(db.from("orders").delete().eq("id", o.id)); state.orders = state.orders.filter((x) => x.id !== o.id); state.recent = state.recent.filter((x) => x.id !== o.id); if (state.oList.total) state.oList.total--; m.close(); await loadStats().catch(() => {}); updatePills(); await loadProds().catch(() => {}); refreshOrderViews(); toast(o.stock_state === "reserved" ? "حُذف الطلب وأُعيدت قطعه إلى المخزون" : "حُذف الطلب"); }
       catch (err) { toast(errMsg(err), true); }
     };
   }
-  function refreshOrderViews() { if (state.page === "orders") pageOrders(); if (state.page === "dashboard") pageDashboard(); }
+  function refreshOrderViews() {
+    if (state.page === "orders") { if (state.legacy) pageOrders(); else loadOrders().then(() => { if (state.page === "orders") pageOrders(); }).catch(() => pageOrders()); }
+    if (state.page === "dashboard") pageDashboard();
+  }
 
   /* =======================================================================
      INQUIRIES
@@ -558,16 +782,17 @@
             ${x.is_read ? "" : `<button class="btn light sm" type="button" data-act="read">${I.check} تم الاطلاع</button>`}
             <button class="btn danger sm" type="button" data-act="del">${I.trash} حذف</button>
           </div></div>`;
-      }).join("") : `<div class="empty">لا توجد رسائل بعد.</div>`;
+      }).join("") + (state.inqMore ? `<button class="btn light" type="button" id="mMore" style="align-self:center">عرض رسائل أقدم</button>` : "") : `<div class="empty">لا توجد رسائل بعد.</div>`;
     };
     draw();
     $("#mList").addEventListener("click", async (e) => {
+      if (e.target.closest("#mMore")) { try { await loadInq(true); draw(); } catch (err) { toast(errMsg(err), true); } return; }
       const b = e.target.closest("[data-act]"); if (!b) return;
       const x = state.inq.find((i) => i.id === b.closest("[data-mid]").dataset.mid);
       try {
         if (b.dataset.act === "read") { await q(db.from("inquiries").update({ is_read: true }).eq("id", x.id)); x.is_read = true; }
         if (b.dataset.act === "del") { if (!(await confirmBox("حذف هذه الرسالة؟"))) return; await q(db.from("inquiries").delete().eq("id", x.id)); state.inq = state.inq.filter((i) => i.id !== x.id); }
-        updatePills(); draw();
+        await loadStats().catch(() => {}); updatePills(); draw();
       } catch (err) { toast(errMsg(err), true); }
     });
   }
@@ -607,12 +832,13 @@
       search: true, open: 1,
       groups: [
         { title: "القائمة العلوية والبحث", fields: [TX("nav_home", "رابط «الرئيسية»"), TX("nav_shop", "رابط «المتجر»"), TX("nav_departments", "رابط «الأقسام»"), TX("nav_contact", "رابط «تواصل معنا»"), TX("menu_title", "عنوان القائمة في الهاتف"), TX("menu_all", "«كل المنتجات» في قائمة الهاتف"), TX("search_placeholder", "النص داخل خانة البحث"), TX("search_results", "عدد نتائج البحث", { hint: "{n} = العدد" }), TX("search_none", "عند عدم وجود نتائج", { hint: "{q} = كلمة البحث" }), TX("intro_skip", "زر تخطّي الافتتاحية")] },
-        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
-        { title: "صفحة المتجر والأقسام", fields: [TX("shop_title", "عنوان صفحة كل المنتجات"), TX("shop_count", "عدد المنتجات", { hint: "{n} = العدد" }), TX("sort_label", "كلمة «ترتيب»"), TX("sort_default", "ترتيب: المقترح"), TX("sort_new", "ترتيب: الأحدث"), TX("sort_low", "ترتيب: الأرخص"), TX("sort_high", "ترتيب: الأغلى"), TX("empty_category", "قسم بلا منتجات"), TX("out_of_stock", "شارة نفاد الكمية")] },
+        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("filter_all_sub", "زر «الكل» داخل قسم له أقسام فرعية", { hint: "{name} = اسم القسم" }), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
+        { title: "صفحة المتجر والأقسام", fields: [TX("shop_title", "عنوان صفحة كل المنتجات"), TX("shop_count", "عدد المنتجات", { hint: "{n} = العدد" }), TX("shop_more", "زر «عرض المزيد» (المتاجر الكبيرة)", { hint: "{n} = عدد المنتجات المتبقية" }), TX("sort_label", "كلمة «ترتيب»"), TX("sort_default", "ترتيب: المقترح"), TX("sort_new", "ترتيب: الأحدث"), TX("sort_low", "ترتيب: الأرخص"), TX("sort_high", "ترتيب: الأغلى"), TX("empty_category", "قسم بلا منتجات"), TX("out_of_stock", "شارة نفاد الكمية")] },
         { title: "صفحة المنتج", fields: [TX("spec_category", "خانة: القسم"), TX("spec_metal", "خانة: المعدن"), TX("spec_stone", "خانة: الحجر"), TX("spec_weight", "خانة: الوزن"), TX("spec_size", "خانة: المقاس"), TX("spec_stock", "خانة: التوفر"), TX("in_stock", "متوفر"), TX("in_stock_n", "متوفر مع العدد", { hint: "{n} = الكمية" }), TX("qty", "كلمة «الكمية»"), TX("add_to_cart", "زر «أضف إلى السلة»"), TX("buy_now", "زر «اطلب الآن»"), TX("ask_whatsapp", "زر السؤال على واتساب"), TX("out_note", "رسالة نفاد الكمية"), TX("assure_1", "الضمان الأول"), TX("assure_2", "الضمان الثاني (مع الشحن الدولي)"), TX("assure_2_local", "الضمان الثاني (بدون شحن دولي)"), TX("assure_3", "الضمان الثالث"), TX("related", "عنوان «قد يعجبك أيضاً»"), TX("notfound_title", "منتج غير موجود — العنوان"), TX("notfound_text", "منتج غير موجود — النص"), TX("notfound_btn", "منتج غير موجود — الزر")] },
         { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
         { title: "نموذج إتمام الطلب", fields: [TX("co_title", "العنوان"), TX("co_name", "خانة الاسم"), TX("co_phone", "خانة الهاتف"), TX("co_country", "خانة الدولة"), TX("co_other", "خيار «دولة أخرى»"), TX("co_other_name", "خانة اسم الدولة"), TX("co_city", "خانة المحافظة"), TX("co_city_intl", "خانة المدينة (خارج العراق)"), TX("co_addr", "خانة العنوان"), TX("co_addr_intl", "خانة العنوان (خارج العراق)"), TX("co_addr_ph", "مثال داخل خانة العنوان"), TX("co_addr_ph_intl", "مثال داخل خانة العنوان (خارج العراق)"), TX("co_notes", "خانة الملاحظات"), TX("co_notes_ph", "مثال داخل خانة الملاحظات"), TX("co_sub", "المجموع"), TX("co_delivery", "التوصيل"), TX("co_intl_shipping", "الشحن الدولي"), TX("co_total", "الإجمالي"), TX("co_plus_shipping", "«+ الشحن»"), TX("co_submit", "زر تأكيد الطلب"), TX("co_sending", "أثناء الإرسال")] },
-        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال")] },
+        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال"), TX("co_err_busy", "طلبات كثيرة من نفس الجهاز/الرقم"), TX("co_err_human", "فشل التحقق من أن الزائر ليس روبوتاً")] },
+        { title: "انقطاع الاتصال", fields: [TX("net_down", "رسالة تعذّر الاتصال"), TX("net_retry", "زر إعادة المحاولة"), TX("net_retrying", "أثناء المحاولة"), TX("form_busy", "رسائل كثيرة من نفس الجهاز")] },
         { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
         { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
         { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
@@ -651,6 +877,11 @@
           SH("shop.intl_note", "ملاحظة الشحن الدولي (تظهر عند اختيار دولة أخرى)", { t: "textarea" }),
           SH("shop.intl_payment_note", "ملاحظة الدفع للطلبات الدولية"),
           SH("shop.countries", "الدول في نموذج الطلب", { t: "strings", add: "إضافة دولة", hint: "العراق يظهر أولاً دائماً، ويستطيع الزبون اختيار «دولة أخرى» وكتابة اسمها." })
+        ] },
+        { title: "إشعارات تيليجرام", fields: [
+          SH("notify.orders", "رسالة فورية على تيليجرام عند كل طلب جديد", { t: "toggle" }),
+          SH("notify.inquiries", "رسالة على تيليجرام عند كل رسالة جديدة من الموقع", { t: "toggle" }),
+          { p: "notify._note", t: "note", l: `إذا تعذّر الإرسال (انقطاع أو خطأ) تُعاد المحاولة تلقائياً كل دقيقة حتى يصل الإشعار. ربط البوت يتم مرة واحدة من إعدادات الخادم (دليل التشغيل).<br><button class="btn light" type="button" id="tgTest" style="margin-top:10px">${I.check} إرسال رسالة تجريبية</button>` }
         ] }
       ]
     }
@@ -797,22 +1028,52 @@
      ACCOUNT
      ======================================================================= */
   function pageAccount() {
-    page().innerHTML = `<div class="page-title"><div><h1>حسابي</h1><p>${esc(state.user.email)}</p></div></div>
+    page().innerHTML = `<div class="page-title"><div><h1>حسابي</h1><p dir="ltr" style="text-align:start">${esc(String(state.user.email || "").replace("@" + ADMIN_DOMAIN, ""))}</p></div></div>
       <form class="card" id="pwForm" novalidate style="max-width:520px"><h2>تغيير كلمة المرور</h2>
-        <div class="field"><label for="pw1">كلمة المرور الجديدة</label><input type="password" id="pw1" dir="ltr" autocomplete="new-password" minlength="8"><span class="hint">٨ أحرف على الأقل — اجمع بين حروف وأرقام.</span></div>
+        <div class="field"><label for="pw1">كلمة المرور الجديدة</label><input type="password" id="pw1" dir="ltr" autocomplete="new-password" minlength="12"><span class="hint">١٢ حرفاً على الأقل — اجمع بين حروف وأرقام ورموز.</span></div>
         <div class="field"><label for="pw2">أعد كتابتها</label><input type="password" id="pw2" dir="ltr" autocomplete="new-password"></div>
         <button class="btn" type="submit">حفظ كلمة المرور</button></form>
-      <div class="card" style="max-width:520px"><h2>الجلسة</h2><button class="btn danger" type="button" id="out2">${I.logout} تسجيل الخروج</button></div>`;
+      <div class="card" style="max-width:520px"><h2>التحقق بخطوتين</h2><p class="hint" id="mfaState">…</p></div>
+      <div class="card" style="max-width:520px"><h2>مساحة الصور</h2><p class="hint" id="mediaState">ملفات رُفعت ثم لم تعد مستخدمة في أي منتج أو قسم أو إعداد أو طلب سابق. حذفها يوفّر مساحة التخزين ولا يغيّر شيئاً في الموقع.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn light" type="button" id="mediaScan">${I.refresh} فحص الملفات غير المستخدمة</button><button class="btn danger" type="button" id="mediaClean" hidden></button></div></div>
+      <div class="card" style="max-width:520px"><h2>الجلسة</h2><p class="hint">تخرج اللوحة تلقائياً بعد ٣٠ دقيقة بلا نشاط.</p><button class="btn danger" type="button" id="out2">${I.logout} تسجيل الخروج</button></div>`;
+    db.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data }) => {
+      const el = $("#mfaState"); if (!el) return;
+      el.textContent = data && data.currentLevel === "aal2" ? "مفعّل ✓ — يُطلب رمز تطبيق المصادقة عند كل دخول." : "غير مفعّل لهذا الحساب بعد.";
+    }).catch(() => {});
     $("#pwForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const a = $("#pw1").value, b = $("#pw2").value;
-      if (a.length < 8) { toast("كلمة المرور قصيرة — ٨ أحرف على الأقل", true); return; }
+      if (a.length < 12) { toast("كلمة المرور قصيرة — ١٢ حرفاً على الأقل", true); return; }
       if (a !== b) { toast("كلمتا المرور غير متطابقتين", true); return; }
       const { error } = await db.auth.updateUser({ password: a });
       if (error) { toast(errMsg(error), true); return; }
       e.target.reset(); toast("تم تغيير كلمة المرور");
     });
     $("#out2").onclick = () => $("#logout").click();
+    let unused = [];
+    const mb = (n) => `${num(Math.round((n / 1048576) * 10) / 10)} ميغابايت`;
+    $("#mediaScan").onclick = async () => {
+      const b = $("#mediaScan"); b.disabled = true;
+      const { data, error } = await db.rpc("admin_unused_media");
+      b.disabled = false;
+      if (error) { toast(missingFn(error) ? "هذه الميزة تعمل بعد تحديث قاعدة البيانات (الترحيل 0007)" : errMsg(error), true); return; }
+      unused = data.names || [];
+      $("#mediaState").textContent = data.count ? `${num(data.count)} ملف غير مستخدم (${mb(data.bytes)}).` : "لا توجد ملفات غير مستخدمة ✓";
+      const c = $("#mediaClean"); c.hidden = !unused.length; c.textContent = `حذف ${num(unused.length)} ملف`;
+    };
+    $("#mediaClean").onclick = async () => {
+      if (!unused.length || !(await confirmBox(`حذف ${num(unused.length)} ملف غير مستخدم نهائياً؟`, "حذف"))) return;
+      const c = $("#mediaClean"); c.disabled = true;
+      try {
+        for (let i = 0; i < unused.length; i += 100) {
+          const { error } = await db.storage.from(cfg.bucket).remove(unused.slice(i, i + 100));
+          if (error) throw error;
+        }
+        toast(`حُذف ${num(unused.length)} ملف`); unused = []; c.hidden = true; $("#mediaState").textContent = "تم التنظيف ✓";
+      } catch (err) { toast(errMsg(err), true); }
+      c.disabled = false;
+    };
   }
 
   /* =======================================================================
@@ -820,6 +1081,22 @@
      ======================================================================= */
   let poll;
   async function checkNew() {
+    if (!state.legacy && state.stats) {
+      try {
+        const before = state.stats;
+        await loadStats(); if (!state.stats) return;
+        const st = state.stats; updatePills();
+        if (st.orders_total > before.orders_total || st.last_order_at !== before.last_order_at) {
+          await loadRecent();
+          if (state.page === "orders" && !state.of.st && !state.of.q.trim()) await loadOrders();
+          if (st.orders_total > before.orders_total) toast("وصل طلب جديد!");
+          refreshOrderViews();
+        } else if (st.last_inquiry_at !== before.last_inquiry_at) {
+          await loadInq(); toast("وصلت رسالة جديدة"); if (state.page === "inquiries") pageInquiries();
+        }
+      } catch (e) { /* offline: try again next time */ }
+      return;
+    }
     try {
       const [o, m] = await Promise.all([
         db.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
@@ -827,7 +1104,7 @@
       ]);
       if (o.error || m.error) return;
       const before = state.counts.orders, beforeM = state.counts.inq;
-      state.orders = o.data; state.inq = m.data; updatePills();
+      state.orders = o.data; state.recent = o.data.slice(0, 6); state.inq = m.data; updatePills();
       if (state.counts.orders > before) { toast("وصل طلب جديد!"); refreshOrderViews(); }
       else if (state.counts.inq > beforeM) { toast("وصلت رسالة جديدة"); if (state.page === "inquiries") pageInquiries(); }
     } catch (e) { /* offline: try again next time */ }
@@ -835,15 +1112,31 @@
   async function start() {
     const { data: { session } } = await db.auth.getSession();
     if (!session) { renderLogin(); return; }
-    state.user = session.user;
+    if (!(await mfaReady())) return;
+    state.user = session.user; lastActive = Date.now(); manualOut = false;
     const { data: ok, error } = await db.rpc("am_i_admin");
     if (error || !ok) { await db.auth.signOut(); renderLogin("هذا الحساب لا يملك صلاحية إدارة الموقع."); return; }
     root.innerHTML = `<div class="loading"><div class="spin"></div></div>`;
-    try { await loadAll(); } catch (e) { root.innerHTML = `<div class="loading"><div class="empty">تعذّر تحميل البيانات: ${esc(errMsg(e))}<br><br><button class="btn" onclick="location.reload()">إعادة المحاولة</button></div></div>`; return; }
+    try { await loadAll(); } catch (e) { root.innerHTML = `<div class="loading"><div class="empty">تعذّر تحميل البيانات: ${esc(errMsg(e))}<br><br><button class="btn" type="button" id="reloadBtn">إعادة المحاولة</button></div></div>`; $("#reloadBtn").onclick = () => location.reload(); return; }
     renderShell();
     route(true);
     clearInterval(poll); poll = setInterval(checkNew, 45000);
   }
-  db.auth.onAuthStateChange((ev) => { if (ev === "SIGNED_OUT") { clearInterval(poll); } });
+  // dashboard button: ask the notify-test function (admins only) to send a Telegram test message
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("#tgTest"); if (!b) return;
+    b.disabled = true;
+    let r = null;
+    try { const { data, error } = await db.functions.invoke("notify-test", { body: {} }); r = error ? { ok: false, error: "failed" } : data; } catch (err) { r = null; }
+    b.disabled = false;
+    toast(r && r.ok ? "وصلت الرسالة التجريبية إلى تيليجرام ✓" : r && r.error === "not_configured" ? "لم يُربط بوت تيليجرام بعد — راجع دليل التشغيل" : "تعذّر إرسال الرسالة التجريبية", !(r && r.ok));
+  });
+  // session ended without the admin asking (expired / revoked / signed out in another tab)
+  db.auth.onAuthStateChange((ev) => {
+    if (ev !== "SIGNED_OUT") return;
+    clearInterval(poll);
+    if (state.user && !manualOut) { state.user = null; renderLogin("انتهت الجلسة، سجّل الدخول من جديد."); }
+    manualOut = false;
+  });
   start();
 })();

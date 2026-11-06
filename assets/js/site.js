@@ -14,13 +14,74 @@
       const r = await fetch(`${cfg.url}/rest/v1/${path}`, { ...opts, headers: { apikey: cfg.key, "Content-Type": "application/json", Accept: "application/json", ...(opts.headers || {}) } });
       const txt = await r.text();
       let data = null; try { data = txt ? JSON.parse(txt) : null; } catch (e) { data = null; }
-      return r.ok ? { data, error: null } : { data: null, error: data || { message: r.statusText || "request_failed" } };
-    } catch (e) { return { data: null, error: { message: String(e && e.message || e) } }; }
+      return r.ok ? { data, error: null } : { data: null, error: { ...(data || { message: r.statusText || "request_failed" }), status: r.status } };
+    } catch (e) { return { data: null, error: { message: String(e && e.message || e), network: true } }; }
   }
+  // Protected path (cfg.gateway === "edge"): Edge Functions with Cloudflare Turnstile + rate limits.
+  async function edge(name, body) {
+    try {
+      const r = await fetch(`${cfg.url}/functions/v1/${name}`, { method: "POST", headers: { apikey: cfg.key, "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      let data = null; try { data = await r.json(); } catch (e) { data = null; }
+      return r.ok ? { data, error: null } : { data: null, error: { message: (data && (data.error || data.message)) || r.statusText || "request_failed", status: r.status } };
+    } catch (e) { return { data: null, error: { message: String(e && e.message || e), network: true } }; }
+  }
+  // Cloudflare Turnstile, loaded only when a form is used. "interaction-only": invisible unless Cloudflare needs a click.
+  let tsLib = null;
+  const loadTurnstile = () => tsLib || (tsLib = new Promise((res) => {
+    if (!cfg.turnstile) return res(null);
+    window.rqTurnstileReady = () => res(window.turnstile || null);
+    const s = document.createElement("script");
+    s.src = "https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit&onload=rqTurnstileReady";
+    s.async = true; s.onerror = () => res(null);
+    document.head.appendChild(s);
+    setTimeout(() => res(window.turnstile || null), 12000);
+  }));
+  function humanCheck(holder, action) {
+    let token = "", widget = null, waiters = [];
+    const settle = (t) => { token = t || ""; waiters.splice(0).forEach((w) => w(token)); };
+    const ready = loadTurnstile().then((ts) => {
+      if (!ts || !holder.isConnected) return null;
+      widget = ts.render(holder, { sitekey: cfg.turnstile, action, appearance: "interaction-only", language: "ar",
+        theme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
+        callback: settle, "expired-callback": () => settle(""), "error-callback": () => { settle(""); return true; } });
+      return ts;
+    });
+    return {
+      // current token (waits up to 10 s for Cloudflare); "" when Turnstile is off or unavailable
+      async get() {
+        const ts = await ready; if (!ts) return "";
+        if (token) return token;
+        return new Promise((r) => { waiters.push(r); setTimeout(() => r(token), 10000); });
+      },
+      async reset() { const ts = await ready; token = ""; if (ts && widget !== null) try { ts.reset(widget); } catch (e) { /* gone */ } }
+    };
+  }
+  const HONEYPOT = `<div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>`;
+
   const db = {
     rpc: (fn, args) => api(`rpc/${fn}`, { method: "POST", body: JSON.stringify(args) }),
     insert: (table, row) => api(table, { method: "POST", body: JSON.stringify(row), headers: { Prefer: "return=minimal" } })
   };
+  /* Read-only catalogue calls go out as GET so a CDN can cache them. On Cloudflare Pages
+     they use the site's own cached proxy (cfg.api, functions/api/rpc); anywhere else, or if
+     that proxy is not deployed, they go straight to the database API. */
+  let proxyMissing = false;
+  async function rpcGet(fn, args = {}) {
+    const qs = new URLSearchParams();
+    Object.entries(args).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== "") qs.set(k, String(v)); });
+    const tail = fn + (qs.toString() ? "?" + qs : "");
+    if (cfg.api && !proxyMissing) {
+      try {
+        const r = await fetch(`${cfg.api}/${tail}`, { headers: { Accept: "application/json" } });
+        if (r.headers.get("x-rq-proxy")) {
+          const data = await r.json().catch(() => null);
+          if (r.ok) return { data, error: null };
+          if (r.status < 500) return { data: null, error: { ...(data || {}), message: (data && data.message) || r.statusText, status: r.status } };
+        } else proxyMissing = true;   // not this site's proxy (e.g. a host without functions)
+      } catch (e) { /* proxy unreachable: ask the database directly */ }
+    }
+    return api(`rpc/${tail}`);
+  }
 
   const $ = (s, r = document) => r.querySelector(s);
   const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
@@ -68,11 +129,33 @@
     const n = waNumber(state.s.contact.whatsapp || state.s.contact.phone);
     return n ? `https://wa.me/${n}?text=${encodeURIComponent(text)}` : "";
   };
+  // links typed in the dashboard: only web, mail, phone and in-site links are ever rendered
+  const safeUrl = (u) => {
+    const v = String(u || "").trim();
+    return /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(v) ? v : "";
+  };
   const isAr = (t) => /[\u0600-\u06FF]/.test(t || "");
   const eyebrow = (t, attrs = "") => t ? `<span class="${isAr(t) ? "eyebrow" : "latin"}" ${attrs}>${esc(t)}</span>` : "";
   const catOf = (p) => state.cats.find((c) => c.id === p.category_id);
   const iconOf = (p) => (catOf(p) || {}).icon || "star";
-  const findProd = (id) => state.prods.find((p) => p.id === id);
+  // products fetched page by page (large catalogues) are remembered here for the cart and links
+  const known = new Map();
+  const remember = (p) => { if (p && p.id) known.set(p.id, p); return p; };
+  const findProd = (id) => state.prods.find((p) => p.id === id) || known.get(id);
+  // whole catalogue in the browser (up to CAT_LIMIT products, as before) or counted on the server
+  const countAll = () => (state.complete ? state.prods.length : state.total);
+  const subsOf = (id) => (state.subs || []).filter((s) => s.parent_id === id);
+  const subOf = (p) => (p && p.subcategory_id ? (state.subs || []).find((s) => s.id === p.subcategory_id) : null);
+  const countSub = (id) => {
+    if (state.complete) return state.prods.filter((p) => p.subcategory_id === id).length;
+    const s = (state.subs || []).find((x) => x.id === id);
+    return s && Number.isFinite(s.count) ? s.count : 0;
+  };
+  const countCat = (id) => {
+    if (state.complete) return state.prods.filter((p) => p.category_id === id).length;
+    const c = state.cats.find((x) => x.id === id);
+    return c && Number.isFinite(c.count) ? c.count : state.prods.filter((p) => p.category_id === id).length;
+  };
   const inStock = (p) => p.stock === null || p.stock === undefined || p.stock > 0;
   let toastT;
   function toast(msg) {
@@ -90,12 +173,27 @@
   function safeLS(fn, fallback) { try { return fn(); } catch (e) { return fallback; } }
 
   /* ---------- data ---------- */
-  function applyData(settings, cats, prods) {
+  const CAT_LIMIT = 60;   // up to this many products the whole catalogue is loaded at once (as before)
+  const PAGE = 24;        // larger catalogues: products per page in the shop
+  function applyData(settings, cats, prods, meta = {}) {
     state.s = window.rqMerge(window.RQ_DEFAULTS, settings || {});
-    state.cats = cats || [];
+    // departments, and the sub-departments inside them (e.g. men's rings → agate rings)
+    state.cats = (cats || []).filter((c) => !c.parent_id);
+    state.subs = (cats || []).filter((c) => c.parent_id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
     state.prods = prods || [];
+    state.total = Number.isFinite(meta.total) ? meta.total : state.prods.length;
+    state.complete = meta.complete !== false;
   }
   async function fetchAll() {
+    if (!state.legacy) {
+      // one call: settings + departments (with counts) + the first products
+      const r = await rpcGet("catalog_home", { p_limit: CAT_LIMIT });
+      if (!r.error && r.data && Array.isArray(r.data.prods)) {
+        return { settings: r.data.settings || {}, cats: r.data.cats || [], prods: r.data.prods, total: r.data.total, complete: r.data.complete !== false };
+      }
+      if (!(r.error && (r.error.code === "PGRST202" || r.error.status === 404))) throw r.error || new Error("catalog_unavailable");
+      state.legacy = true;   // database not upgraded yet: the original three queries
+    }
     const [s, c, p] = await Promise.all([
       api("settings?select=data&id=eq.1"),
       api("categories?select=*&active=eq.true&order=sort.asc,created_at.asc"),
@@ -103,26 +201,70 @@
     ]);
     if (s.error || c.error || p.error) throw s.error || c.error || p.error;
     const row = Array.isArray(s.data) ? s.data[0] : s.data;
-    return { settings: (row && row.data) || {}, cats: Array.isArray(c.data) ? c.data : [], prods: Array.isArray(p.data) ? p.data : [] };
+    const prods = Array.isArray(p.data) ? p.data : [];
+    return { settings: (row && row.data) || {}, cats: Array.isArray(c.data) ? c.data : [], prods, total: prods.length, complete: true };
+  }
+  async function fetchWithRetry(tries) {
+    let wait = 700, last;
+    for (let i = 0; i < tries; i++) {
+      try { return await fetchAll(); } catch (e) { last = e; if (i < tries - 1) { await new Promise((r) => setTimeout(r, wait)); wait *= 2; } }
+    }
+    throw last;
   }
   async function load() {
     const cached = safeLS(() => JSON.parse(localStorage.getItem("rq_cache") || "null"), null);
-    if (cached) { applyData(cached.settings, cached.cats, cached.prods); state.sig = JSON.stringify(cached); state.ready = true; }
+    if (cached) { applyData(cached.settings, cached.cats, cached.prods, cached); state.sig = JSON.stringify(cached); state.ready = true; }
     try {
-      const fresh = await fetchAll();
+      const fresh = await fetchWithRetry(cached ? 2 : 4);
+      state.offline = false;
       const sig = JSON.stringify(fresh);
       safeLS(() => localStorage.setItem("rq_cache", sig));
       const changed = sig !== state.sig;
-      applyData(fresh.settings, fresh.cats, fresh.prods);
+      applyData(fresh.settings, fresh.cats, fresh.prods, fresh);
       state.sig = sig;
       state.ready = true;
       return changed;
     } catch (e) {
       console.warn("Could not load data", e);
+      state.offline = !cached;
       state.ready = true;
       return !cached;
     }
   }
+  // shown only when the shop could not be reached and nothing was saved from an earlier visit
+  function offlineNote() {
+    if (!state.offline || $("#netNote")) return;
+    app.insertAdjacentHTML("afterbegin", `<div class="wrap net-note" id="netNote" role="alert"><div class="glass">
+      <span>${ui("net_down")}</span><button class="btn glass-btn" type="button" id="netRetry">${ui("net_retry")}</button></div></div>`);
+    $("#netRetry").addEventListener("click", retryLoad);
+  }
+  let retrying = false;
+  async function retryLoad() {
+    if (retrying) return; retrying = true;
+    const b = $("#netRetry"); if (b) { b.disabled = true; b.textContent = uiRaw("net_retrying"); }
+    const changed = await load();
+    retrying = false;
+    if (!state.offline) { applySettings(); render(); updateCartCount(); ensureCartProducts().catch(() => {}); }
+    else if (b) { b.disabled = false; b.textContent = uiRaw("net_retry"); }
+    return changed;
+  }
+  addEventListener("online", () => { if (state.offline) retryLoad(); });
+
+  /* ---------- error reports (no personal data; the database rate-limits them) ---------- */
+  let reported = 0;
+  const seenErr = new Set();
+  function report(message, source) {
+    const m = String(message || "").slice(0, 300);
+    if (!m || reported >= 5 || seenErr.has(m) || /ResizeObserver loop|Script error\.?$/.test(m)) return;
+    seenErr.add(m); reported++;
+    db.rpc("log_client_error", { p_page: location.hash.slice(0, 120) || "/", p_message: m, p_source: String(source || "").slice(0, 200) }).catch(() => {});
+  }
+  addEventListener("error", (e) => {
+    const f = e.filename || "";
+    if (f && !f.startsWith(location.origin)) return;     // browser extensions, third-party scripts
+    report(e.message, f ? `${f.replace(location.origin, "")}:${e.lineno}:${e.colno}` : "");
+  });
+  addEventListener("unhandledrejection", (e) => report(e.reason && (e.reason.message || e.reason), "promise"));
 
   /* ---------- light / dark ---------- */
   function resolveMode(m) { return m === "light" ? "light" : m === "system" ? (matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark") : "dark"; }
@@ -180,8 +322,8 @@
 
     // mobile menu
     $("#menuList").innerHTML =
-      `<a href="#/">${ui("nav_home")} <small>${A.ui.arrowL}</small></a><a href="#/shop">${ui("menu_all")} <small>${num(state.prods.length)}</small></a>` +
-      state.cats.map((c) => `<a href="#/c/${esc(c.slug)}">${esc(c.name)} <small>${num(state.prods.filter((p) => p.category_id === c.id).length)}</small></a>`).join("") +
+      `<a href="#/">${ui("nav_home")} <small>${A.ui.arrowL}</small></a><a href="#/shop">${ui("menu_all")} <small>${num(countAll())}</small></a>` +
+      state.cats.map((c) => `<a href="#/c/${esc(c.slug)}">${esc(c.name)} <small>${num(countCat(c.id))}</small></a>`).join("") +
       `<a href="#/?to=visit">${ui("nav_contact")} <small>${A.ui.arrowL}</small></a>`;
     $$("#menuList small svg").forEach((sv) => { sv.style.width = "18px"; });
 
@@ -191,7 +333,7 @@
   function socialLinks(cls = "icon-btn") {
     const c = state.s.contact;
     const map = [["instagram", "انستغرام"], ["facebook", "فيسبوك"], ["tiktok", "تيك توك"], ["telegram", "تيليغرام"], ["snapchat", "سناب شات"]];
-    let out = map.filter(([k]) => c[k]).map(([k, n]) => `<a class="${cls}" href="${esc(c[k])}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
+    let out = map.filter(([k]) => safeUrl(c[k])).map(([k, n]) => `<a class="${cls}" href="${esc(safeUrl(c[k]))}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
     const wl = waLink(uiRaw("wa_hello"));
     if (wl) out = `<a class="${cls}" href="${esc(wl)}" target="_blank" rel="noopener" aria-label="${ui("lbl_whatsapp")}">${A.ui.whatsapp}</a>` + out;
     return out;
@@ -269,11 +411,22 @@
   function media(p) {
     const imgs = (p.images || []).filter(Boolean);
     if (imgs.length) {
-      return `<img class="main" src="${esc(imgs[0])}" alt="${esc(p.name)}" loading="lazy" decoding="async">` +
-        (imgs[1] ? `<img class="alt" src="${esc(imgs[1])}" alt="" loading="lazy" decoding="async">` : "");
+      return `<img class="main" ${imgSrc(imgs[0], SZ.card)} alt="${esc(p.name)}" loading="lazy" decoding="async">` +
+        (imgs[1] ? `<img class="alt" ${imgSrc(imgs[1], SZ.card)} alt="" loading="lazy" decoding="async">` : "");
     }
     return A.productArt(p, iconOf(p));
   }
+  /* Images uploaded from the dashboard exist in three sizes (<name>.v.webp up to 1800 px,
+     <name>.v-1080.webp, <name>.v-480.webp): the browser downloads only the size it needs.
+     Older images (one size) are used as they are. */
+  const VAR = /\.v\.(webp|jpg)$/i;
+  const sizedUrl = (u, w) => String(u || "").replace(VAR, `.v-${w}.$1`);
+  const SZ = { card: "(max-width: 600px) 50vw, (max-width: 1000px) 33vw, 25vw", half: "(max-width: 900px) 100vw, 50vw", wide: "(max-width: 700px) 92vw, 46vw", room: "(max-width: 700px) 78vw, 30vw" };
+  function imgSrc(u, sizes) {
+    if (!VAR.test(u || "")) return `src="${esc(u)}"`;
+    return `src="${esc(sizedUrl(u, 1080))}" srcset="${esc(sizedUrl(u, 480))} 480w, ${esc(sizedUrl(u, 1080))} 1080w, ${esc(u)} 1800w" sizes="${sizes}"`;
+  }
+  const smallSrc = (u) => `src="${esc(VAR.test(u || "") ? sizedUrl(u, 480) : u)}"`;
   function priceHTML(p) {
     return `${money(p.price)}${p.old_price && p.old_price > p.price ? `<s>${num(p.old_price)}</s>` : ""}`;
   }
@@ -329,7 +482,8 @@
     // live counts fill the row, so the hero never repeats the shipping figures shown in the globe section
     const plural = (n, few, many) => (n % 100 >= 3 && n % 100 <= 10 ? few : many); // Arabic: 3–10 take the plural, 11+ the singular
     if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: plural(state.cats.length, "أقسام", "قسماً") + " في المعرض" });
-    if (state.prods.length && stats.length < 3) stats.push({ value: num(state.prods.length), label: plural(state.prods.length, "قطع", "قطعة") + " في المتجر" });
+    const nAll = countAll();
+    if (nAll && stats.length < 3) stats.push({ value: num(nAll), label: plural(nAll, "قطع", "قطعة") + " في المتجر" });
 
     const flips = [s.hero.title2, ...((s.hero.flip_more || []).filter(Boolean))].filter(Boolean);
     const line2 = flips.length > 1
@@ -349,9 +503,9 @@
         <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
           <div class="orbit" data-orbit>${orbitSVG()}</div>
           <div class="deck" id="deck" data-tilt>
-            ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${sl.link ? `href="${esc(sl.link)}"` : ""} aria-label="${esc(sl.title || "")}">
+            ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${safeUrl(sl.link) ? `href="${esc(safeUrl(sl.link))}"` : ""} aria-label="${esc(sl.title || "")}">
               ${slides.length > 1 ? `<span class="deck-no" aria-hidden="true">${String(i + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}</span>` : ""}
-              ${sl.img ? `<img src="${esc(sl.img)}" alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
+              ${sl.img ? `<img ${imgSrc(sl.img, SZ.wide)} alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
               ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
           </div>
           ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
@@ -365,10 +519,10 @@
       for (let k = n - 1; wides.size < w && k > 0; k--) if (k !== 5) wides.add(k);
       html += `<section class="block" id="departments"><div class="wrap">${titleBlock(sec.departments.eyebrow, sec.departments.title, sec.departments.text)}
         <div class="bento" data-stagger>${state.cats.map((c, i) => {
-          const count = state.prods.filter((p) => p.category_id === c.id).length;
+          const count = countCat(c.id);
           const cls = i === 0 ? "big" : wides.has(i) ? "wide" : "";
           return `<a href="#/c/${esc(c.slug)}" class="tile glass spot edge tilt ${cls}"><span class="glare"></span>
-            ${c.image_url ? `<div class="t-img"><img src="${esc(c.image_url)}" alt="" loading="lazy"></div>` : ""}
+            ${c.image_url ? `<div class="t-img"><img ${imgSrc(c.image_url, SZ.half)} alt="" loading="lazy"></div>` : ""}
             <div class="t-art">${A.depIcon(c.icon)}</div>
             <div class="t-top"><div class="t-ic">${A.depIcon(c.icon)}</div><span class="t-count">${count ? pieces(count) : ui("soon")}</span></div>
             <div><h3>${esc(c.name)}</h3><p>${esc(c.subtitle)}</p></div>
@@ -390,7 +544,7 @@
           <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
           ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} ${ui("featured_add")}</button>` : ""}</div>
         </div>
-        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img src="${esc(fp.images[0])}" alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
+        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img ${imgSrc(fp.images[0], SZ.wide)} alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
       </div></div></section>`;
     }
 
@@ -404,18 +558,18 @@
           const c = catOf(p);
           return `<a class="room-card glass edge" href="#/p/${p.id}">
             <span class="room-no" aria-hidden="true">${String(k + 1).padStart(2, "0")}</span>
-            <div class="room-ph">${p.images && p.images[0] ? `<img src="${esc(p.images[0])}" alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
+            <div class="room-ph">${p.images && p.images[0] ? `<img ${imgSrc(p.images[0], SZ.room)} alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
             <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
-        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>${esc(sr.end_title)}</b><span>${pieces(state.prods.length)} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
+        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>${esc(sr.end_title)}</b><span>${pieces(countAll())} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
       </div></section>`;
     }
 
     if (sec.collection.show) {
-      const usedCats = state.cats.filter((c) => state.prods.some((p) => p.category_id === c.id));
+      const usedCats = state.cats.filter((c) => countCat(c.id) > 0);
       html += `<section class="block" id="collection" style="padding-top:0"><div class="wrap">${titleBlock(sec.collection.eyebrow, sec.collection.title, sec.collection.text)}
         ${usedCats.length > 1 ? `<div class="seg" data-rv role="group" aria-label="${ui("sort_label")}"><button class="chip on" type="button" data-filter="">${ui("filter_all")}</button>${usedCats.map((c) => `<button class="chip" type="button" data-filter="${c.id}">${esc(c.name)}</button>`).join("")}</div>` : ""}
         <div id="homeGrid">${grid(state.prods.slice(0, Number(sec.collection.count) || 8), uiRaw("collection_empty"))}</div>
-        ${state.prods.length ? `<div class="more" data-rv><a class="btn glass-btn" href="#/shop" data-magnet>${ui("collection_more", { n: num(state.prods.length) })} ${A.ui.arrow}</a></div>` : ""}
+        ${state.prods.length ? `<div class="more" data-rv><a class="btn glass-btn" href="#/shop" data-magnet>${ui("collection_more", { n: num(countAll()) })} ${A.ui.arrow}</a></div>` : ""}
       </div></section>`;
     }
 
@@ -447,7 +601,7 @@
     if (sec.about.show) {
       const values = (sec.about.values || []).filter((v) => v && v.title);
       html += `<section class="block" id="about"><div class="wrap about">
-        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img src="${esc(sec.about.image)}" alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div>
+        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img ${imgSrc(sec.about.image, SZ.half)} alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p class="lit-text" data-lit>${String(sec.about.text || "").split("\n").map((line) => line.split(/\s+/).filter(Boolean).map((w) => `<span class="lw">${esc(w)}</span>`).join(" ")).join("<br>")}</p>
           ${values.length ? `<div class="values" data-stagger>${values.map((v) => `<div class="glass">${A.ui[v.icon] || A.ui.shield}<span><b>${esc(v.title)}</b>${esc(v.text || "")}</span></div>`).join("")}</div>` : ""}
           ${sec.about.button ? `<div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>${esc(sec.about.button)} ${A.ui.arrow}</a></div>` : ""}</div>
@@ -472,7 +626,7 @@
   function visitSection() {
     const s = state.s, c = s.contact, sec = s.sections.visit;
     const rows = [
-      c.address && [A.ui.pin, ui("lbl_address"), esc(c.address) + (c.map_url ? ` · <a href="${esc(c.map_url)}" target="_blank" rel="noopener" style="color:var(--emerald)">${ui("map_link")}</a>` : "")],
+      c.address && [A.ui.pin, ui("lbl_address"), esc(c.address) + (safeUrl(c.map_url) ? ` · <a href="${esc(safeUrl(c.map_url))}" target="_blank" rel="noopener" style="color:var(--emerald)">${ui("map_link")}</a>` : "")],
       c.hours && [A.ui.clock, ui("lbl_hours"), esc(c.hours)],
       c.phone && [A.ui.phone, ui("lbl_phone"), `<a href="tel:${esc(toLatin(c.phone).replace(/[^\d+]/g, ""))}" dir="ltr">${esc(c.phone)}</a>`],
       c.whatsapp && [A.ui.whatsapp, ui("lbl_whatsapp"), `<a href="${esc(waLink(uiRaw("wa_hello")))}" target="_blank" rel="noopener" dir="ltr">${esc(c.whatsapp)}</a>`],
@@ -480,7 +634,7 @@
     ].filter(Boolean);
     return `<section class="block" id="visit"><div class="wrap">${titleBlock(sec.eyebrow, sec.title, "")}
       <div class="visit">
-        <div class="visit-card glass spot info-card" data-rv>${sec.image ? `<img class="card-photo" src="${esc(sec.image)}" alt="" loading="lazy">` : `<img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy">`}<h3>${esc(s.brand.full)}</h3>
+        <div class="visit-card glass spot info-card" data-rv>${sec.image ? `<img class="card-photo" ${imgSrc(sec.image, SZ.half)} alt="" loading="lazy">` : `<img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy">`}<h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
           <div class="socials">${socialLinks()}</div>
         </div>
@@ -489,6 +643,7 @@
           <div class="two"><div class="field"><label for="cfName">${ui("form_name")}</label><input id="cfName" name="name" required maxlength="120" autocomplete="name"></div>
           <div class="field"><label for="cfPhone">${ui("form_phone")}</label><input id="cfPhone" name="phone" type="tel" inputmode="tel" maxlength="30" dir="ltr" autocomplete="tel"></div></div>
           <div class="field"><label for="cfBody">${ui("form_body")}</label><textarea id="cfBody" name="body" required maxlength="3000"></textarea></div>
+          ${HONEYPOT}<div class="ts-holder" id="cfHuman"></div>
           <button class="btn shine block" type="submit">${ui("form_send")}</button>
         </form>
       </div></div></section>`;
@@ -543,9 +698,12 @@
     $$("[data-filter]").forEach((b) => b.addEventListener("click", () => {
       $$("[data-filter]").forEach((x) => x.classList.toggle("on", x === b));
       const id = b.dataset.filter, n = Number(state.s.sections.collection.count) || 8;
-      const list = (id ? state.prods.filter((p) => p.category_id === id) : state.prods).slice(0, n);
+      const local = (id ? state.prods.filter((p) => p.category_id === id) : state.prods).slice(0, n);
+      const getList = !state.complete && id
+        ? rpcGet("list_products", { p_category: id, p_limit: n }).then((r) => (r.data && r.data.items ? r.data.items.map(remember) : local)).catch(() => local)
+        : Promise.resolve(local);
       const box = $("#homeGrid");
-      const swap = () => { box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.05, ease: "expo.out", clearProps: "transform" }); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); };
+      const swap = async () => { const list = await getList; box.innerHTML = grid(list); if (G) G.fromTo($$(".card", box), { opacity: 0, y: 40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.05, ease: "expo.out", clearProps: "transform" }); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); };
       if (G) G.to($$(".card", box), { opacity: 0, y: -20, duration: 0.25, stagger: 0.02, onComplete: swap }); else swap();
     }));
     bindContactForm();
@@ -554,66 +712,139 @@
   function bindContactForm() {
     const f = $("#contactForm");
     if (!f) return;
+    let human = null;
+    const wake = () => { if (!human && cfg.gateway === "edge" && cfg.turnstile) human = humanCheck($("#cfHuman", f), "inquiry"); };
+    f.addEventListener("focusin", wake, { once: true });
     f.addEventListener("submit", async (e) => {
       e.preventDefault();
       const name = f.name.value.trim(), phone = f.phone.value.trim(), body = f.body.value.trim();
       if (name.length < 2) { toast(uiRaw("form_need_name")); f.name.focus(); return; }
       if (body.length < 2) { toast(uiRaw("form_need_body")); f.body.focus(); return; }
       const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("form_sending");
-      const { error } = await db.insert("inquiries", { name, phone, body });
+      let res;
+      if (cfg.gateway === "edge") {
+        wake();
+        res = await edge("submit-inquiry", { name, phone, body, website: f.website.value, turnstile: human ? await human.get() : "" });
+        if (res.error && res.error.status === 404) res = await db.insert("inquiries", { name, phone, body });   // function not deployed yet
+        if (human) human.reset();
+      } else res = await db.insert("inquiries", { name, phone, body });
       btn.disabled = false; btn.textContent = uiRaw("form_send");
-      if (error) { toast(uiRaw("form_err")); return; }
+      if (res.error) { toast(uiRaw(/rate_limited/.test(res.error.message || "") ? "form_busy" : "form_err")); return; }
       f.reset(); toast(uiRaw("form_ok"));
     });
   }
 
   /* ---------- shop / category ---------- */
-  function renderShop(slug, sort) {
+  let navToken = 0;   // a response that arrives after the visitor moved on is ignored
+  const skeletons = (n) => `<div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(n)}</div>`;
+  function renderShop(slug, sort, subSlug) {
     const cat = slug ? state.cats.find((c) => c.slug === slug) : null;
     if (slug && !cat && state.ready) { location.hash = "#/shop"; return; }
+    const kids = cat ? subsOf(cat.id) : [];
+    const sub = subSlug ? kids.find((x) => x.slug === subSlug) : null;
+    if (subSlug && !sub && state.ready) { location.hash = `#/c/${cat ? cat.slug : ""}`; return; }
+    const paged = !state.complete;
     let list = cat ? state.prods.filter((p) => p.category_id === cat.id) : state.prods.slice();
+    if (sub) list = list.filter((p) => p.subcategory_id === sub.id);
+    const here = sub || cat;
     sort = sort || "default";
     if (sort === "low") list.sort((a, b) => a.price - b.price);
     if (sort === "high") list.sort((a, b) => b.price - a.price);
     if (sort === "new") list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     app.innerHTML = `<div class="page-head"><div class="wrap">
-        <nav class="crumbs" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${cat ? `<a href="#/shop">${ui("nav_shop")}</a><span>/</span><span>${esc(cat.name)}</span>` : `<span>${ui("nav_shop")}</span>`}</nav>
-        <h1 data-split>${splitWords(cat ? cat.name : uiRaw("shop_title"))}</h1>
-        <p data-rv>${esc(cat ? cat.subtitle : state.s.brand.tagline)}</p></div></div>
+        <nav class="crumbs" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${cat ? `<a href="#/shop">${ui("nav_shop")}</a><span>/</span>${sub ? `<a href="#/c/${esc(cat.slug)}">${esc(cat.name)}</a><span>/</span><span>${esc(sub.name)}</span>` : `<span>${esc(cat.name)}</span>`}` : `<span>${ui("nav_shop")}</span>`}</nav>
+        <h1 data-split>${splitWords(here ? here.name : uiRaw("shop_title"))}</h1>
+        <p data-rv>${esc(here ? here.subtitle : state.s.brand.tagline)}</p></div></div>
       <section style="padding-bottom:40px"><div class="wrap">
         <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">${ui("filter_all")}</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
-        <div class="toolbar" data-rv><span class="count">${ui("shop_count", { n: num(list.length) })}</span>
+        ${kids.length ? `<div class="seg seg-sub" data-rv><a class="chip${sub ? "" : " on"}" href="#/c/${esc(cat.slug)}">${ui("filter_all_sub", { name: cat.name })}</a>${kids.map((x) => `<a class="chip${sub && sub.id === x.id ? " on" : ""}" href="#/c/${esc(cat.slug)}/${esc(x.slug)}">${esc(x.name)}</a>`).join("")}</div>` : ""}
+        <div class="toolbar" data-rv><span class="count" id="shopCount">${paged ? ui("shop_count", { n: num(sub ? countSub(sub.id) : cat ? countCat(cat.id) : countAll()) }) : ui("shop_count", { n: num(list.length) })}</span>
           <label>${ui("sort_label")}
           <select id="sortSel" aria-label="${ui("sort_label")}">
             <option value="default">${ui("sort_default")}</option><option value="new">${ui("sort_new")}</option><option value="low">${ui("sort_low")}</option><option value="high">${ui("sort_high")}</option>
           </select></label></div>
-        ${grid(list)}
+        ${paged ? `<div id="shopGrid">${skeletons(8)}</div><div class="more" id="shopMore" hidden><button class="btn glass-btn" type="button" id="moreBtn"></button></div>` : grid(list)}
       </div></section>`;
     const sel = $("#sortSel"); sel.value = sort;
-    sel.addEventListener("change", () => { killMotion(); renderShop(slug, sel.value); });
+    sel.addEventListener("change", () => { killMotion(); renderShop(slug, sel.value, subSlug); });
+    const onSub = $(".seg-sub .chip.on");
+    if (onSub && sub) onSub.scrollIntoView({ block: "nearest", inline: "center" });   // phones: the chosen sub-department in view
     animateCommon();
+    if (paged) shopPages(cat, sort, sub);
+  }
+  // large catalogues: the shop asks the database for one page at a time ("show more")
+  function shopPages(cat, sort, sub) {
+    const token = ++navToken, box = $("#shopGrid"), more = $("#shopMore"), btn = $("#moreBtn");
+    let shown = 0;
+    const show = async (offset) => {
+      btn.disabled = true;
+      const r = await rpcGet("list_products", { p_category: cat ? cat.id : null, p_sort: sort, p_limit: PAGE, p_offset: offset, p_sub: sub ? sub.id : null });
+      if (token !== navToken) return;
+      btn.disabled = false;
+      if (r.error || !r.data) {
+        if (!offset) box.innerHTML = `<div class="empty">${ui("net_down")}<br><br><button class="btn glass-btn" type="button" id="shopRetry">${ui("net_retry")}</button></div>`;
+        else toast(uiRaw("net_down"));
+        const rb = $("#shopRetry"); if (rb) rb.addEventListener("click", () => { box.innerHTML = skeletons(8); show(0); });
+        return;
+      }
+      const items = (r.data.items || []).map(remember), total = r.data.total || 0;
+      $("#shopCount").innerHTML = ui("shop_count", { n: num(total) });
+      let fresh;
+      if (!offset) { box.innerHTML = grid(items); fresh = $$(".card", box); }
+      else {
+        const g = $(".grid", box), tmp = document.createElement("div");
+        tmp.innerHTML = items.map(card).join(""); fresh = Array.from(tmp.children); fresh.forEach((el) => g.appendChild(el));
+      }
+      if (G && fresh.length) G.fromTo(fresh, { opacity: 0, y: 40, scale: 0.96 }, { opacity: 1, y: 0, scale: 1, duration: 0.8, stagger: 0.05, ease: "expo.out", clearProps: "transform" });
+      shown = offset + items.length;
+      more.hidden = shown >= total;
+      btn.innerHTML = `${ui("shop_more", { n: num(total - shown) })} ${A.ui.arrow}`;
+      if (window.ScrollTrigger) window.ScrollTrigger.refresh();
+    };
+    btn.addEventListener("click", () => show(shown));
+    show(0);
   }
 
   /* ---------- product ---------- */
+  const relatedOf = new Map(), productAsked = new Set();
+  function productOnDemand(id, hasLocal) {
+    const token = ++navToken;
+    productAsked.add(id);
+    rpcGet("product_page", { p_id: id }).then((r) => {
+      if (r.error) { productAsked.delete(id); }
+      else if (r.data && r.data.product) { remember(r.data.product); relatedOf.set(id, (r.data.related || []).map(remember)); }
+      if (token !== navToken || parse().parts[1] !== id) return;
+      if (!hasLocal) { killMotion(); renderProduct(id); if (window.ScrollTrigger) window.ScrollTrigger.refresh(); return; }
+      const rel = relatedOf.get(id) || [];
+      if (rel.length && !$("#relatedSec")) {
+        $(".product", app).insertAdjacentHTML("afterend", `<section class="block" id="relatedSec" style="padding-top:20px">${titleBlock("", uiRaw("related"), "")}${grid(rel)}</section>`);
+        if (G) G.from("#relatedSec .card, #relatedSec h2 .w, #relatedSec h2", { opacity: 0, y: 30, duration: 0.8, stagger: 0.05, ease: "expo.out", clearProps: "transform,opacity" });
+      }
+    });
+  }
   function renderProduct(id) {
     const p = findProd(id);
+    if (!state.complete && !productAsked.has(id) && !(p && relatedOf.has(id))) {
+      productOnDemand(id, !!p);
+      if (!p) { app.innerHTML = `<div class="wrap" style="padding-block:110px 60px"><div class="product"><div class="skeleton" style="aspect-ratio:1"></div><div><div class="skeleton" style="height:48px;margin-bottom:18px"></div><div class="skeleton" style="height:28px;width:40%;margin-bottom:28px"></div><div class="skeleton" style="height:160px"></div></div></div></div>`; return; }
+    }
     if (!p) {
       app.innerHTML = `<div class="page-head"><div class="wrap"><h1>${ui("notfound_title")}</h1><p>${ui("notfound_text")}</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn shine" href="#/shop">${ui("notfound_btn")}</a></div></div></div>`;
       return;
     }
-    const c = catOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
-    const spec = [[ui("spec_category"), c && c.name], [ui("spec_metal"), p.metal], [ui("spec_stone"), p.stone], [ui("spec_weight"), p.weight], [ui("spec_size"), p.size],
+    const c = catOf(p), sc = subOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
+    const spec = [[ui("spec_category"), sc ? sc.name : c && c.name], [ui("spec_metal"), p.metal], [ui("spec_stone"), p.stone], [ui("spec_weight"), p.weight], [ui("spec_size"), p.size],
       [ui("spec_stock"), out ? uiRaw("out_of_stock") : p.stock ? uiRaw("in_stock_n", { n: num(p.stock) }) : uiRaw("in_stock")]].filter((x) => x[1]);
-    const related = state.prods.filter((x) => x.id !== p.id && x.category_id === p.category_id).slice(0, 4);
+    const related = (!state.complete && relatedOf.get(id)) || (state.complete ? state.prods.filter((x) => x.id !== p.id && x.category_id === p.category_id).slice(0, 4) : []);
     const wa = waLink(`${uiRaw("wa_product", { name: p.name, price: `${num(p.price)} ${state.s.shop.currency}` })}\n${location.href}`);
     app.innerHTML = `<div class="wrap"><div class="product">
       <div class="gallery" data-rv>
-        <div class="g-main" id="gMain">${imgs.length ? `<img src="${esc(imgs[0])}" alt="${esc(p.name)}">` : A.productArt(p, iconOf(p))}
+        <div class="g-main" id="gMain">${imgs.length ? `<img ${imgSrc(imgs[0], SZ.half)} alt="${esc(p.name)}">` : A.productArt(p, iconOf(p))}
           ${imgs.length > 1 ? `<button class="icon-btn g-nav prev" type="button" aria-label="‹">${A.ui.arrowR}</button><button class="icon-btn g-nav next" type="button" aria-label="›">${A.ui.arrowL}</button>` : ""}</div>
-        ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="الصورة ${num(i + 1)}"><img src="${esc(u)}" alt="" loading="lazy"></button>`).join("")}</div>` : ""}
+        ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="الصورة ${num(i + 1)}"><img ${smallSrc(u)} alt="" loading="lazy"></button>`).join("")}</div>` : ""}
       </div>
       <div class="p-info">
-        <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
+        <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>${sc ? `<span>/</span><a href="#/c/${esc(c.slug)}/${esc(sc.slug)}">${esc(sc.name)}</a>` : ""}` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
         ${p.badge && !out ? `<span class="tag" style="position:static;display:inline-block;margin-top:10px" data-rv>${esc(p.badge)}</span>` : ""}
         <h1 data-split>${splitWords(p.name)}</h1>
         <div class="p-price price" data-rv>${priceHTML(p)}</div>
@@ -628,7 +859,7 @@
         ${wa ? `<a class="btn wa block" href="${esc(wa)}" target="_blank" rel="noopener" data-rv>${A.ui.whatsapp} ${ui("ask_whatsapp")}</a>` : ""}
         <div class="assure" data-rv><div class="glass">${A.ui.shield}${ui("assure_1")}</div><div class="glass">${A.ui.truck}${ui(state.s.shop.intl_enabled ? "assure_2" : "assure_2_local")}</div><div class="glass">${A.ui.gift}${ui("assure_3")}</div></div>
       </div></div>
-      ${related.length ? `<section class="block" style="padding-top:20px">${titleBlock("", uiRaw("related"), "")}${grid(related)}</section>` : ""}
+      ${related.length ? `<section class="block" id="relatedSec" style="padding-top:20px">${titleBlock("", uiRaw("related"), "")}${grid(related)}</section>` : ""}
     </div>`;
 
     // gallery
@@ -640,7 +871,9 @@
         $$("[data-g]").forEach((b, k) => b.classList.toggle("on", k === gi));
         const old = $("img", main);
         const img = document.createElement("img");
-        img.src = imgs[gi]; img.alt = p.name;
+        if (VAR.test(imgs[gi])) { img.sizes = SZ.half; img.srcset = `${sizedUrl(imgs[gi], 480)} 480w, ${sizedUrl(imgs[gi], 1080)} 1080w, ${imgs[gi]} 1800w`; img.src = sizedUrl(imgs[gi], 1080); }
+        else img.src = imgs[gi];
+        img.alt = p.name;
         main.insertBefore(img, old.nextSibling);
         if (G) {
           G.fromTo(img, { clipPath: "inset(0 0 0 100%)", scale: 1.1 }, { clipPath: "inset(0 0 0 0%)", scale: 1, duration: 0.9, ease: "expo.inOut", onComplete: () => old.remove() });
@@ -668,6 +901,17 @@
   /* ---------- cart ---------- */
   function readCart() { return safeLS(() => JSON.parse(localStorage.getItem("rq_cart") || "[]"), []).filter((x) => x && x.id && x.qty > 0); }
   function saveCart() { safeLS(() => localStorage.setItem("rq_cart", JSON.stringify(state.cart))); updateCartCount(); }
+  // large catalogues: cart items that are not among the loaded products are fetched by id
+  async function ensureCartProducts() {
+    if (state.complete || state.legacy) return;
+    const missing = state.cart.map((l) => l.id).filter((id) => !findProd(id));
+    if (!missing.length) return;
+    const r = await db.rpc("products_by_ids", { p_ids: missing.slice(0, 60) });
+    if (!Array.isArray(r.data) || !r.data.length) return;
+    r.data.forEach(remember);
+    updateCartCount();
+    if ($("#cart").classList.contains("open")) renderCart();
+  }
   function cartLines() { return state.cart.map((l) => ({ ...l, p: findProd(l.id) })).filter((l) => l.p && inStock(l.p)); }
   const LOCAL = "العراق";
   function totals(country) {
@@ -713,7 +957,7 @@
       return;
     }
     body.innerHTML = lines.map((l) => `<div class="c-item">
-      <a class="ph" href="#/p/${l.p.id}" data-close="cart">${l.p.images && l.p.images[0] ? `<img src="${esc(l.p.images[0])}" alt="">` : A.productArt(l.p, iconOf(l.p))}</a>
+      <a class="ph" href="#/p/${l.p.id}" data-close="cart">${l.p.images && l.p.images[0] ? `<img ${smallSrc(l.p.images[0])} alt="">` : A.productArt(l.p, iconOf(l.p))}</a>
       <div><h5>${esc(l.p.name)}</h5><div class="price" style="font-size:14px">${money(l.p.price)}</div>
         <div class="qty"><button type="button" data-q="${l.id}" data-d="-1" aria-label="−">−</button><span>${num(l.qty)}</span><button type="button" data-q="${l.id}" data-d="1" aria-label="+">+</button></div></div>
       <button class="rm" type="button" data-rm="${l.id}">${ui("cart_remove")}</button></div>`).join("");
@@ -774,6 +1018,7 @@
         </div>
         <div class="field"><label for="coNotes">${ui("co_notes")}</label><textarea id="coNotes" name="notes" maxlength="1000" style="min-height:80px" placeholder="${ui("co_notes_ph")}"></textarea></div>
         <div id="coSum"></div>
+        ${HONEYPOT}<div class="ts-holder" id="coHuman"></div>
         <button class="btn shine block" type="submit">${ui("co_submit")}</button>
       </form>`;
     const f = $("#coForm");
@@ -793,13 +1038,56 @@
     };
     if (f.country) { f.country.addEventListener("change", refresh); f.other.addEventListener("input", refresh); }
     refresh();
+    checkoutHuman = cfg.gateway === "edge" && cfg.turnstile ? humanCheck($("#coHuman"), "order") : null;
     $("#checkoutBg").classList.add("open"); lock(true);
-    setTimeout(() => $("#coName").focus(), 100);
+    setTimeout(() => { if (!f.contains(document.activeElement)) $("#coName").focus(); }, 100);   // never steal focus from a field already in use
     $("#coClose").addEventListener("click", closeCheckout);
     f.addEventListener("submit", (e) => submitOrder(e, country));
   }
   function closeCheckout() { $("#checkoutBg").classList.remove("open"); lock(false); }
   $("#checkoutBg").addEventListener("click", (e) => { if (e.target.id === "checkoutBg") closeCheckout(); });
+
+  /* One random key per checkout. If the connection drops after the order was saved,
+     sending the same key again returns that same order instead of creating a second one. */
+  const uuid4 = () => (window.crypto && crypto.randomUUID) ? crypto.randomUUID()
+    : "10000000-1000-4000-8000-100000000000".replace(/[018]/g, (c) => (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & 15) >> (c / 4)).toString(16));
+  function checkoutKey(items) {
+    const sig = JSON.stringify(items);
+    const saved = safeLS(() => JSON.parse(sessionStorage.getItem("rq_ck") || "null"), null);
+    if (saved && saved.sig === sig && saved.key) return saved.key;
+    const key = uuid4();
+    safeLS(() => sessionStorage.setItem("rq_ck", JSON.stringify({ sig, key })));
+    return key;
+  }
+  const forgetCheckoutKey = () => safeLS(() => sessionStorage.removeItem("rq_ck"));
+  const retryable = (err) => err && (err.network || err.status >= 500 || err.status === 408);
+  let checkoutHuman = null;
+  async function viaRpc(cust, items, key) {
+    let res = await db.rpc("place_order", { p_customer: cust, p_items: items, p_idempotency_key: key });
+    // database not upgraded yet (function without the key): same call as before
+    if (res.error && (res.error.code === "PGRST202" || /p_idempotency_key/.test(res.error.message || "")))
+      res = await db.rpc("place_order", { p_customer: cust, p_items: items });
+    return res;
+  }
+  async function viaEdge(cust, items, key, website) {
+    const turnstile = checkoutHuman ? await checkoutHuman.get() : "";
+    const res = await edge("submit-order", { customer: cust, items, key, turnstile, website });
+    if (checkoutHuman) checkoutHuman.reset();          // a Turnstile token works once
+    if (res.error && res.error.status === 404) return viaRpc(cust, items, key);   // function not deployed yet: previous path
+    return res;
+  }
+  async function sendOrder(cust, items, website = "") {
+    const key = checkoutKey(items);
+    let res;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      if (attempt) await new Promise((r) => setTimeout(r, 800 * attempt));
+      res = cfg.gateway === "edge" ? await viaEdge(cust, items, key, website) : await viaRpc(cust, items, key);
+      if (!retryable(res.error)) break;
+    }
+    // a definite "no" from the server created nothing: the next attempt may use a fresh key
+    if (res.error && !retryable(res.error)) forgetCheckoutKey();
+    return res;
+  }
 
   async function submitOrder(e, getCountry) {
     e.preventDefault();
@@ -813,13 +1101,15 @@
     if (intl && cust.address.length < 6) { toast(uiRaw("co_err_addr")); f.address.focus(); return; }
     const btn = $("button[type=submit]", f); btn.disabled = true; btn.textContent = uiRaw("co_sending");
     const items = cartLines().map((l) => ({ id: l.id, qty: l.qty }));
-    const { data, error } = await db.rpc("place_order", { p_customer: cust, p_items: items });
+    const { data, error } = await sendOrder(cust, items, f.website ? f.website.value : "");
     if (error) {
       btn.disabled = false; btn.textContent = uiRaw("co_submit");
       const m = String(error.message || "");
-      toast(uiRaw(m.includes("out_of_stock") ? "co_err_stock" : m.includes("product_unavailable") ? "co_err_gone" : m.includes("invalid_phone") ? "co_err_phone" : "co_err_failed"));
+      toast(uiRaw(m.includes("out_of_stock") ? "co_err_stock" : m.includes("product_unavailable") ? "co_err_gone" : m.includes("invalid_phone") ? "co_err_phone"
+        : m.includes("rate_limited") ? "co_err_busy" : m.includes("captcha_failed") ? "co_err_human" : "co_err_failed"));
       return;
     }
+    forgetCheckoutKey();
     const s = state.s;
     const msg = [`السلام عليكم، طلب جديد من موقع ${s.brand.full}`, `رقم الطلب: #${data.order_no}`, `الاسم: ${cust.name}`, `الهاتف: ${cust.phone}`, intl ? `الدولة: ${country} — ${cust.city}${cust.address ? " — " + cust.address : ""}` : `المحافظة: ${cust.city}${cust.address ? " — " + cust.address : ""}`, "", "المنتجات:",
       ...data.items.map((i) => `• ${i.name} × ${i.qty} — ${num(i.price * i.qty)} ${s.shop.currency}`), "",
@@ -842,13 +1132,31 @@
     setTimeout(() => $("#searchInput").focus(), 60); doSearch();
   }
   function closeSearch() { $("#search").classList.remove("open"); $("#search").setAttribute("aria-hidden", "true"); lock(false); }
-  function norm(t) { return String(t || "").replace(/[ً-ْـ]/g, "").replace(/[أإآ]/g, "ا").replace(/ة/g, "ه").replace(/ى/g, "ي").toLowerCase(); }
+  // same rules as private.ar_norm() in the database
+  function norm(t) {
+    return toLatin(String(t || "")).replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+      .replace(/ؤ/g, "و").replace(/ئ/g, "ي").toLowerCase().replace(/\s+/g, " ").trim();
+  }
+  let searchT = 0, searchSeq = 0;
+  function showResults(list, total) {
+    $("#searchRes").innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${ui("search_results", { n: num(total) })}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
+  }
+  function searchLocal(q) {
+    const all = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.badge, p.description, (catOf(p) || {}).name, (subOf(p) || {}).name].join(" ")).includes(q));
+    showResults(all.slice(0, 24), all.length);
+  }
   function doSearch() {
-    const q = norm($("#searchInput").value.trim());
+    const raw = $("#searchInput").value.trim(), q = norm(raw);
     const res = $("#searchRes");
+    clearTimeout(searchT); const seq = ++searchSeq;
     if (!q) { res.innerHTML = `<div class="seg">${state.cats.map((c) => `<a class="chip" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>`; return; }
-    const list = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.description, (catOf(p) || {}).name].join(" ")).includes(q)).slice(0, 24);
-    res.innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${ui("search_results", { n: num(list.length) })}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
+    if (state.complete) { searchLocal(q); return; }
+    searchT = setTimeout(async () => {
+      const r = await rpcGet("search_products", { p_q: raw.slice(0, 80), p_limit: PAGE });
+      if (seq !== searchSeq) return;
+      if (r.error || !r.data) { searchLocal(q); return; }     // offline: search what is already loaded
+      showResults((r.data.items || []).map(remember), r.data.total || 0);
+    }, 220);
   }
   $("#searchInput").addEventListener("input", doSearch);
   $("#searchClose").addEventListener("click", closeSearch);
@@ -939,7 +1247,7 @@
   let globe = null, globeIO = null;
   const scripts = {};
   const loadScript = (src) => scripts[src] || (scripts[src] = new Promise((ok, fail) => { const el = document.createElement("script"); el.src = src; el.async = true; el.onload = ok; el.onerror = () => { delete scripts[src]; fail(); }; document.head.appendChild(el); }));
-  const GLOBE_JS = "assets/vendor/cobe.min.js";
+  const GLOBE_JS = "assets/vendor/cobe.min.js?v=c673039448";
   function stopGlobe() { if (globe) { globe.destroy(); globe = null; } if (globeIO) { globeIO.disconnect(); globeIO = null; } }
   function startGlobe() {
     stopGlobe();
@@ -1083,7 +1391,7 @@
     $$(".nav-links a").forEach((a) => a.classList.toggle("on", a.dataset.link === (parts[0] || "home")));
     if (!parts.length) renderHome(to);
     else if (parts[0] === "shop") renderShop(null);
-    else if (parts[0] === "c") renderShop(decodeURIComponent(parts[1] || ""));
+    else if (parts[0] === "c") renderShop(decodeURIComponent(parts[1] || ""), null, parts[2] ? decodeURIComponent(parts[2]) : null);
     else if (parts[0] === "p") renderProduct(decodeURIComponent(parts[1] || ""));
     else renderHome();
     if (window.ScrollTrigger) requestAnimationFrame(() => window.ScrollTrigger.refresh());
@@ -1136,6 +1444,8 @@
     else app.innerHTML = `<div class="wrap" style="padding-block:80px"><div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(4)}</div></div>`;
     const changed = await loading;
     if (changed) { applySettings(); render(); updateCartCount(); }
+    offlineNote();
+    ensureCartProducts().catch(() => {});
     await introPromise;
     if (window.ScrollTrigger) window.ScrollTrigger.refresh();
     if (state.s.shop.intl_enabled) {

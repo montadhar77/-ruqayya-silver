@@ -286,3 +286,10 @@ svg { flex: none; }
   .card.tx .body { display: grid; grid-template-columns: 1fr 1fr; column-gap: 20px; }
   .card.tx .body > .field:has(textarea) { grid-column: 1 / -1; }
 }
+
+/* two-step verification screens */
+.mfa-help { text-align: center; color: #9fc2b5; font-size: 14px; line-height: 1.8; margin: 0 0 14px; }
+.mfa-help code { display: inline-block; margin-top: 6px; padding: 4px 10px; border-radius: 8px; background: rgba(2,15,11,.55); color: #ecf6f2; letter-spacing: .08em; word-break: break-all; font-size: 13px; }
+.mfa-qr { display: grid; place-items: center; margin: 0 auto 14px; width: 204px; height: 204px; border-radius: 18px; background: #fff; }
+.mfa-qr img { width: 184px; height: 184px; }
+#mfaCode { text-align: center; font-size: 22px; letter-spacing: .4em; }

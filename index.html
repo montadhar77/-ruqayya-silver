@@ -3,6 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co; frame-src https://challenges.cloudflare.com; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+<meta name="referrer" content="strict-origin-when-cross-origin">
 <title>معرض رقية (عليها السلام) — فضيات وأحجار كريمة · كربلاء</title>
 <meta name="description" content="خواتم فضة رجالية ونسائية، أحجار كريمة، مسابح، ساعات، عطور وبخور، سجاد صلاة وهدايا العتبات المقدسة. توصيل لجميع محافظات العراق.">
 <meta name="theme-color" content="#020f0b">
@@ -15,20 +17,11 @@
 <meta property="og:image" content="assets/img/icon-512.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Cormorant+Garamond:ital,wght@1,500&display=swap" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Cormorant+Garamond:ital,wght@1,500&display=swap" media="print" data-fonts>
 <noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Reem+Kufi:wght@500;600;700&family=IBM+Plex+Sans+Arabic:wght@400;500;600&family=Cormorant+Garamond:ital,wght@1,500&display=swap"></noscript>
 <link rel="preload" href="assets/img/logo-mark.webp" as="image">
-<link rel="stylesheet" href="assets/css/site.css">
-<script>
-document.documentElement.classList.add("js");
-(function () { // apply the saved light/dark choice before the first paint
-  var t = null;
-  try { t = localStorage.getItem("rq_theme"); } catch (e) {}
-  if (!t) { try { var c = JSON.parse(localStorage.getItem("rq_cache") || "null"); t = c && c.settings && c.settings.theme && c.settings.theme.mode; } catch (e) {} }
-  if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-  document.documentElement.setAttribute("data-theme", t === "light" ? "light" : "dark");
-})();
-</script>
+<link rel="stylesheet" href="assets/css/site.css?v=a16fb0e094">
+<script src="assets/js/boot.js?v=3852594948"></script>
 </head>
 <body>
 <div class="aurora" aria-hidden="true"><i></i><i></i><i></i><i></i></div>
@@ -112,12 +105,12 @@ document.documentElement.classList.add("js");
 <a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="راسلنا على واتساب" hidden></a>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
-<script src="assets/vendor/gsap.min.js"></script>
-<script src="assets/vendor/ScrollTrigger.min.js"></script>
-<script src="assets/vendor/lenis.min.js"></script>
-<script src="assets/js/config.js"></script>
-<script src="assets/js/defaults.js"></script>
-<script src="assets/js/art.js"></script>
-<script src="assets/js/site.js"></script>
+<script src="assets/vendor/gsap.min.js?v=92bb9a9647"></script>
+<script src="assets/vendor/ScrollTrigger.min.js?v=b0b14d67b5"></script>
+<script src="assets/vendor/lenis.min.js?v=978450a5e7"></script>
+<script src="assets/js/config.js?v=5949ba9c3c"></script>
+<script src="assets/js/defaults.js?v=152ae7625b"></script>
+<script src="assets/js/art.js?v=47eef06608"></script>
+<script src="assets/js/site.js?v=1aeaf3e782"></script>
 </body>
 </html>

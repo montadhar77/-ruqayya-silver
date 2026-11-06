@@ -1,0 +1,2 @@
+# Cloudflare Pages redirects (copied into dist/ by scripts/build.mjs)
+/admin    /admin/    301
