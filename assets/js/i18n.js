@@ -72,7 +72,7 @@
       wa_hello: "Assalamu alaikum", wa_inquiry: "Assalamu alaikum, I would like to ask {brand} about something", wa_product: "Assalamu alaikum, I would like to order: {name} — {price}",
       wa_order: "Assalamu alaikum, a new order from the {brand} website", wa_order_no: "Order number", wa_items: "Products", wa_notes: "Notes",
       pieces_one: "{n} piece", pieces_other: "{n} pieces", room_count: "{pieces} in the shop", stat_depts_one: "Department", stat_depts_other: "Departments", stat_pieces_one: "Piece in the shop", stat_pieces_other: "Pieces in the shop",
-      lang_label: "Language", a11y_main_nav: "Main menu", a11y_menu: "Open menu", a11y_close: "Close", a11y_theme: "Switch dark / light mode", a11y_search: "Search", a11y_search_input: "Search products",
+      lang_label: "Language", theme_toggle: "Dark / light mode", a11y_main_nav: "Main menu", a11y_menu: "Open menu", a11y_close: "Close", a11y_theme: "Switch dark / light mode", a11y_search: "Search", a11y_search_input: "Search products",
       a11y_cart: "Cart", a11y_cart_panel: "Shopping cart", a11y_whatsapp: "Message us on WhatsApp", a11y_logo: "{brand} logo", a11y_photo: "Photo {n}", a11y_less: "Decrease", a11y_more: "Increase"
     },
     contact: { address: "Holy Karbala" },
@@ -136,7 +136,7 @@
       wa_hello: "السلام علیکم", wa_inquiry: "السلام علیکم، مجھے {brand} سے ایک بات پوچھنی ہے", wa_product: "السلام علیکم، مجھے یہ آرڈر کرنا ہے: {name} — {price}",
       wa_order: "السلام علیکم، {brand} کی ویب سائٹ سے نیا آرڈر", wa_order_no: "آرڈر نمبر", wa_items: "مصنوعات", wa_notes: "نوٹ",
       pieces_one: "{n} آئٹم", pieces_other: "{n} آئٹمز", room_count: "دکان میں {pieces}", stat_depts_one: "شعبہ", stat_depts_other: "شعبے", stat_pieces_one: "آئٹم دکان میں", stat_pieces_other: "آئٹمز دکان میں",
-      lang_label: "زبان", a11y_main_nav: "مرکزی مینو", a11y_menu: "مینو کھولیں", a11y_close: "بند کریں", a11y_theme: "ڈارک / لائٹ موڈ بدلیں", a11y_search: "تلاش", a11y_search_input: "مصنوعات تلاش کریں",
+      lang_label: "زبان", theme_toggle: "ڈارک / لائٹ موڈ", a11y_main_nav: "مرکزی مینو", a11y_menu: "مینو کھولیں", a11y_close: "بند کریں", a11y_theme: "ڈارک / لائٹ موڈ بدلیں", a11y_search: "تلاش", a11y_search_input: "مصنوعات تلاش کریں",
       a11y_cart: "کارٹ", a11y_cart_panel: "خریداری کا کارٹ", a11y_whatsapp: "واٹس ایپ پر ہم سے بات کریں", a11y_logo: "{brand} کا لوگو", a11y_photo: "تصویر {n}", a11y_less: "کم کریں", a11y_more: "بڑھائیں"
     },
     contact: { address: "کربلائے معلیٰ" },
@@ -200,7 +200,7 @@
       wa_hello: "Assalamu alaikum", wa_inquiry: "Assalamu alaikum, ich habe eine Frage an {brand}", wa_product: "Assalamu alaikum, ich möchte bestellen: {name} — {price}",
       wa_order: "Assalamu alaikum, neue Bestellung über die Website von {brand}", wa_order_no: "Bestellnummer", wa_items: "Produkte", wa_notes: "Anmerkungen",
       pieces_one: "{n} Stück", pieces_other: "{n} Stück", room_count: "{pieces} im Shop", stat_depts_one: "Abteilung", stat_depts_other: "Abteilungen", stat_pieces_one: "Stück im Shop", stat_pieces_other: "Stücke im Shop",
-      lang_label: "Sprache", a11y_main_nav: "Hauptmenü", a11y_menu: "Menü öffnen", a11y_close: "Schließen", a11y_theme: "Dunkel / hell umschalten", a11y_search: "Suche", a11y_search_input: "Produkte suchen",
+      lang_label: "Sprache", theme_toggle: "Dunkel / hell", a11y_main_nav: "Hauptmenü", a11y_menu: "Menü öffnen", a11y_close: "Schließen", a11y_theme: "Dunkel / hell umschalten", a11y_search: "Suche", a11y_search_input: "Produkte suchen",
       a11y_cart: "Warenkorb", a11y_cart_panel: "Warenkorb", a11y_whatsapp: "Schreiben Sie uns auf WhatsApp", a11y_logo: "Logo von {brand}", a11y_photo: "Bild {n}", a11y_less: "Weniger", a11y_more: "Mehr"
     },
     contact: { address: "Heiliges Kerbela" },

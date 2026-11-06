@@ -788,4 +788,7 @@ footer.site .f-langs { display: flex; flex-wrap: wrap; justify-content: center; 
 footer.site .f-langs a { color: var(--soft); padding: 4px 2px; transition: color .3s; }
 footer.site .f-langs a:hover { color: var(--ink); }
 footer.site .f-langs a.on { color: var(--emerald); }
-@media (max-width: 560px) { .lang-wrap { display: none; } }
+/* phones: the language button takes the place of the light/dark button, which moves into the menu */
+.menu-theme { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 4px; margin: 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 17px; cursor: pointer; text-align: start; }
+.menu-theme svg { width: 20px; height: 20px; flex: none; color: var(--emerald); }
+@media (max-width: 560px) { .nav-actions .theme-btn { display: none; } }
