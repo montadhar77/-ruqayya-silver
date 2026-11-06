@@ -23,6 +23,11 @@
   const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
   const when = (d) => { try { return new Date(d).toLocaleString("ar-IQ", { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return d; } };
   const clone = (o) => JSON.parse(JSON.stringify(o));
+  /* Sign-in by user name: "name" means the account name@admin.ruqaya.invalid (a reserved
+     domain that can never receive mail, so no password-reset link can be sent anywhere).
+     An e-mail address typed in full still works. */
+  const ADMIN_DOMAIN = "admin.ruqaya.invalid";
+  const loginEmail = (v) => { v = toLatin(String(v || "")).trim().toLowerCase(); return v.includes("@") ? v : `${v}@${ADMIN_DOMAIN}`; };
   // same Arabic rules as private.ar_norm() in the database (أ/إ/آ → ا, ة → ه, ى → ي, no harakat…)
   const arNorm = (t) => toLatin(String(t ?? "")).replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
     .replace(/ؤ/g, "و").replace(/ئ/g, "ي").toLowerCase().replace(/\s+/g, " ").trim();
@@ -101,10 +106,17 @@
   /* Products: the list needs only these columns (the editor loads the full row). Fetched
      1000 at a time, because the database API returns at most 1000 rows per request. */
   const LEAN = "id,category_id,name,price,old_price,images,badge,metal,stone,stock,featured,active,sort,created_at,updated_at";
+  let leanCols = LEAN + ",subcategory_id";
   async function loadProds() {
     const out = [];
     for (let from = 0; ; from += 1000) {
-      const part = await q(db.from("products").select(LEAN).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999));
+      let r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      if (r.error && leanCols !== LEAN && /subcategory_id/.test(r.error.message || "")) {   // database before 0009
+        leanCols = LEAN;
+        r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      }
+      if (r.error) throw r.error;
+      const part = r.data || [];
       out.push(...part);
       if (part.length < 1000) break;
     }
@@ -148,6 +160,10 @@
   }
   async function loadAll() { await Promise.all([loadSettings(), loadCats(), loadProds(), loadOrders(), loadInq()]); await loadStats().catch(() => {}); updatePills(); }
   const catName = (id) => (state.cats.find((c) => c.id === id) || {}).name || "بدون قسم";
+  // departments and their sub-departments (0009); older databases have no parent_id
+  const subsOK = () => state.cats.length > 0 && "parent_id" in state.cats[0];
+  const topCats = () => state.cats.filter((c) => !c.parent_id);
+  const subsOf = (id) => state.cats.filter((c) => c.parent_id === id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
   const iconOf = (p) => (state.cats.find((c) => c.id === p.category_id) || {}).icon || "star";
 
   /* ---------- uploads ---------- */
@@ -228,7 +244,7 @@
         <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
         <p class="sub">لوحة التحكم</p>
         ${msg ? `<div class="notice" style="font-size:14px">${esc(msg)}</div>` : ""}
-        <div class="field"><label for="lEmail">البريد الإلكتروني</label><input id="lEmail" type="email" dir="ltr" autocomplete="username" required placeholder="name@example.com"></div>
+        <div class="field"><label for="lEmail">اسم المستخدم</label><input id="lEmail" type="text" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
         <div class="field"><label for="lPass">كلمة المرور</label>
           <div class="pw-wrap"><input id="lPass" type="password" dir="ltr" autocomplete="current-password" required><button class="pw-eye" type="button" id="pwEye" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
         <button class="btn block login-btn" type="submit">تسجيل الدخول ${I.left}</button>
@@ -238,7 +254,7 @@
     $("#loginForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = $("button[type=submit]", e.target); btn.disabled = true; btn.textContent = "جارٍ الدخول…";
-      const { error } = await db.auth.signInWithPassword({ email: $("#lEmail").value.trim(), password: $("#lPass").value });
+      const { error } = await db.auth.signInWithPassword({ email: loginEmail($("#lEmail").value), password: $("#lPass").value });
       if (error) { btn.disabled = false; btn.innerHTML = `تسجيل الدخول ${I.left}`; toast(errMsg(error), true); return; }
       start();
     });
@@ -401,20 +417,20 @@
     page().innerHTML = `<div class="page-title"><div><h1>المنتجات</h1><p>${num(state.prods.length)} منتج — اضغط على أي منتج لتعديله</p></div><button class="btn" type="button" id="addProd">${I.plus} إضافة منتج</button></div>
       <div class="toolbar">
         <input class="input" type="search" id="pSearch" placeholder="ابحث بالاسم أو الحجر…" value="${esc(f.q)}" aria-label="بحث">
-        <select class="input" id="pCat" aria-label="القسم"><option value="">كل الأقسام</option>${state.cats.map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}<option value="none" ${f.cat === "none" ? "selected" : ""}>بدون قسم</option></select>
+        <select class="input" id="pCat" aria-label="القسم"><option value="">كل الأقسام</option>${topCats().map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>` + subsOf(c.id).map((x) => `<option value="${x.id}" ${f.cat === x.id ? "selected" : ""}>— ${esc(x.name)}</option>`).join("")).join("")}<option value="none" ${f.cat === "none" ? "selected" : ""}>بدون قسم</option></select>
         <select class="input" id="pSt" aria-label="الحالة"><option value="">كل الحالات</option><option value="on" ${f.st === "on" ? "selected" : ""}>معروض</option><option value="off" ${f.st === "off" ? "selected" : ""}>مخفي</option><option value="feat" ${f.st === "feat" ? "selected" : ""}>مميز</option><option value="out" ${f.st === "out" ? "selected" : ""}>نفدت الكمية</option></select>
       </div>
       <div class="rows" id="pList"></div>`;
     const draw = () => {
       const qy = arNorm(f.q.trim());
       let list = state.prods.filter((p) => (!qy || arNorm([p.name, p.stone, p.metal, p.badge].join(" ")).includes(qy)) &&
-        (!f.cat || (f.cat === "none" ? !p.category_id : p.category_id === f.cat)) &&
+        (!f.cat || (f.cat === "none" ? !p.category_id : p.category_id === f.cat || p.subcategory_id === f.cat)) &&
         (!f.st || (f.st === "on" && p.active) || (f.st === "off" && !p.active) || (f.st === "feat" && p.featured) || (f.st === "out" && p.stock === 0)));
       const total = list.length; list = list.slice(0, f.n);
       $("#pList").innerHTML = list.length ? list.map((p) => `<div class="row click ${p.active ? "" : "off"}" data-pid="${p.id}">
         <div class="th">${thumb(p)}</div>
         <div><h3>${esc(p.name)} ${p.featured ? `<span title="مميز" style="display:inline-block;width:16px;vertical-align:-2px">${I.starOn}</span>` : ""}</h3>
-          <div class="meta"><span>${esc(catName(p.category_id))}</span><span class="price">${money(p.price)}</span>${p.stock === 0 ? `<span class="status s-cancelled">نفدت</span>` : p.stock ? `<span>المخزون: ${num(p.stock)}</span>` : ""}${!p.active ? `<span class="status s-cancelled">مخفي</span>` : ""}${(p.images || []).length ? `<span>${num(p.images.length)} صورة</span>` : `<span style="color:var(--warn)">بدون صور</span>`}</div></div>
+          <div class="meta"><span>${esc(catName(p.category_id))}${p.subcategory_id ? ` · ${esc(catName(p.subcategory_id))}` : ""}</span><span class="price">${money(p.price)}</span>${p.stock === 0 ? `<span class="status s-cancelled">نفدت</span>` : p.stock ? `<span>المخزون: ${num(p.stock)}</span>` : ""}${!p.active ? `<span class="status s-cancelled">مخفي</span>` : ""}${(p.images || []).length ? `<span>${num(p.images.length)} صورة</span>` : `<span style="color:var(--warn)">بدون صور</span>`}</div></div>
         <div class="acts">
           ${toggleHTML(`data-act="active" aria-label="إظهار على الموقع"`, p.active, "معروض")}
           <button class="icon" type="button" data-act="feat" aria-label="${p.featured ? "إلغاء التمييز" : "تمييز"}" title="مميز">${p.featured ? I.starOn : I.star}</button>
@@ -453,15 +469,17 @@
 
   function editProduct(p) {
     const isNew = !p;
-    const d = p ? clone(p) : { name: "", category_id: state.pf.cat && state.pf.cat !== "none" ? state.pf.cat : (state.cats[0] || {}).id || null, price: null, old_price: null, images: [], badge: "", description: "", metal: "", stone: "", weight: "", size: "", stock: null, featured: false, active: true, sort: Math.max(0, ...state.prods.map((x) => x.sort || 0)) + 1 };
+    const pfCat = state.cats.find((c) => c.id === state.pf.cat);
+    const d = p ? clone(p) : { name: "", category_id: pfCat ? pfCat.parent_id || pfCat.id : (topCats()[0] || {}).id || null, subcategory_id: pfCat && pfCat.parent_id ? pfCat.id : null, price: null, old_price: null, images: [], badge: "", description: "", metal: "", stone: "", weight: "", size: "", stock: null, featured: false, active: true, sort: Math.max(0, ...state.prods.map((x) => x.sort || 0)) + 1 };
     const m = modal(`<div class="modal-h"><h2>${isNew ? "منتج جديد" : "تعديل المنتج"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
       <form class="modal-b" id="pForm" novalidate>
         <div class="field"><span class="lbl">الصور</span><span class="hint">الصورة الأولى هي الرئيسية. تُضغط الصور تلقائياً لتفتح بسرعة. يمكنك اختيار عدة صور مرة واحدة.</span><div class="imgs" id="pImgs"></div></div>
         <div class="field"><label for="fName">اسم المنتج *</label><input type="text" id="fName" value="${esc(d.name)}" maxlength="200" required></div>
         <div class="grid2">
-          <div class="field"><label for="fCat">القسم</label><select id="fCat"><option value="">بدون قسم</option>${state.cats.map((c) => `<option value="${c.id}" ${d.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+          <div class="field"><label for="fCat">القسم</label><select id="fCat"><option value="">بدون قسم</option>${topCats().map((c) => `<option value="${c.id}" ${d.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
           <div class="field"><label for="fBadge">شارة (اختياري)</label><input type="text" id="fBadge" value="${esc(d.badge)}" maxlength="30" placeholder="جديد، الأكثر طلباً…"></div>
         </div>
+        <div class="field" id="fSubWrap" hidden><label for="fSub">القسم الفرعي</label><select id="fSub"></select><span class="hint">مثلاً «خواتم العقيق الرجالية». تُدار الأقسام الفرعية من صفحة «الأقسام».</span></div>
         <div class="grid2">
           <div class="field"><label for="fPrice">السعر (${esc(state.s.shop.currency)}) *</label><input type="text" inputmode="numeric" id="fPrice" value="${d.price ?? ""}" dir="ltr" placeholder="150000"></div>
           <div class="field"><label for="fOld">السعر قبل الخصم (اختياري)</label><input type="text" inputmode="numeric" id="fOld" value="${d.old_price ?? ""}" dir="ltr"></div>
@@ -482,6 +500,15 @@
       <div class="modal-f"><button class="btn" type="button" id="pSave">${I.check} حفظ المنتج</button><button class="btn light" type="button" data-x>إلغاء</button>
         ${isNew ? "" : `<a class="btn ghost" href="${SITE}#/p/${d.id}" target="_blank" rel="noopener" style="margin-inline-start:auto">${I.eye} عرض</a>`}</div>`);
     let busy = 0;
+    // sub-department list follows the chosen department
+    const drawSubs = () => {
+      const kids = subsOK() ? subsOf($("#fCat", m.el).value) : [];
+      $("#fSubWrap", m.el).hidden = !kids.length;
+      $("#fSub", m.el).innerHTML = `<option value="">— بدون قسم فرعي —</option>` + kids.map((x) => `<option value="${x.id}" ${d.subcategory_id === x.id ? "selected" : ""}>${esc(x.name)}${x.active ? "" : " (مخفي)"}</option>`).join("");
+    };
+    drawSubs();
+    $("#fCat", m.el).addEventListener("change", () => { d.subcategory_id = null; drawSubs(); });
+    $("#fSub", m.el).addEventListener("change", (e) => { d.subcategory_id = e.target.value || null; });
     const drawImgs = () => {
       $("#pImgs", m.el).innerHTML = d.images.map((u, i) => `<div class="img-item"><img src="${esc(small(u))}" alt="">${i === 0 ? `<span class="main-tag">الرئيسية</span>` : ""}
         <div class="ctrl"><button type="button" data-mv="${i}" data-d="-1" aria-label="تقديم">${I.right}</button><button type="button" data-rmimg="${i}" aria-label="حذف الصورة">${I.trash}</button><button type="button" data-mv="${i}" data-d="1" aria-label="تأخير">${I.left}</button></div></div>`).join("") +
@@ -508,14 +535,14 @@
       if (!name) { toast("اكتب اسم المنتج", true); $("#fName", m.el).focus(); return; }
       if (price === null) { toast("اكتب السعر بالأرقام", true); $("#fPrice", m.el).focus(); return; }
       const row = {
-        name, price, category_id: $("#fCat", m.el).value || null, badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
+        name, price, category_id: $("#fCat", m.el).value || null, ...(subsOK() ? { subcategory_id: $("#fSub", m.el).value || null } : {}), badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
         description: $("#fDesc", m.el).value.trim(), metal: $("#fMetal", m.el).value.trim(), stone: $("#fStone", m.el).value.trim(), weight: $("#fWeight", m.el).value.trim(), size: $("#fSize", m.el).value.trim(),
         stock: intOrNull($("#fStock", m.el).value), sort: intOrNull($("#fSort", m.el).value) || 0, active: $("#fActive", m.el).checked, featured: $("#fFeat", m.el).checked, images: d.images
       };
       const btn = $("#pSave", m.el); btn.disabled = true;
       try {
-        if (isNew) { const n = await q(db.from("products").insert(row).select(LEAN).single()); state.prods.unshift(n); }
-        else { const n = await q(db.from("products").update(row).eq("id", d.id).select(LEAN).single()); state.prods = state.prods.map((x) => (x.id === n.id ? n : x)); }
+        if (isNew) { const n = await q(db.from("products").insert(row).select(leanCols).single()); state.prods.unshift(n); }
+        else { const n = await q(db.from("products").update(row).eq("id", d.id).select(leanCols).single()); state.prods = state.prods.map((x) => (x.id === n.id ? n : x)); }
         state.prods.sort((a, b) => (a.sort - b.sort) || (b.created_at || "").localeCompare(a.created_at || ""));
         m.close(); toast(isNew ? "تمت إضافة المنتج — ظاهر على الموقع الآن" : "تم حفظ التعديلات");
         if (state.page === "products") pageProducts(); else if (state.page === "dashboard") pageDashboard();
@@ -527,38 +554,48 @@
      CATEGORIES
      ======================================================================= */
   function pageCategories() {
-    page().innerHTML = `<div class="page-title"><div><h1>الأقسام</h1><p>رتّب الأقسام وغيّر أسماءها وأيقوناتها أو صورها</p></div><button class="btn" type="button" id="addCat">${I.plus} إضافة قسم</button></div><div class="rows" id="cList"></div>`;
-    const draw = () => {
-      $("#cList").innerHTML = state.cats.length ? state.cats.map((c, i) => `<div class="row ${c.active ? "" : "off"}" data-cid="${c.id}">
+    page().innerHTML = `<div class="page-title"><div><h1>الأقسام</h1><p>رتّب الأقسام وأقسامها الفرعية، وغيّر أسماءها وأيقوناتها أو صورها</p></div><button class="btn" type="button" id="addCat">${I.plus} إضافة قسم</button></div><div class="rows" id="cList"></div>`;
+    const siblings = (c) => (c.parent_id ? subsOf(c.parent_id) : topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0)));
+    const countOf = (c) => state.prods.filter((p) => (c.parent_id ? p.subcategory_id === c.id : p.category_id === c.id)).length;
+    const rowHTML = (c, i, n) => `<div class="row ${c.active ? "" : "off"} ${c.parent_id ? "sub" : ""}" data-cid="${c.id}"${c.parent_id ? ' style="margin-inline-start:34px;padding-block:8px"' : ""}>
         <div class="th">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : A.depIcon(c.icon)}</div>
-        <div><h3>${esc(c.name)}</h3><div class="meta"><span>${esc(c.subtitle)}</span><span>${num(state.prods.filter((p) => p.category_id === c.id).length)} منتج</span>${c.active ? "" : `<span class="status s-cancelled">مخفي</span>`}</div></div>
+        <div><h3>${esc(c.name)}</h3><div class="meta">${c.subtitle ? `<span>${esc(c.subtitle)}</span>` : ""}<span>${num(countOf(c))} منتج</span>${!c.parent_id && subsOK() ? `<span>${num(subsOf(c.id).length)} قسم فرعي</span>` : ""}${c.active ? "" : `<span class="status s-cancelled">مخفي</span>`}</div></div>
         <div class="acts">
+          ${!c.parent_id && subsOK() ? `<button class="icon" type="button" data-act="addsub" aria-label="إضافة قسم فرعي" title="إضافة قسم فرعي">${I.plus}</button>` : ""}
           <button class="icon" type="button" data-act="up" aria-label="تحريك للأعلى" ${i === 0 ? "disabled" : ""}>${I.up}</button>
-          <button class="icon" type="button" data-act="down" aria-label="تحريك للأسفل" ${i === state.cats.length - 1 ? "disabled" : ""}>${I.down}</button>
+          <button class="icon" type="button" data-act="down" aria-label="تحريك للأسفل" ${i === n - 1 ? "disabled" : ""}>${I.down}</button>
           ${toggleHTML('data-act="active" aria-label="إظهار"', c.active, "ظاهر")}
           <button class="icon" type="button" data-act="edit" aria-label="تعديل">${I.edit}</button>
           <button class="icon danger" type="button" data-act="del" aria-label="حذف">${I.trash}</button>
-        </div></div>`).join("") : `<div class="empty">لا توجد أقسام.</div>`;
+        </div></div>`;
+    const draw = () => {
+      const tops = topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+      $("#cList").innerHTML = tops.length ? tops.map((c, i) => rowHTML(c, i, tops.length) + subsOf(c.id).map((x, k, all) => rowHTML(x, k, all.length)).join("")).join("") : `<div class="empty">لا توجد أقسام.</div>`;
     };
     draw();
     $("#addCat").onclick = () => editCategory(null);
     $("#cList").addEventListener("click", async (e) => {
       const row = e.target.closest("[data-cid]"); if (!row || e.target.closest(".toggle")) return;
-      const i = state.cats.findIndex((x) => x.id === row.dataset.cid), c = state.cats[i];
-      const act = (e.target.closest("[data-act]") || {}).dataset?.act; if (!act) return;
+      const c = state.cats.find((x) => x.id === row.dataset.cid);
+      const act = (e.target.closest("[data-act]") || {}).dataset?.act; if (!act || !c) return;
       try {
         if (act === "up" || act === "down") {
-          const j = act === "up" ? i - 1 : i + 1; if (j < 0 || j >= state.cats.length) return;
-          [state.cats[i], state.cats[j]] = [state.cats[j], state.cats[i]];
-          state.cats.forEach((x, k) => (x.sort = k + 1));
+          const list = siblings(c), i = list.indexOf(c), j = act === "up" ? i - 1 : i + 1; if (j < 0 || j >= list.length) return;
+          [list[i], list[j]] = [list[j], list[i]];
+          list.forEach((x, k) => (x.sort = k + 1));
           draw();
-          await Promise.all([state.cats[i], state.cats[j]].map((x) => q(db.from("categories").update({ sort: x.sort }).eq("id", x.id))));
-        } else if (act === "edit") editCategory(c);
+          await Promise.all([list[i], list[j]].map((x) => q(db.from("categories").update({ sort: x.sort }).eq("id", x.id))));
+        } else if (act === "addsub") editCategory(null, c.id);
+        else if (act === "edit") editCategory(c);
         else if (act === "del") {
-          const n = state.prods.filter((p) => p.category_id === c.id).length;
-          if (!(await confirmBox(`حذف قسم «${esc(c.name)}»؟${n ? `<br><small>منتجاته (${num(n)}) لن تُحذف، لكنها ستصبح «بدون قسم».</small>` : ""}`))) return;
+          const n = countOf(c), kids = c.parent_id ? [] : subsOf(c.id);
+          const note = [n ? `منتجاته (${num(n)}) لن تُحذف${c.parent_id ? "، وتبقى في القسم الرئيسي" : "، لكنها ستصبح «بدون قسم»"}.` : "", kids.length ? `ستُحذف أقسامه الفرعية (${num(kids.length)}) معه.` : ""].filter(Boolean).join("<br>");
+          if (!(await confirmBox(`حذف قسم «${esc(c.name)}»؟${note ? `<br><small>${note}</small>` : ""}`))) return;
           await q(db.from("categories").delete().eq("id", c.id));
-          state.cats.splice(i, 1); state.prods.forEach((p) => { if (p.category_id === c.id) p.category_id = null; }); draw(); toast("تم حذف القسم");
+          const gone = new Set([c.id, ...kids.map((x) => x.id)]);
+          state.cats = state.cats.filter((x) => !gone.has(x.id));
+          state.prods.forEach((p) => { if (gone.has(p.subcategory_id)) p.subcategory_id = null; if (p.category_id === c.id) p.category_id = null; });
+          draw(); toast("تم حذف القسم");
         }
       } catch (err) { toast(errMsg(err), true); }
     });
@@ -569,12 +606,16 @@
       catch (err) { cb.checked = !cb.checked; toast(errMsg(err), true); }
     });
   }
-  function editCategory(c) {
+  function editCategory(c, parentId) {
     const isNew = !c;
-    const d = c ? clone(c) : { name: "", subtitle: "", slug: "", icon: "gift", image_url: "", active: true, sort: state.cats.length + 1 };
-    const m = modal(`<div class="modal-h"><h2>${isNew ? "قسم جديد" : "تعديل القسم"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
+    const parent0 = c ? c.parent_id || null : parentId || null;
+    const d = c ? clone(c) : { name: "", subtitle: "", slug: "", icon: parentId ? (state.cats.find((x) => x.id === parentId) || {}).icon || "gift" : "gift", image_url: "", active: true, parent_id: parent0,
+      sort: (parent0 ? subsOf(parent0).length : topCats().length) + 1 };
+    const hasKids = c && !c.parent_id && subsOf(c.id).length > 0;
+    const m = modal(`<div class="modal-h"><h2>${isNew ? (parent0 ? "قسم فرعي جديد" : "قسم جديد") : "تعديل القسم"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
       <div class="modal-b">
-        <div class="field"><label for="cName">اسم القسم *</label><input type="text" id="cName" value="${esc(d.name)}" maxlength="120"></div>
+        <div class="field"><label for="cName">اسم القسم *</label><input type="text" id="cName" value="${esc(d.name)}" maxlength="120" placeholder="${parent0 ? "خواتم العقيق الرجالية" : ""}"></div>
+        ${subsOK() ? `<div class="field"><label for="cParent">يتبع قسم</label><select id="cParent" ${hasKids ? "disabled" : ""}><option value="">— قسم رئيسي —</option>${topCats().filter((x) => !c || x.id !== c.id).map((x) => `<option value="${x.id}" ${parent0 === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>${hasKids ? `<span class="hint">لهذا القسم أقسام فرعية، لذا يبقى قسماً رئيسياً.</span>` : `<span class="hint">اختر قسماً ليصبح هذا قسماً فرعياً داخله (مثل «خواتم العقيق» داخل «خواتم رجالية»).</span>`}</div>` : ""}
         <div class="field"><label for="cSub">وصف قصير</label><input type="text" id="cSub" value="${esc(d.subtitle)}" maxlength="120" placeholder="عقيق · فيروز"></div>
         <div class="field"><label for="cSlug">الرابط المختصر (بالإنجليزي)</label><input type="text" id="cSlug" value="${esc(d.slug)}" dir="ltr" placeholder="mens-rings" maxlength="60"><span class="hint">يظهر في رابط القسم. حروف إنجليزية صغيرة وأرقام وشرطة فقط — اتركه فارغاً ليُنشأ تلقائياً.</span></div>
         <div class="field"><span class="lbl">الأيقونة</span><div class="icons" id="cIcons">${Object.keys(A.dep).map((k) => `<button type="button" data-ic="${k}" class="${d.icon === k ? "on" : ""}" aria-label="${A.depNames[k] || k}" title="${A.depNames[k] || k}">${A.depIcon(k)}</button>`).join("")}</div></div>
@@ -599,9 +640,13 @@
       let slug = $("#cSlug", m.el).value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) slug = "cat-" + Date.now().toString(36);
       const row = { name, subtitle: $("#cSub", m.el).value.trim(), slug, icon: d.icon, image_url: d.image_url, active: $("#cActive", m.el).checked };
+      if (subsOK() && $("#cParent", m.el) && !$("#cParent", m.el).disabled) row.parent_id = $("#cParent", m.el).value || null;
       try {
         if (isNew) { row.sort = d.sort; const n = await q(db.from("categories").insert(row).select().single()); state.cats.push(n); }
-        else { const n = await q(db.from("categories").update(row).eq("id", d.id).select().single()); state.cats = state.cats.map((x) => (x.id === n.id ? n : x)); }
+        else {
+          const n = await q(db.from("categories").update(row).eq("id", d.id).select().single()); state.cats = state.cats.map((x) => (x.id === n.id ? n : x));
+          if ((c.parent_id || null) !== (n.parent_id || null)) await loadProds();   // its products moved with it
+        }
         m.close(); toast("تم حفظ القسم"); pageCategories();
       } catch (err) { toast(errMsg(err), true); }
     };
@@ -787,7 +832,7 @@
       search: true, open: 1,
       groups: [
         { title: "القائمة العلوية والبحث", fields: [TX("nav_home", "رابط «الرئيسية»"), TX("nav_shop", "رابط «المتجر»"), TX("nav_departments", "رابط «الأقسام»"), TX("nav_contact", "رابط «تواصل معنا»"), TX("menu_title", "عنوان القائمة في الهاتف"), TX("menu_all", "«كل المنتجات» في قائمة الهاتف"), TX("search_placeholder", "النص داخل خانة البحث"), TX("search_results", "عدد نتائج البحث", { hint: "{n} = العدد" }), TX("search_none", "عند عدم وجود نتائج", { hint: "{q} = كلمة البحث" }), TX("intro_skip", "زر تخطّي الافتتاحية")] },
-        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
+        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("filter_all_sub", "زر «الكل» داخل قسم له أقسام فرعية", { hint: "{name} = اسم القسم" }), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
         { title: "صفحة المتجر والأقسام", fields: [TX("shop_title", "عنوان صفحة كل المنتجات"), TX("shop_count", "عدد المنتجات", { hint: "{n} = العدد" }), TX("shop_more", "زر «عرض المزيد» (المتاجر الكبيرة)", { hint: "{n} = عدد المنتجات المتبقية" }), TX("sort_label", "كلمة «ترتيب»"), TX("sort_default", "ترتيب: المقترح"), TX("sort_new", "ترتيب: الأحدث"), TX("sort_low", "ترتيب: الأرخص"), TX("sort_high", "ترتيب: الأغلى"), TX("empty_category", "قسم بلا منتجات"), TX("out_of_stock", "شارة نفاد الكمية")] },
         { title: "صفحة المنتج", fields: [TX("spec_category", "خانة: القسم"), TX("spec_metal", "خانة: المعدن"), TX("spec_stone", "خانة: الحجر"), TX("spec_weight", "خانة: الوزن"), TX("spec_size", "خانة: المقاس"), TX("spec_stock", "خانة: التوفر"), TX("in_stock", "متوفر"), TX("in_stock_n", "متوفر مع العدد", { hint: "{n} = الكمية" }), TX("qty", "كلمة «الكمية»"), TX("add_to_cart", "زر «أضف إلى السلة»"), TX("buy_now", "زر «اطلب الآن»"), TX("ask_whatsapp", "زر السؤال على واتساب"), TX("out_note", "رسالة نفاد الكمية"), TX("assure_1", "الضمان الأول"), TX("assure_2", "الضمان الثاني (مع الشحن الدولي)"), TX("assure_2_local", "الضمان الثاني (بدون شحن دولي)"), TX("assure_3", "الضمان الثالث"), TX("related", "عنوان «قد يعجبك أيضاً»"), TX("notfound_title", "منتج غير موجود — العنوان"), TX("notfound_text", "منتج غير موجود — النص"), TX("notfound_btn", "منتج غير موجود — الزر")] },
         { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
@@ -983,7 +1028,7 @@
      ACCOUNT
      ======================================================================= */
   function pageAccount() {
-    page().innerHTML = `<div class="page-title"><div><h1>حسابي</h1><p>${esc(state.user.email)}</p></div></div>
+    page().innerHTML = `<div class="page-title"><div><h1>حسابي</h1><p dir="ltr" style="text-align:start">${esc(String(state.user.email || "").replace("@" + ADMIN_DOMAIN, ""))}</p></div></div>
       <form class="card" id="pwForm" novalidate style="max-width:520px"><h2>تغيير كلمة المرور</h2>
         <div class="field"><label for="pw1">كلمة المرور الجديدة</label><input type="password" id="pw1" dir="ltr" autocomplete="new-password" minlength="12"><span class="hint">١٢ حرفاً على الأقل — اجمع بين حروف وأرقام ورموز.</span></div>
         <div class="field"><label for="pw2">أعد كتابتها</label><input type="password" id="pw2" dir="ltr" autocomplete="new-password"></div>

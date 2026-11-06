@@ -144,6 +144,13 @@
   const findProd = (id) => state.prods.find((p) => p.id === id) || known.get(id);
   // whole catalogue in the browser (up to CAT_LIMIT products, as before) or counted on the server
   const countAll = () => (state.complete ? state.prods.length : state.total);
+  const subsOf = (id) => (state.subs || []).filter((s) => s.parent_id === id);
+  const subOf = (p) => (p && p.subcategory_id ? (state.subs || []).find((s) => s.id === p.subcategory_id) : null);
+  const countSub = (id) => {
+    if (state.complete) return state.prods.filter((p) => p.subcategory_id === id).length;
+    const s = (state.subs || []).find((x) => x.id === id);
+    return s && Number.isFinite(s.count) ? s.count : 0;
+  };
   const countCat = (id) => {
     if (state.complete) return state.prods.filter((p) => p.category_id === id).length;
     const c = state.cats.find((x) => x.id === id);
@@ -170,7 +177,9 @@
   const PAGE = 24;        // larger catalogues: products per page in the shop
   function applyData(settings, cats, prods, meta = {}) {
     state.s = window.rqMerge(window.RQ_DEFAULTS, settings || {});
-    state.cats = cats || [];
+    // departments, and the sub-departments inside them (e.g. men's rings → agate rings)
+    state.cats = (cats || []).filter((c) => !c.parent_id);
+    state.subs = (cats || []).filter((c) => c.parent_id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
     state.prods = prods || [];
     state.total = Number.isFinite(meta.total) ? meta.total : state.prods.length;
     state.complete = meta.complete !== false;
@@ -728,22 +737,28 @@
   /* ---------- shop / category ---------- */
   let navToken = 0;   // a response that arrives after the visitor moved on is ignored
   const skeletons = (n) => `<div class="grid">${'<div class="skeleton" style="aspect-ratio:3/4"></div>'.repeat(n)}</div>`;
-  function renderShop(slug, sort) {
+  function renderShop(slug, sort, subSlug) {
     const cat = slug ? state.cats.find((c) => c.slug === slug) : null;
     if (slug && !cat && state.ready) { location.hash = "#/shop"; return; }
+    const kids = cat ? subsOf(cat.id) : [];
+    const sub = subSlug ? kids.find((x) => x.slug === subSlug) : null;
+    if (subSlug && !sub && state.ready) { location.hash = `#/c/${cat ? cat.slug : ""}`; return; }
     const paged = !state.complete;
     let list = cat ? state.prods.filter((p) => p.category_id === cat.id) : state.prods.slice();
+    if (sub) list = list.filter((p) => p.subcategory_id === sub.id);
+    const here = sub || cat;
     sort = sort || "default";
     if (sort === "low") list.sort((a, b) => a.price - b.price);
     if (sort === "high") list.sort((a, b) => b.price - a.price);
     if (sort === "new") list.sort((a, b) => (b.created_at || "").localeCompare(a.created_at || ""));
     app.innerHTML = `<div class="page-head"><div class="wrap">
-        <nav class="crumbs" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${cat ? `<a href="#/shop">${ui("nav_shop")}</a><span>/</span><span>${esc(cat.name)}</span>` : `<span>${ui("nav_shop")}</span>`}</nav>
-        <h1 data-split>${splitWords(cat ? cat.name : uiRaw("shop_title"))}</h1>
-        <p data-rv>${esc(cat ? cat.subtitle : state.s.brand.tagline)}</p></div></div>
+        <nav class="crumbs" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${cat ? `<a href="#/shop">${ui("nav_shop")}</a><span>/</span>${sub ? `<a href="#/c/${esc(cat.slug)}">${esc(cat.name)}</a><span>/</span><span>${esc(sub.name)}</span>` : `<span>${esc(cat.name)}</span>`}` : `<span>${ui("nav_shop")}</span>`}</nav>
+        <h1 data-split>${splitWords(here ? here.name : uiRaw("shop_title"))}</h1>
+        <p data-rv>${esc(here ? here.subtitle : state.s.brand.tagline)}</p></div></div>
       <section style="padding-bottom:40px"><div class="wrap">
         <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">${ui("filter_all")}</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
-        <div class="toolbar" data-rv><span class="count" id="shopCount">${paged ? ui("shop_count", { n: num(cat ? countCat(cat.id) : countAll()) }) : ui("shop_count", { n: num(list.length) })}</span>
+        ${kids.length ? `<div class="seg seg-sub" data-rv><a class="chip${sub ? "" : " on"}" href="#/c/${esc(cat.slug)}">${ui("filter_all_sub", { name: cat.name })}</a>${kids.map((x) => `<a class="chip${sub && sub.id === x.id ? " on" : ""}" href="#/c/${esc(cat.slug)}/${esc(x.slug)}">${esc(x.name)}</a>`).join("")}</div>` : ""}
+        <div class="toolbar" data-rv><span class="count" id="shopCount">${paged ? ui("shop_count", { n: num(sub ? countSub(sub.id) : cat ? countCat(cat.id) : countAll()) }) : ui("shop_count", { n: num(list.length) })}</span>
           <label>${ui("sort_label")}
           <select id="sortSel" aria-label="${ui("sort_label")}">
             <option value="default">${ui("sort_default")}</option><option value="new">${ui("sort_new")}</option><option value="low">${ui("sort_low")}</option><option value="high">${ui("sort_high")}</option>
@@ -751,17 +766,19 @@
         ${paged ? `<div id="shopGrid">${skeletons(8)}</div><div class="more" id="shopMore" hidden><button class="btn glass-btn" type="button" id="moreBtn"></button></div>` : grid(list)}
       </div></section>`;
     const sel = $("#sortSel"); sel.value = sort;
-    sel.addEventListener("change", () => { killMotion(); renderShop(slug, sel.value); });
+    sel.addEventListener("change", () => { killMotion(); renderShop(slug, sel.value, subSlug); });
+    const onSub = $(".seg-sub .chip.on");
+    if (onSub && sub) onSub.scrollIntoView({ block: "nearest", inline: "center" });   // phones: the chosen sub-department in view
     animateCommon();
-    if (paged) shopPages(cat, sort);
+    if (paged) shopPages(cat, sort, sub);
   }
   // large catalogues: the shop asks the database for one page at a time ("show more")
-  function shopPages(cat, sort) {
+  function shopPages(cat, sort, sub) {
     const token = ++navToken, box = $("#shopGrid"), more = $("#shopMore"), btn = $("#moreBtn");
     let shown = 0;
     const show = async (offset) => {
       btn.disabled = true;
-      const r = await rpcGet("list_products", { p_category: cat ? cat.id : null, p_sort: sort, p_limit: PAGE, p_offset: offset });
+      const r = await rpcGet("list_products", { p_category: cat ? cat.id : null, p_sort: sort, p_limit: PAGE, p_offset: offset, p_sub: sub ? sub.id : null });
       if (token !== navToken) return;
       btn.disabled = false;
       if (r.error || !r.data) {
@@ -815,8 +832,8 @@
       app.innerHTML = `<div class="page-head"><div class="wrap"><h1>${ui("notfound_title")}</h1><p>${ui("notfound_text")}</p><div class="cta" style="justify-content:center;margin-top:20px"><a class="btn shine" href="#/shop">${ui("notfound_btn")}</a></div></div></div>`;
       return;
     }
-    const c = catOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
-    const spec = [[ui("spec_category"), c && c.name], [ui("spec_metal"), p.metal], [ui("spec_stone"), p.stone], [ui("spec_weight"), p.weight], [ui("spec_size"), p.size],
+    const c = catOf(p), sc = subOf(p), imgs = (p.images || []).filter(Boolean), out = !inStock(p);
+    const spec = [[ui("spec_category"), sc ? sc.name : c && c.name], [ui("spec_metal"), p.metal], [ui("spec_stone"), p.stone], [ui("spec_weight"), p.weight], [ui("spec_size"), p.size],
       [ui("spec_stock"), out ? uiRaw("out_of_stock") : p.stock ? uiRaw("in_stock_n", { n: num(p.stock) }) : uiRaw("in_stock")]].filter((x) => x[1]);
     const related = (!state.complete && relatedOf.get(id)) || (state.complete ? state.prods.filter((x) => x.id !== p.id && x.category_id === p.category_id).slice(0, 4) : []);
     const wa = waLink(`${uiRaw("wa_product", { name: p.name, price: `${num(p.price)} ${state.s.shop.currency}` })}\n${location.href}`);
@@ -827,7 +844,7 @@
         ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="الصورة ${num(i + 1)}"><img ${smallSrc(u)} alt="" loading="lazy"></button>`).join("")}</div>` : ""}
       </div>
       <div class="p-info">
-        <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
+        <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>${sc ? `<span>/</span><a href="#/c/${esc(c.slug)}/${esc(sc.slug)}">${esc(sc.name)}</a>` : ""}` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
         ${p.badge && !out ? `<span class="tag" style="position:static;display:inline-block;margin-top:10px" data-rv>${esc(p.badge)}</span>` : ""}
         <h1 data-split>${splitWords(p.name)}</h1>
         <div class="p-price price" data-rv>${priceHTML(p)}</div>
@@ -1125,7 +1142,7 @@
     $("#searchRes").innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${ui("search_results", { n: num(total) })}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
   }
   function searchLocal(q) {
-    const all = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.badge, p.description, (catOf(p) || {}).name].join(" ")).includes(q));
+    const all = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.badge, p.description, (catOf(p) || {}).name, (subOf(p) || {}).name].join(" ")).includes(q));
     showResults(all.slice(0, 24), all.length);
   }
   function doSearch() {
@@ -1374,7 +1391,7 @@
     $$(".nav-links a").forEach((a) => a.classList.toggle("on", a.dataset.link === (parts[0] || "home")));
     if (!parts.length) renderHome(to);
     else if (parts[0] === "shop") renderShop(null);
-    else if (parts[0] === "c") renderShop(decodeURIComponent(parts[1] || ""));
+    else if (parts[0] === "c") renderShop(decodeURIComponent(parts[1] || ""), null, parts[2] ? decodeURIComponent(parts[2]) : null);
     else if (parts[0] === "p") renderProduct(decodeURIComponent(parts[1] || ""));
     else renderHome();
     if (window.ScrollTrigger) requestAnimationFrame(() => window.ScrollTrigger.refresh());

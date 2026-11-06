@@ -25,7 +25,10 @@ for (const p of PUBLIC) cpSync(join(ROOT, p), join(OUT, p), { recursive: true })
 cpSync(join(ROOT, "cloudflare", "_headers"), join(OUT, "_headers"));
 cpSync(join(ROOT, "cloudflare", "_redirects"), join(OUT, "_redirects"));
 cpSync(join(ROOT, "cloudflare", "robots.txt"), join(OUT, "robots.txt"));
-cpSync(join(ROOT, "cloudflare", "404.html"), join(OUT, "404.html"));   // unknown paths: a real 404, not the shop page
+// unknown paths: a real 404, not the shop page. RQ_BASE = the site's base path (GitHub Pages project sites live under /<repo>/)
+const BASE = process.env.RQ_BASE || "/";
+writeFileSync(join(OUT, "404.html"), readFileSync(join(ROOT, "cloudflare", "404.html"), "utf8").replace('href="/"', `href="${BASE}"`));
+writeFileSync(join(OUT, ".nojekyll"), "");   // GitHub Pages: serve the files as they are
 
 const hashOf = (file) => createHash("sha256").update(readFileSync(file)).digest("hex").slice(0, 10);
 const stamped = [];
