@@ -41,7 +41,10 @@ def translated(stk):
         "en": {"name": "Nishapur Turquoise Ring", "description": "Sky-blue turquoise in a handmade 925 silver setting."},
         "ur": {"name": "نیشاپوری فیروزے کی انگوٹھی"}, "de": {"name": "Nishapur-Türkisring"}}, ensure_ascii=False), P_TURQ))
     before = sql(stk, "select data from public.settings where id = 1")[0][0]
-    data = dict(before, contact={**before.get("contact", {}), "whatsapp": "07700000000"})
+    # start from the shop's original texts: other tests change Arabic texts, which then (by
+    # design) stay Arabic in the other languages until they are translated
+    original = json.loads((Path(__file__).parent / "catalog.json").read_text())["settings"]
+    data = dict(original, contact={"whatsapp": "07700000000"})
     sql(stk, "update public.settings set data = %s::jsonb where id = 1", (json.dumps(data, ensure_ascii=False),))
     yield
     sql(stk, "update public.settings set data = %s::jsonb where id = 1", (json.dumps(before, ensure_ascii=False),))

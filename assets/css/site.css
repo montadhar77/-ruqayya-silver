@@ -726,6 +726,8 @@ html.lenis, html.lenis body { height: auto; }
   --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 :root[lang="en"] body, :root[lang="de"] body { line-height: 1.7; }
+/* the Latin headline runs to more lines than the Arabic one: a little smaller and tighter */
+:root[lang="en"] .hero h1, :root[lang="de"] .hero h1 { font-size: clamp(50px, 6vw, 90px); line-height: 1.06; }
 :root[lang="en"] .brand .brand-txt b, :root[lang="de"] .brand .brand-txt b { letter-spacing: .01em; }
 :root[lang="en"] .brand .brand-txt small, :root[lang="de"] .brand .brand-txt small { letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
 /* Urdu: Nastaliq headings need room above and below the letters */
