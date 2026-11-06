@@ -56,6 +56,30 @@ let idx = readFileSync(join(OUT, "index.html"), "utf8");
 idx = idx.replace(/assets\/js\/site\.js\?v=[0-9a-f]+/, `assets/js/site.js?v=${hashOf(site)}`);
 writeFileSync(join(OUT, "index.html"), idx);
 
+/* RQ_SITE = the site's full address (e.g. https://montadhar77.github.io/-ruqayya-silver/):
+   link previews (WhatsApp, Facebook, X) need absolute image and page URLs, search engines a
+   sitemap of the four languages and the shop's details. Without it the build stays relative. */
+const SITE = process.env.RQ_SITE ? process.env.RQ_SITE.replace(/\/?$/, "/") : "";
+if (SITE) {
+  if (!/^https:\/\//.test(SITE)) throw new Error("RQ_SITE must start with https://");
+  let page = readFileSync(join(OUT, "index.html"), "utf8");
+  page = page.replace(/(<meta (?:property|name)="(?:og:image|twitter:image)" content=")assets\//g, `$1${SITE}assets/`)
+             .replace('<meta property="og:url" content="./">', `<meta property="og:url" content="${SITE}">`);
+  const ld = { "@context": "https://schema.org", "@type": "JewelryStore", name: "معرض رقية (عليها السلام)", alternateName: ["Ruqayya Gallery", "معرض رقية"],
+    url: SITE, logo: `${SITE}assets/img/logo.png`, image: `${SITE}assets/img/share.jpg`,
+    description: "فضيات وأحجار كريمة وهدايا العتبات المقدسة — توصيل لكل محافظات العراق وشحن دولي.",
+    address: { "@type": "PostalAddress", addressLocality: "كربلاء", addressCountry: "IQ" }, areaServed: "Worldwide",
+    availableLanguage: ["ar", "en", "ur", "de"], currenciesAccepted: "IQD", paymentAccepted: "Cash" };
+  page = page.replace("</head>", `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n</head>`);
+  writeFileSync(join(OUT, "index.html"), page);
+  const langs = ["ar", "en", "ur", "de"], url = (l) => `${SITE}?lang=${l}`;
+  const alts = langs.map((l) => `<xhtml:link rel="alternate" hreflang="${l}" href="${url(l)}"/>`).join("") + `<xhtml:link rel="alternate" hreflang="x-default" href="${SITE}"/>`;
+  writeFileSync(join(OUT, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n` +
+    [SITE, ...langs.map(url)].map((u) => `  <url><loc>${u}</loc>${alts}</url>`).join("\n") + "\n</urlset>\n");
+  writeFileSync(join(OUT, "robots.txt"), readFileSync(join(OUT, "robots.txt"), "utf8").replace(/\s*$/, "\n") + `Sitemap: ${SITE}sitemap.xml\n`);
+  if (!existsSync(join(OUT, "assets/img/share.jpg"))) throw new Error("assets/img/share.jpg missing");
+}
+
 // nothing private may end up in the output
 const walk = (d) => readdirSync(d).flatMap((n) => (statSync(join(d, n)).isDirectory() ? walk(join(d, n)) : [join(d, n)]));
 const files = walk(OUT).map((f) => relative(OUT, f));

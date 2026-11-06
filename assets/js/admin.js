@@ -411,10 +411,11 @@
     const noPhotos = { length: st ? st.products_no_photo : state.prods.filter((p) => !(p.images || []).length).length };
     const active = st ? st.products_active : state.prods.filter((p) => p.active).length, allProds = st ? st.products_total : state.prods.length;
     const todo = [
+      !allProds && ["أضف منتجاتك الأولى مع صورها وأسعارها — المتجر فارغ حالياً", "#/products?new=1"],
       !s.contact.whatsapp && ["أضف رقم واتساب ليصلك تفاصيل كل طلب ويستطيع الزبائن مراسلتك", "#/contact"],
-      !s.intro.video && ["ارفع فيديو الافتتاحية (ظهور الشعار)", "#/identity"],
-      noPhotos.length && [`أضف صور منتجاتك — ${num(noPhotos.length)} منتج بدون صور (المنتجات الحالية تجريبية، عدّلها أو احذفها)`, "#/products"],
-      !s.contact.phone && ["أضف رقم الهاتف وأوقات الدوام", "#/contact"]
+      !s.contact.phone && ["أضف رقم الهاتف وأوقات الدوام", "#/contact"],
+      noPhotos.length && [`أضف صور منتجاتك — ${num(noPhotos.length)} منتج بدون صور`, "#/products"],
+      !s.intro.video && ["ارفع فيديو الافتتاحية (ظهور الشعار)", "#/identity", true]
     ].filter(Boolean);
     page().innerHTML = `<div class="page-title"><div><h1>أهلاً بك</h1><p>نظرة سريعة على المعرض</p></div><a class="btn" href="#/products?new=1">${I.plus} إضافة منتج</a></div>
       <div class="stats">
@@ -423,7 +424,7 @@
         <a class="stat" href="#/products"><div class="ic">${I.box}</div><div><b>${num(active)}</b><span>منتج معروض من ${num(allProds)}</span></div></a>
         <a class="stat" href="#/inquiries"><div class="ic">${I.mail}</div><div><b>${num(state.counts.inq)}</b><span>رسائل غير مقروءة</span></div></a>
       </div>
-      ${todo.length ? `<div class="card"><h2>خطوات لإكمال الموقع</h2><div class="rows">${todo.map(([t, h]) => `<a class="row click" href="${h}" style="grid-template-columns:auto 1fr auto;text-decoration:none"><span class="status s-new">مطلوب</span><span>${t}</span><span>${I.left}</span></a>`).join("")}</div></div>` : ""}
+      ${todo.length ? `<div class="card"><h2>خطوات لإكمال الموقع</h2><div class="rows">${todo.map(([t, h, opt]) => `<a class="row click" href="${h}" style="grid-template-columns:auto 1fr auto;text-decoration:none"><span class="status ${opt ? "s-confirmed" : "s-new"}">${opt ? "اختياري" : "مطلوب"}</span><span>${t}</span><span>${I.left}</span></a>`).join("")}</div></div>` : ""}
       <div class="card"><div class="card-h"><h2>آخر الطلبات</h2><a class="btn ghost sm" href="#/orders">كل الطلبات</a></div>
         ${state.recent.length ? `<div class="rows">${state.recent.map(orderRow).join("")}</div>` : `<div class="empty">لا توجد طلبات بعد — ستظهر هنا فور وصولها.</div>`}</div>
       <div class="card"><h2>روابط سريعة</h2><div style="display:flex;gap:8px;flex-wrap:wrap">

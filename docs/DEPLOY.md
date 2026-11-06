@@ -16,6 +16,12 @@
 
 الدالة `functions/api/rpc/[fn].js` (تُقرأ من جذر المشروع): نافذة مخزّنة مؤقتاً (cache) للقراءة فقط على دوال الكتالوج الأربع. لا تمرّ بها الطلبات ولا بيانات الزبائن.
 
+## النشر الحالي على GitHub Pages (أمر واحد)
+```bash
+RQ_BASE=/-ruqayya-silver/ RQ_SITE=https://montadhar77.github.io/-ruqayya-silver/ node scripts/build.mjs dist
+# ثم يُدفع محتوى dist/ كفرع gh-pages (commit فوق الفرع الحالي، دون حذف التاريخ)
+```
+
 ## الخطوات (بانتظار الموافقة)
 
 ### 1) إنشاء المشروع
@@ -30,6 +36,7 @@ Cloudflare ← Workers & Pages ← Create ← Pages ← Connect to Git ← `mont
 |---|---|---|
 | `SUPABASE_URL` | `https://hnkjmthvgfknwdnehegr.supabase.co` | `https://rlivlqddrzdrmfqeqnox.supabase.co` |
 | `SUPABASE_KEY` | المفتاح العام `sb_publishable_…` للإنتاج | المفتاح العام لـ staging |
+| `RQ_SITE` | عنوان الموقع الكامل، مثل `https://ruqayya-silver.pages.dev/` (صورة المشاركة في واتساب، خريطة الموقع لمحركات البحث) | (فارغ) |
 
 (المفتاحان عامّان بطبيعتهما — موجودان أصلاً في `assets/js/config.js`. لا يوضع هنا أي مفتاح `sb_secret_`.)
 

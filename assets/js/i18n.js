@@ -45,7 +45,7 @@
     ui: {
       nav_home: "Home", nav_shop: "Shop", nav_departments: "Departments", nav_contact: "Contact",
       menu_title: "Menu", menu_all: "All products", search_placeholder: "Search for a ring, prayer beads, perfume…", intro_skip: "Skip",
-      soon: "Coming soon", filter_all: "All", filter_all_sub: "All {name}", collection_empty: "Products will appear here as soon as they are added.", collection_more: "View all products ({n})", featured_add: "Add to cart",
+      soon: "Coming soon", filter_all: "All", filter_all_sub: "All {name}", collection_empty: "The gallery's first pieces are on their way — coming soon.", collection_more: "View all products ({n})", featured_add: "Add to cart",
       shop_title: "All products", shop_count: "{n} products", shop_count_one: "{n} product", shop_more: "Show more ({n})", sort_label: "Sort", sort_default: "Recommended", sort_new: "Newest", sort_low: "Price: low to high", sort_high: "Price: high to low",
       empty_category: "No products in this department yet — coming soon.", out_of_stock: "Sold out",
       spec_category: "Department", spec_metal: "Metal", spec_stone: "Stone", spec_weight: "Weight", spec_size: "Size", spec_stock: "Availability", in_stock: "In stock", in_stock_n: "In stock ({n})",
@@ -109,7 +109,7 @@
     ui: {
       nav_home: "ہوم", nav_shop: "دکان", nav_departments: "شعبے", nav_contact: "رابطہ کریں",
       menu_title: "مینو", menu_all: "تمام مصنوعات", search_placeholder: "انگوٹھی، تسبیح، عطر تلاش کریں…", intro_skip: "چھوڑیں",
-      soon: "جلد آ رہا ہے", filter_all: "سب", filter_all_sub: "تمام {name}", collection_empty: "مصنوعات شامل ہوتے ہی یہاں نظر آئیں گی۔", collection_more: "تمام مصنوعات دیکھیں ({n})", featured_add: "کارٹ میں ڈالیں",
+      soon: "جلد آ رہا ہے", filter_all: "سب", filter_all_sub: "تمام {name}", collection_empty: "نمائش کے پہلے زیورات جلد آپ کے سامنے ہوں گے، ان شاء اللہ۔", collection_more: "تمام مصنوعات دیکھیں ({n})", featured_add: "کارٹ میں ڈالیں",
       shop_title: "تمام مصنوعات", shop_count: "{n} آئٹمز", shop_count_one: "{n} آئٹم", shop_more: "مزید دیکھیں ({n})", sort_label: "ترتیب", sort_default: "تجویز کردہ", sort_new: "نئی ترین", sort_low: "قیمت: کم سے زیادہ", sort_high: "قیمت: زیادہ سے کم",
       empty_category: "اس شعبے میں فی الحال کوئی چیز نہیں — ان شاء اللہ جلد آئے گی۔", out_of_stock: "ختم ہو گیا",
       spec_category: "شعبہ", spec_metal: "دھات", spec_stone: "پتھر", spec_weight: "وزن", spec_size: "سائز", spec_stock: "دستیابی", in_stock: "دستیاب", in_stock_n: "دستیاب ({n})",
@@ -173,7 +173,7 @@
     ui: {
       nav_home: "Startseite", nav_shop: "Shop", nav_departments: "Abteilungen", nav_contact: "Kontakt",
       menu_title: "Menü", menu_all: "Alle Produkte", search_placeholder: "Ring, Gebetskette, Parfüm suchen…", intro_skip: "Überspringen",
-      soon: "Demnächst", filter_all: "Alle", filter_all_sub: "Alle {name}", collection_empty: "Die Produkte erscheinen hier, sobald sie hinzugefügt werden.", collection_more: "Alle Produkte ansehen ({n})", featured_add: "In den Warenkorb",
+      soon: "Demnächst", filter_all: "Alle", filter_all_sub: "Alle {name}", collection_empty: "Die ersten Stücke der Galerie sind unterwegs – bald verfügbar.", collection_more: "Alle Produkte ansehen ({n})", featured_add: "In den Warenkorb",
       shop_title: "Alle Produkte", shop_count: "{n} Produkte", shop_count_one: "{n} Produkt", shop_more: "Mehr anzeigen ({n})", sort_label: "Sortieren", sort_default: "Empfohlen", sort_new: "Neueste", sort_low: "Preis: aufsteigend", sort_high: "Preis: absteigend",
       empty_category: "In dieser Abteilung gibt es derzeit keine Produkte – bald verfügbar.", out_of_stock: "Ausverkauft",
       spec_category: "Abteilung", spec_metal: "Metall", spec_stone: "Stein", spec_weight: "Gewicht", spec_size: "Größe", spec_stock: "Verfügbarkeit", in_stock: "Auf Lager", in_stock_n: "Auf Lager ({n})",
