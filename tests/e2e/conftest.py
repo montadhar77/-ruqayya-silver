@@ -19,7 +19,7 @@ LAYOUT_CHECK = """() => {
   const vis = (el) => { const s = getComputedStyle(el); return s.display !== 'none' && s.visibility !== 'hidden' && el.offsetParent !== null; };
   document.querySelectorAll('#app h1,#app h2,#app h3,#app h4,#app p,#app .btn,#app .price,#app .chip,#app label,.nav .brand,.modal .btn').forEach((el) => {
     if (!vis(el)) return;
-    if (el.closest('.room-track,.topbar,.band,.seg,.g-thumbs,.show-card,.intro')) return;
+    if (el.closest('.room-track,.topbar,.band,.seg,.g-thumbs,.show-card,.intro,.hp')) return;   // .hp: the anti-spam field, invisible by design
     const b = el.getBoundingClientRect();
     if (b.width && (b.right > W + 1 || b.left < -1)) out.push('off-screen: ' + el.tagName + '.' + el.className + ' "' + (el.textContent || '').trim().slice(0, 30) + '"');
     if (el.scrollWidth > el.clientWidth + 2 && getComputedStyle(el).overflow !== 'visible') {
