@@ -359,10 +359,12 @@
 
     // mobile menu
     $("#menuList").innerHTML = `<div class="lang-row" role="group" aria-label="${ui("lang_label")}">${langLinks("chip")}</div>` +
+      `<button class="menu-theme theme-btn" type="button" data-theme-toggle>${A.ui.sun.replace("<svg ", '<svg class="i-sun" ')}${A.ui.moon.replace("<svg ", '<svg class="i-moon" ')}<span>${ui("theme_toggle")}</span></button>` +
       `<a href="#/">${ui("nav_home")} <small>${A.ui.arrowL}</small></a><a href="#/shop">${ui("menu_all")} <small>${num(countAll())}</small></a>` +
       state.cats.map((c) => `<a href="#/c/${esc(c.slug)}">${esc(c.name)} <small>${num(countCat(c.id))}</small></a>`).join("") +
       `<a href="#/?to=visit">${ui("nav_contact")} <small>${A.ui.arrowL}</small></a>`;
     $$("#menuList small svg").forEach((sv) => { sv.style.width = "18px"; });
+    $("#menuList [data-theme-toggle]").addEventListener("click", toggleTheme);   // phones: the bar shows the language button instead
 
     renderFooter();
   }
