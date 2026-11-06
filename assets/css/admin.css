@@ -293,3 +293,20 @@ svg { flex: none; }
 .mfa-qr { display: grid; place-items: center; margin: 0 auto 14px; width: 204px; height: 204px; border-radius: 18px; background: #fff; }
 .mfa-qr img { width: 184px; height: 184px; }
 #mfaCode { text-align: center; font-size: 22px; letter-spacing: .4em; }
+
+/* translations (English · اردو · Deutsch) */
+.tr-box { border: 1px solid var(--line); border-radius: 14px; padding: 4px 14px; margin-top: 16px; background: #fbfcfb; }
+.tr-box > summary { cursor: pointer; padding: 10px 0; font-weight: 600; display: flex; align-items: center; gap: 8px; list-style: none; }
+.tr-box > summary::-webkit-details-marker { display: none; }
+.tr-box > summary::after { content: "＋"; margin-inline-start: auto; color: var(--soft); font-weight: 400; }
+.tr-box[open] > summary::after { content: "－"; }
+.tr-box > summary svg { width: 18px; height: 18px; color: var(--em); }
+.tr-box > summary small { color: var(--soft); font-weight: 400; }
+.tr-box .hint { margin: 0 0 10px; font-size: 12.5px; color: var(--soft); }
+.tr-lang { border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px 2px; margin: 0 0 12px; background: #fff; min-width: 0; }
+.tr-lang legend { padding: 0 6px; font-weight: 600; color: var(--em); }
+.tr-lang .field { margin-bottom: 10px; }
+.ar-orig { display: block; margin-top: 4px; padding: 6px 10px; border-radius: 8px; background: #f2f5f3; color: var(--soft); font-weight: 400; font-size: 13px; line-height: 1.6; white-space: pre-line; }
+.tr-stale { color: #8a5a00; }
+.notice > svg { width: 20px; height: 20px; flex: none; }
+.notice > svg + span { flex: 1; min-width: 200px; }

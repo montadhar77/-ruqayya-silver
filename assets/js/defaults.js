@@ -106,7 +106,10 @@ window.RQ_DEFAULTS = {
     form_ok: "وصلتنا رسالتك، شكراً لك", form_err: "تعذّر الإرسال، حاول مرة أخرى", form_busy: "أرسلت رسائل كثيرة، يرجى المحاولة بعد قليل", form_need_name: "يرجى كتابة الاسم", form_need_body: "يرجى كتابة الرسالة",
     net_down: "تعذّر الاتصال بالمتجر الآن. تحقّق من الإنترنت ثم أعد المحاولة.", net_retry: "إعادة المحاولة", net_retrying: "جارٍ المحاولة…",
     footer_departments: "الأقسام", footer_contact: "تواصل", footer_shop: "المتجر",
-    wa_hello: "السلام عليكم", wa_inquiry: "السلام عليكم، أودّ الاستفسار من {brand}", wa_product: "السلام عليكم، أريد طلب: {name} — {price}"
+    wa_hello: "السلام عليكم", wa_inquiry: "السلام عليكم، أودّ الاستفسار من {brand}", wa_product: "السلام عليكم، أريد طلب: {name} — {price}",
+    wa_order: "السلام عليكم، طلب جديد من موقع {brand}", wa_order_no: "رقم الطلب", wa_items: "المنتجات", wa_notes: "ملاحظات", room_count: "{pieces} في المتجر",
+    lang_label: "اللغة", a11y_main_nav: "القائمة الرئيسية", a11y_menu: "فتح القائمة", a11y_close: "إغلاق", a11y_theme: "تبديل الوضع الداكن والفاتح", a11y_search: "بحث", a11y_search_input: "بحث في المنتجات",
+    a11y_cart: "السلة", a11y_cart_panel: "سلة التسوق", a11y_whatsapp: "راسلنا على واتساب", a11y_logo: "شعار {brand}", a11y_photo: "الصورة {n}", a11y_less: "إنقاص", a11y_more: "زيادة"
   },
   notify: { orders: true, inquiries: true },
   contact: {

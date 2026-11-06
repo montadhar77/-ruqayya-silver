@@ -91,7 +91,8 @@
     ext: S('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
     sparkle: S('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'),
     type: S('<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>'),
-    search: S('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>')
+    search: S('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>'),
+    globe: S('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9M12 3C9.4 5.6 8.1 8.6 8.1 12s1.3 6.4 3.9 9"/>')
   };
 
   /* ---------- state ---------- */
@@ -162,6 +163,33 @@
   const catName = (id) => (state.cats.find((c) => c.id === id) || {}).name || "بدون قسم";
   // departments and their sub-departments (0009); older databases have no parent_id
   const subsOK = () => state.cats.length > 0 && "parent_id" in state.cats[0];
+  /* Translations (English, Urdu, German) of products and departments: column i18n (0010).
+     The dashboard stays in Arabic; every translated field is optional. */
+  const I18N = window.RQ_I18N;
+  const TR_LANGS = ["en", "ur", "de"];
+  const i18nOK = () => !!I18N && state.cats.length > 0 && "i18n" in state.cats[0];
+  const trVal = (o, lang, f) => ((o && o.i18n && o.i18n[lang]) || {})[f] || "";
+  const autoTerm = (v, lang) => { const t = I18N ? I18N.term(v, lang) : v; return t && t !== v ? t : ""; };
+  // translation inputs for one row; data-tr="<lang>.<field>"
+  const trFields = (o, fields) => TR_LANGS.map((lang) => {
+    const LN = I18N.langs[lang];
+    return `<fieldset class="tr-lang"><legend>${LN.name}</legend>${fields.map(([f, label, area, auto]) => {
+      const ph = auto ? esc(auto(lang)) : "";
+      return `<div class="field"><label>${label}</label>${area
+        ? `<textarea data-tr="${lang}.${f}" dir="${LN.dir}" lang="${lang}" rows="3">${esc(trVal(o, lang, f))}</textarea>`
+        : `<input type="text" data-tr="${lang}.${f}" dir="${LN.dir}" lang="${lang}" value="${esc(trVal(o, lang, f))}" ${ph ? `placeholder="${ph}"` : ""} maxlength="200">`}</div>`;
+    }).join("")}</fieldset>`;
+  }).join("");
+  // collect the translation inputs back into the row's i18n object (empty fields removed)
+  function readTr(box, before) {
+    const out = clone(before || {});
+    $$("[data-tr]", box).forEach((el) => {
+      const [lang, f] = el.dataset.tr.split("."), v = el.value.trim();
+      if (v) (out[lang] = out[lang] || {})[f] = v; else if (out[lang]) delete out[lang][f];
+    });
+    Object.keys(out).forEach((k) => { if (!out[k] || typeof out[k] !== "object" || !Object.keys(out[k]).length) delete out[k]; });
+    return out;
+  }
   const topCats = () => state.cats.filter((c) => !c.parent_id);
   const subsOf = (id) => state.cats.filter((c) => c.parent_id === id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
   const iconOf = (p) => (state.cats.find((c) => c.id === p.category_id) || {}).icon || "star";
@@ -321,7 +349,7 @@
      ======================================================================= */
   const NAV = [
     ["dashboard", "الرئيسية", I.dash], ["orders", "الطلبات", I.receipt, "orders"], ["products", "المنتجات", I.box], ["categories", "الأقسام", I.folder], ["inquiries", "الرسائل", I.mail, "inq"],
-    ["sep", "تخصيص الموقع"], ["home", "محتوى الصفحة الرئيسية", I.home], ["texts", "نصوص الموقع (كل الكلمات)", I.type], ["identity", "الهوية والألوان والافتتاحية", I.palette], ["contact", "التواصل والمتجر", I.phone],
+    ["sep", "تخصيص الموقع"], ["home", "محتوى الصفحة الرئيسية", I.home], ["texts", "نصوص الموقع (كل الكلمات)", I.type], ["identity", "الهوية والألوان والافتتاحية", I.palette], ["contact", "التواصل والمتجر", I.phone], ["languages", "اللغات والترجمة", I.globe],
     ["sep", "الحساب"], ["account", "حسابي", I.user]
   ];
   function renderShell() {
@@ -365,7 +393,7 @@
     state.page = page;
     $$("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === page));
     const old = $("#page"); if (old) { const fresh = old.cloneNode(false); old.replaceWith(fresh); } // drop listeners of the previous page
-    const P = { dashboard: pageDashboard, orders: pageOrders, products: pageProducts, categories: pageCategories, inquiries: pageInquiries, home: () => pageSettings("home"), texts: () => pageSettings("texts"), identity: () => pageSettings("identity"), contact: () => pageSettings("contact"), account: pageAccount };
+    const P = { dashboard: pageDashboard, orders: pageOrders, products: pageProducts, categories: pageCategories, inquiries: pageInquiries, home: () => pageSettings("home"), texts: () => pageSettings("texts"), identity: () => pageSettings("identity"), contact: () => pageSettings("contact"), languages: pageLanguages, account: pageAccount };
     (P[page] || pageDashboard)();
     scrollTo(0, 0);
   }
@@ -496,10 +524,18 @@
           <div class="field"><label for="fSort">ترتيب الظهور</label><input type="text" inputmode="numeric" id="fSort" value="${d.sort ?? 0}" dir="ltr"><span class="hint">الرقم الأصغر يظهر أولاً</span></div>
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">${toggleHTML('id="fActive"', d.active, "ظاهر على الموقع")}${toggleHTML('id="fFeat"', d.featured, "منتج مميز (يظهر في الواجهة)")}</div>
+        ${i18nOK() ? `<details class="tr-box" id="pTr"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+          <p class="hint">تظهر للزائر حسب لغته. اترك أي خانة فارغة ليظهر النص العربي — أما الحجر والمعدن والشارة فتُترجم تلقائياً (الظاهرة بلون باهت) إن كانت من الأحجار المعروفة.</p>
+          ${trFields(d, [["name", "اسم المنتج"], ["description", "الوصف", true], ["stone", "الحجر", false, (l) => autoTerm(d.stone, l)], ["metal", "المعدن", false, (l) => autoTerm(d.metal, l)], ["badge", "الشارة", false, (l) => autoTerm(d.badge, l)]])}</details>` : ""}
       </form>
       <div class="modal-f"><button class="btn" type="button" id="pSave">${I.check} حفظ المنتج</button><button class="btn light" type="button" data-x>إلغاء</button>
         ${isNew ? "" : `<a class="btn ghost" href="${SITE}#/p/${d.id}" target="_blank" rel="noopener" style="margin-inline-start:auto">${I.eye} عرض</a>`}</div>`);
     let busy = 0;
+    // the automatic stone / metal / badge translations follow what is typed in Arabic
+    const refreshAuto = () => [["stone", "#fStone"], ["metal", "#fMetal"], ["badge", "#fBadge"]].forEach(([f, sel]) => TR_LANGS.forEach((l) => {
+      const el = m.el.querySelector(`[data-tr="${l}.${f}"]`); if (el) el.placeholder = autoTerm($(sel, m.el).value, l);
+    }));
+    if (i18nOK()) { ["#fStone", "#fMetal", "#fBadge"].forEach((sel) => $(sel, m.el).addEventListener("input", refreshAuto)); refreshAuto(); }
     // sub-department list follows the chosen department
     const drawSubs = () => {
       const kids = subsOK() ? subsOf($("#fCat", m.el).value) : [];
@@ -537,7 +573,8 @@
       const row = {
         name, price, category_id: $("#fCat", m.el).value || null, ...(subsOK() ? { subcategory_id: $("#fSub", m.el).value || null } : {}), badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
         description: $("#fDesc", m.el).value.trim(), metal: $("#fMetal", m.el).value.trim(), stone: $("#fStone", m.el).value.trim(), weight: $("#fWeight", m.el).value.trim(), size: $("#fSize", m.el).value.trim(),
-        stock: intOrNull($("#fStock", m.el).value), sort: intOrNull($("#fSort", m.el).value) || 0, active: $("#fActive", m.el).checked, featured: $("#fFeat", m.el).checked, images: d.images
+        stock: intOrNull($("#fStock", m.el).value), sort: intOrNull($("#fSort", m.el).value) || 0, active: $("#fActive", m.el).checked, featured: $("#fFeat", m.el).checked, images: d.images,
+        ...(i18nOK() ? { i18n: readTr($("#pTr", m.el), d.i18n) } : {})
       };
       const btn = $("#pSave", m.el); btn.disabled = true;
       try {
@@ -621,6 +658,8 @@
         <div class="field"><span class="lbl">الأيقونة</span><div class="icons" id="cIcons">${Object.keys(A.dep).map((k) => `<button type="button" data-ic="${k}" class="${d.icon === k ? "on" : ""}" aria-label="${A.depNames[k] || k}" title="${A.depNames[k] || k}">${A.depIcon(k)}</button>`).join("")}</div></div>
         <div class="field"><span class="lbl">صورة القسم (اختياري — تظهر بدل الأيقونة)</span><div class="media-field" id="cImg"></div></div>
         ${toggleHTML('id="cActive"', d.active, "ظاهر على الموقع")}
+        ${i18nOK() ? `<details class="tr-box" id="cTr" style="margin-top:14px"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+          <p class="hint">اسم القسم ووصفه بلغة الزائر. اترك الخانة فارغة ليظهر بالعربية.</p>${trFields(d, [["name", "اسم القسم"], ["subtitle", "وصف قصير"]])}</details>` : ""}
       </div>
       <div class="modal-f"><button class="btn" type="button" id="cSave">${I.check} حفظ القسم</button><button class="btn light" type="button" data-x>إلغاء</button></div>`);
     const drawImg = (loading) => {
@@ -640,6 +679,7 @@
       let slug = $("#cSlug", m.el).value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
       if (!slug) slug = "cat-" + Date.now().toString(36);
       const row = { name, subtitle: $("#cSub", m.el).value.trim(), slug, icon: d.icon, image_url: d.image_url, active: $("#cActive", m.el).checked };
+      if (i18nOK()) row.i18n = readTr($("#cTr", m.el), d.i18n);
       if (subsOK() && $("#cParent", m.el) && !$("#cParent", m.el).disabled) row.parent_id = $("#cParent", m.el).value || null;
       try {
         if (isNew) { row.sort = d.sort; const n = await q(db.from("categories").insert(row).select().single()); state.cats.push(n); }
@@ -842,7 +882,8 @@
         { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
         { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
         { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
-        { title: "رسائل واتساب الجاهزة", fields: [TX("wa_hello", "التحية عند فتح واتساب"), TX("wa_inquiry", "رسالة زر واتساب العائم", { hint: "{brand} = اسم المعرض" }), TX("wa_product", "رسالة «اسأل عنه على واتساب»", { hint: "{name} = اسم المنتج، {price} = السعر" })] }
+        { title: "رسائل واتساب الجاهزة", fields: [TX("wa_hello", "التحية عند فتح واتساب"), TX("wa_inquiry", "رسالة زر واتساب العائم", { hint: "{brand} = اسم المعرض" }), TX("wa_product", "رسالة «اسأل عنه على واتساب»", { hint: "{name} = اسم المنتج، {price} = السعر" }),
+          TX("wa_order", "أول سطر في رسالة الطلب على واتساب", { hint: "{brand} = اسم المعرض" }), TX("wa_order_no", "«رقم الطلب» في رسالة الطلب"), TX("wa_items", "«المنتجات» في رسالة الطلب"), TX("wa_notes", "«ملاحظات» في رسالة الطلب")] }
       ]
     },
     identity: {
@@ -890,11 +931,11 @@
 
   function fieldHTML(f, d) {
     const v = getPath(d, f.p);
-    const id = "f_" + f.p.replace(/\./g, "_");
+    const id = "f_" + f.p.replace(/[.\s]/g, "_");
     const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
     switch (f.t) {
       case "toggle": return `<div class="field">${toggleHTML(`data-p="${f.p}" data-type="bool"`, v !== false, f.l)}${hint}</div>`;
-      case "textarea": return `<div class="field"><label for="${id}">${f.l}</label><textarea id="${id}" data-p="${f.p}" ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${esc(v)}</textarea>${hint}</div>`;
+      case "textarea": return `<div class="field"><label for="${id}">${f.l}</label><textarea id="${id}" data-p="${f.p}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.lang ? `lang="${f.lang}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${esc(v)}</textarea>${hint}</div>`;
       case "note": return `<p class="hint" style="margin:-4px 0 14px">${f.l}</p>`;
       case "number": return `<div class="field"><label for="${id}">${f.l}</label><input type="text" inputmode="decimal" id="${id}" data-p="${f.p}" data-type="num" value="${esc(v)}" dir="ltr">${hint}</div>`;
       case "image": case "video": {
@@ -926,8 +967,61 @@
           <div class="preview-strip" data-strip="${base}" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${val(k)}"></div>`).join("")}</div>
           <button class="btn ghost sm" type="button" data-reset="${base}" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
       }
-      default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${hint}</div>`;
+      default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.lang ? `lang="${f.lang}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${hint}</div>`;
     }
+  }
+  /* =======================================================================
+     LANGUAGES — every text of the site in English, Urdu and German
+     Built from the same lists as the pages above. Each field shows the Arabic text;
+     an empty field uses the built-in translation (shown faded) while the Arabic is
+     unchanged. Saved in settings.data.i18n.<lang>.
+     ======================================================================= */
+  const SKIP_T = ["toggle", "number", "image", "video", "select", "product", "colors", "note"];
+  function langSchema(code) {
+    const LN = I18N.langs[code], raw = state.raw || {};
+    const groups = [];
+    const add = (fields, path, label, area) => {
+      const ar = getPath(state.s, path);
+      if (typeof ar !== "string" || !ar.trim()) return;
+      const b = I18N.builtIn(path, code, raw);
+      fields.push({ p: `i18n.${code}.${path}`, l: `${label}<span class="ar-orig" dir="rtl" lang="ar">${esc(ar)}</span>`, t: area || ar.length > 90 ? "textarea" : undefined,
+        ph: b.text && !b.stale ? b.text : "", dir: LN.dir, lang: code,
+        hint: b.stale ? `<span class="tr-stale">غيّرتَ هذا النص بالعربية، لذا يظهر بالعربية حتى تكتب ترجمته هنا.</span>` : "" });
+    };
+    ["home", "texts", "identity", "contact"].forEach((key) => SCHEMA[key].groups.forEach((g) => {
+      const fields = [];
+      g.fields.forEach((f) => {
+        if (!f.p || f.dir || SKIP_T.includes(f.t) || f.p === "shop.cities" || f.p === "shop.countries") return;
+        const v = getPath(state.s, f.p);
+        if (f.t === "strings") { (Array.isArray(v) ? v : []).forEach((x, i) => add(fields, `${f.p}.${i}`, `${f.l} — ${num(i + 1)}`)); return; }
+        if (f.t === "list") {
+          (Array.isArray(v) ? v : []).forEach((item, i) => f.fields.forEach((sf) => { if (!sf.dir && !SKIP_T.includes(sf.t)) add(fields, `${f.p}.${i}.${sf.k}`, `${f.l} — ${num(i + 1)} — ${sf.l}`, sf.t === "textarea"); }));
+          return;
+        }
+        add(fields, f.p, f.l, f.t === "textarea");
+      });
+      if (fields.length) groups.push({ title: g.title, fields });
+    }));
+    const names = ["العراق", ...(state.s.shop.countries || []), ...(state.s.shop.cities || [])].filter((x, i, a) => x && a.indexOf(x) === i);
+    groups.push({ title: "أسماء الدول والمحافظات (في نموذج الطلب والكرة الأرضية)", fields: names.map((n) => ({ p: `i18n.${code}.places.${n}`, l: `<span class="ar-orig" dir="rtl" lang="ar" style="margin:0">${esc(n)}</span>`,
+      ph: (I18N.places[code] || {})[n] || "", dir: LN.dir, lang: code })) });
+    const tabs = `<div class="tabs" role="tablist">${TR_LANGS.map((c) => `<button class="tab ${c === code ? "on" : ""}" type="button" role="tab" aria-selected="${c === code}" data-lang="${c}" lang="${c}">${I18N.langs[c].name}</button>`).join("")}</div>
+      <div class="notice">${I.globe}<span>الموقع يظهر لكل زائر بلغة جهازه (العربية، English، اردو، Deutsch) ويستطيع تغييرها من زر اللغة. المنتجات والأقسام تُترجم من صفحة كل منتج وكل قسم. لوحة التحكم تبقى بالعربية.</span></div>`;
+    return { title: `الترجمة — ${LN.name}`, sub: "النصوص العامة للموقع بهذه اللغة. اترك أي خانة فارغة لتبقى الترجمة الجاهزة (الظاهرة بلون باهت).", search: true, open: 1, groups, top: tabs,
+      preview: `${SITE}?lang=${code}` };
+  }
+  function pageLanguages() {
+    if (!I18N) { page().innerHTML = `<div class="empty">ملف اللغات غير موجود.</div>`; return; }
+    const want = new URLSearchParams(location.hash.split("?")[1] || "").get("l");
+    const code = TR_LANGS.includes(want) ? want : TR_LANGS[0];
+    SCHEMA["lang_" + code] = langSchema(code);
+    pageSettings("lang_" + code);
+    $$(".tabs [data-lang]", page()).forEach((b) => b.addEventListener("click", async () => {
+      if (b.dataset.lang === code) return;
+      if (state.dirty && !(await confirmBox("لديك ترجمات غير محفوظة في هذه اللغة. هل تريد الانتقال بدون حفظ؟", "انتقال"))) return;
+      state.dirty = false; showSave(false);
+      location.hash = `#/languages?l=${b.dataset.lang}`;   // hashchange → route()
+    }));
   }
   function findField(groups, p) {
     for (const g of groups) for (const f of g.fields) if (f.p === p) return f;
@@ -937,8 +1031,8 @@
     const sc = SCHEMA[key];
     state.draft = clone(state.s);
     const d = state.draft;
-    page().innerHTML = `<div class="page-title"><div><h1>${sc.title}</h1><p>${sc.sub}</p></div><a class="btn light" href="${SITE}" target="_blank" rel="noopener">${I.eye} معاينة الموقع</a></div>
-      <div class="notice info">بعد أي تعديل اضغط «حفظ ونشر» في الأسفل — يظهر التغيير في الموقع فوراً.${sc.search ? " اترك أي خانة فارغة ليعود نصها الأصلي (الظاهر بلون باهت)." : ""}</div>
+    page().innerHTML = `<div class="page-title"><div><h1>${sc.title}</h1><p>${sc.sub}</p></div><a class="btn light" href="${sc.preview || SITE}" target="_blank" rel="noopener">${I.eye} معاينة الموقع</a></div>
+      ${sc.top || ""}<div class="notice info">بعد أي تعديل اضغط «حفظ ونشر» في الأسفل — يظهر التغيير في الموقع فوراً.${sc.search ? " اترك أي خانة فارغة ليعود نصها الأصلي (الظاهر بلون باهت)." : ""}</div>
       ${sc.search ? `<div class="toolbar"><div class="search-in">${I.search}<input class="input" type="search" id="txSearch" placeholder="ابحث عن أي كلمة في الموقع… مثل: السلة، واتساب، تأكيد" aria-label="بحث في النصوص"></div></div>` : ""}
       ${sc.groups.map((g, gi) => `<section class="card collapsible ${sc.search ? "tx" : ""} ${gi < (sc.open || 2) ? "open" : ""}"><h2 tabindex="0" role="button">${g.title}</h2><div class="body">${g.fields.map((f) => fieldHTML(f, d)).join("")}</div></section>`).join("")}`;
     const pg = page();

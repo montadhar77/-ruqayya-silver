@@ -47,7 +47,9 @@ def test_no_function_is_open_to_anon_by_accident(db):
     allowed = {"public.place_order", "public.log_client_error", "private.is_admin", "public.am_i_admin", "public.touch_updated_at",
                # 0006: read-only storefront catalogue (row level security still applies) and pure text helpers
                "public.catalog_home", "public.list_products", "public.search_products", "public.product_page", "public.products_by_ids",
-               "private.ar_norm", "private.product_doc", "private.order_doc", "private.like_any"}
+               "private.ar_norm", "private.product_doc", "private.order_doc", "private.like_any",
+               # 0010: pure text helper for searching translations
+               "private.i18n_doc"}
     assert {r[0] for r in rows} <= allowed, {r[0] for r in rows} - allowed
 
 

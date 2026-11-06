@@ -46,7 +46,7 @@
 
 <div class="topbar" id="topbar" hidden><div class="wrap" id="topTrack"></div></div>
 
-<nav class="nav" id="nav" aria-label="القائمة الرئيسية">
+<nav class="nav" id="nav" aria-label="القائمة الرئيسية" data-t-aria="a11y_main_nav">
   <div class="wrap">
     <div class="nav-links">
       <a href="#/" data-link="home" data-t="nav_home">الرئيسية</a>
@@ -54,15 +54,17 @@
       <a href="#/?to=departments" data-t="nav_departments">الأقسام</a>
       <a href="#/?to=visit" data-t="nav_contact">تواصل معنا</a>
     </div>
-    <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="فتح القائمة"></button>
-    <a class="brand" href="#/" id="brand" aria-label="الرئيسية">
+    <button class="icon-btn menu-btn" id="menuBtn" type="button" aria-label="فتح القائمة" data-t-aria="a11y_menu"></button>
+    <a class="brand" href="#/" id="brand" aria-label="الرئيسية" data-t-aria="nav_home">
       <img id="brandLogo" class="mark-img" src="assets/img/logo-mark.webp" alt="شعار معرض رقية" width="35" height="52">
       <span class="brand-txt"><b id="brandName">معرض رقية</b><small id="brandSub">عليها السلام</small></span>
     </a>
     <div class="nav-actions">
-      <button class="icon-btn theme-btn" id="themeBtn" type="button" aria-label="تبديل الوضع الداكن والفاتح"></button>
-      <button class="icon-btn" id="searchBtn" type="button" aria-label="بحث"></button>
-      <button class="icon-btn" id="cartBtn" type="button" aria-label="السلة"><span class="badge-count" id="cartCount" hidden>0</span></button>
+      <div class="lang-wrap"><button class="icon-btn lang-btn" id="langBtn" type="button" aria-haspopup="true" aria-expanded="false" aria-controls="langPop" aria-label="اللغة"></button>
+        <div class="lang-pop glass" id="langPop" hidden></div></div>
+      <button class="icon-btn theme-btn" id="themeBtn" type="button" aria-label="تبديل الوضع الداكن والفاتح" data-t-aria="a11y_theme"></button>
+      <button class="icon-btn" id="searchBtn" type="button" aria-label="بحث" data-t-aria="a11y_search"></button>
+      <button class="icon-btn" id="cartBtn" type="button" aria-label="السلة" data-t-aria="a11y_cart"><span class="badge-count" id="cartCount" hidden>0</span></button>
     </div>
   </div>
 </nav>
@@ -73,15 +75,15 @@
 
 <!-- mobile menu -->
 <div class="drawer-bg" id="menuBg"></div>
-<aside class="drawer left" id="menu" aria-label="القائمة" aria-hidden="true">
-  <div class="drawer-head"><h3 data-t="menu_title">القائمة</h3><button class="icon-btn" type="button" data-close="menu" aria-label="إغلاق"></button></div>
+<aside class="drawer left" id="menu" aria-label="القائمة" data-t-aria="menu_title" aria-hidden="true">
+  <div class="drawer-head"><h3 data-t="menu_title">القائمة</h3><button class="icon-btn" type="button" data-close="menu" aria-label="إغلاق" data-t-aria="a11y_close"></button></div>
   <div class="drawer-body"><div class="menu-list" id="menuList"></div></div>
 </aside>
 
 <!-- cart -->
 <div class="drawer-bg" id="cartBg"></div>
-<aside class="drawer" id="cart" aria-label="سلة التسوق" aria-hidden="true">
-  <div class="drawer-head"><h3 data-t="cart_title">السلة</h3><button class="icon-btn" type="button" data-close="cart" aria-label="إغلاق"></button></div>
+<aside class="drawer" id="cart" aria-label="سلة التسوق" data-t-aria="a11y_cart_panel" aria-hidden="true">
+  <div class="drawer-head"><h3 data-t="cart_title">السلة</h3><button class="icon-btn" type="button" data-close="cart" aria-label="إغلاق" data-t-aria="a11y_close"></button></div>
   <div class="drawer-body" id="cartBody"></div>
   <div class="drawer-foot" id="cartFoot"></div>
 </aside>
@@ -95,14 +97,14 @@
 <div class="search-bg" id="search" aria-hidden="true">
   <div class="wrap">
     <div class="search-box">
-      <input id="searchInput" type="search" data-t-ph="search_placeholder" placeholder="ابحث عن خاتم، مسبحة، عطر…" aria-label="بحث في المنتجات" autocomplete="off">
-      <button class="icon-btn" type="button" id="searchClose" aria-label="إغلاق البحث"></button>
+      <input id="searchInput" type="search" data-t-ph="search_placeholder" placeholder="ابحث عن خاتم، مسبحة، عطر…" aria-label="بحث في المنتجات" data-t-aria="a11y_search_input" autocomplete="off">
+      <button class="icon-btn" type="button" id="searchClose" aria-label="إغلاق البحث" data-t-aria="a11y_close"></button>
     </div>
     <div class="search-res" id="searchRes"></div>
   </div>
 </div>
 
-<a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="راسلنا على واتساب" hidden></a>
+<a class="wa-float" id="waFloat" target="_blank" rel="noopener" aria-label="راسلنا على واتساب" data-t-aria="a11y_whatsapp" hidden></a>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
 <script src="assets/vendor/gsap.min.js"></script>
@@ -110,6 +112,7 @@
 <script src="assets/vendor/lenis.min.js"></script>
 <script src="assets/js/config.js"></script>
 <script src="assets/js/defaults.js"></script>
+<script src="assets/js/i18n.js"></script>
 <script src="assets/js/art.js"></script>
 <script src="assets/js/site.js"></script>
 </body>

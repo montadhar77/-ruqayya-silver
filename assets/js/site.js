@@ -7,6 +7,13 @@
   "use strict";
   const A = window.RQ_ART;
   const cfg = window.RQ_CONFIG;
+  // language (picked in boot.js): Arabic, English, Urdu or German — see i18n.js
+  const I18N = window.RQ_I18N;
+  const L = I18N && I18N.langs[window.RQ_LANG] ? window.RQ_LANG : "ar";
+  const LANG = I18N ? I18N.langs[L] : { dir: "rtl", locale: "ar-IQ" };
+  const LTR = LANG.dir === "ltr";
+  const DA = L === "ar" ? "" : ' dir="auto"';      // product names may stay Arabic in another language
+  if (LTR) { const l = A.ui.arrowL; A.ui.arrowL = A.ui.arrowR; A.ui.arrowR = l; A.ui.arrow = A.ui.arrow.replace("<svg ", '<svg style="transform:scaleX(-1)" '); }
   // The public site only reads the catalogue, places orders and sends messages,
   // so it talks to the database REST API directly (no 218 KB client library).
   async function api(path, opts = {}) {
@@ -41,7 +48,7 @@
     const settle = (t) => { token = t || ""; waiters.splice(0).forEach((w) => w(token)); };
     const ready = loadTurnstile().then((ts) => {
       if (!ts || !holder.isConnected) return null;
-      widget = ts.render(holder, { sitekey: cfg.turnstile, action, appearance: "interaction-only", language: "ar",
+      widget = ts.render(holder, { sitekey: cfg.turnstile, action, appearance: "interaction-only", language: L,
         theme: document.documentElement.dataset.theme === "light" ? "light" : "dark",
         callback: settle, "expired-callback": () => settle(""), "error-callback": () => { settle(""); return true; } });
       return ts;
@@ -106,17 +113,29 @@
   /* ---------- helpers ---------- */
   const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
   const toLatin = (t) => String(t ?? "").replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
-  const num = (n) => Number(n || 0).toLocaleString("ar-IQ");
-  // "N pieces" with Arabic number agreement: قطعة واحدة · قطعتان · ٣–١٠ قطع · ١١+ قطعة
-  const pieces = (n) => { n = Number(n) || 0; const r = n % 100; return n === 1 ? "قطعة واحدة" : n === 2 ? "قطعتان" : `${num(n)} ${r >= 3 && r <= 10 ? "قطع" : "قطعة"}`; };
+  const num = (n) => Number(n || 0).toLocaleString(LANG.locale);
+  const plural = (n) => { try { return new Intl.PluralRules(L).select(Number(n) || 0); } catch (e) { return Number(n) === 1 ? "one" : "other"; } };
+  // "N pieces" — Arabic number agreement: قطعة واحدة · قطعتان · ٣–١٠ قطع · ١١+ قطعة
+  const pieces = (n) => {
+    n = Number(n) || 0;
+    if (L !== "ar") return uiRaw(plural(n) === "one" ? "pieces_one" : "pieces_other", { n: num(n) });
+    const r = n % 100; return n === 1 ? "قطعة واحدة" : n === 2 ? "قطعتان" : `${num(n)} ${r >= 3 && r <= 10 ? "قطع" : "قطعة"}`;
+  };
   const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
   // interface text from the dashboard («نصوص الموقع»); empty falls back to the default, {x} placeholders are filled in
+  const builtInUi = (k) => (I18N && L !== "ar" && I18N.text[L] && I18N.text[L].ui[k]) || "";
   const uiRaw = (k, vars) => {
     let v = ((state.s && state.s.ui) || {})[k];
-    if (v == null || v === "") v = (window.RQ_DEFAULTS.ui || {})[k] ?? "";
+    if (v == null || v === "") v = builtInUi(k) || ((window.RQ_DEFAULTS.ui || {})[k] ?? "");
     return vars ? String(v).replace(/\{(\w+)\}/g, (m, n) => (n in vars ? vars[n] : m)) : String(v);
   };
   const ui = (k, vars) => esc(uiRaw(k, vars));
+  // counted text: "{n} products" / "{n} product" in languages with a singular form
+  const uiN = (k, n, vars = {}) => {
+    const one = L !== "ar" && plural(n) === "one" && (((state.s && state.s.ui) || {})[k + "_one"] || builtInUi(k + "_one"));
+    return ui(one ? k + "_one" : k, { n: num(n), ...vars });
+  };
+  const place = (name) => (I18N ? I18N.place(name, L, state.raw) : name);
   const waNumber = (p) => {
     let d = toLatin(p).replace(/\D/g, "");
     if (!d) return "";
@@ -135,12 +154,27 @@
     return /^(https?:\/\/|mailto:|tel:|#|\/(?!\/))/i.test(v) ? v : "";
   };
   const isAr = (t) => /[\u0600-\u06FF]/.test(t || "");
+  /* Products and departments in the visitor's language: their own translation (written in
+     the dashboard), else the dictionary for stones/metals/badges, else the Arabic text.
+     The Arabic row stays in _src (search, and the drawings that read Arabic stone names). */
+  const tr = (o, f) => { const v = o && o.i18n && o.i18n[L] && o.i18n[L][f]; return typeof v === "string" && v.trim() ? v.trim() : ""; };
+  function locProd(p) {
+    if (L === "ar" || !p || p._src) return p;
+    return { ...p, _src: p, name: tr(p, "name") || p.name, description: tr(p, "description") || p.description,
+      stone: tr(p, "stone") || I18N.term(p.stone, L), metal: tr(p, "metal") || I18N.term(p.metal, L), badge: tr(p, "badge") || I18N.term(p.badge, L),
+      weight: tr(p, "weight") || I18N.measure(p.weight, L), size: tr(p, "size") || I18N.measure(p.size, L) };
+  }
+  function locCat(c) {
+    if (L === "ar" || !c || c._src) return c;
+    return { ...c, _src: c, name: tr(c, "name") || c.name, subtitle: tr(c, "subtitle") || c.subtitle };
+  }
   const eyebrow = (t, attrs = "") => t ? `<span class="${isAr(t) ? "eyebrow" : "latin"}" ${attrs}>${esc(t)}</span>` : "";
   const catOf = (p) => state.cats.find((c) => c.id === p.category_id);
   const iconOf = (p) => (catOf(p) || {}).icon || "star";
+  const artOf = (p) => A.productArt(p._src || p, iconOf(p));
   // products fetched page by page (large catalogues) are remembered here for the cart and links
   const known = new Map();
-  const remember = (p) => { if (p && p.id) known.set(p.id, p); return p; };
+  const remember = (p) => { if (p && p.id) { p = locProd(p); known.set(p.id, p); } return p; };
   const findProd = (id) => state.prods.find((p) => p.id === id) || known.get(id);
   // whole catalogue in the browser (up to CAT_LIMIT products, as before) or counted on the server
   const countAll = () => (state.complete ? state.prods.length : state.total);
@@ -176,11 +210,12 @@
   const CAT_LIMIT = 60;   // up to this many products the whole catalogue is loaded at once (as before)
   const PAGE = 24;        // larger catalogues: products per page in the shop
   function applyData(settings, cats, prods, meta = {}) {
-    state.s = window.rqMerge(window.RQ_DEFAULTS, settings || {});
+    state.raw = settings || {};
+    state.s = I18N ? I18N.localize(state.raw, L) : window.rqMerge(window.RQ_DEFAULTS, state.raw);
     // departments, and the sub-departments inside them (e.g. men's rings → agate rings)
-    state.cats = (cats || []).filter((c) => !c.parent_id);
-    state.subs = (cats || []).filter((c) => c.parent_id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
-    state.prods = prods || [];
+    state.cats = (cats || []).filter((c) => !c.parent_id).map(locCat);
+    state.subs = (cats || []).filter((c) => c.parent_id).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(locCat);
+    state.prods = (prods || []).map(locProd);
     state.total = Number.isFinite(meta.total) ? meta.total : state.prods.length;
     state.complete = meta.complete !== false;
   }
@@ -305,11 +340,13 @@
 
     // brand
     const logo = $("#brandLogo");
-    logo.src = s.brand.logo || LOGO_MARK; logo.alt = `شعار ${s.brand.full}`; logo.hidden = false;
+    logo.src = s.brand.logo || LOGO_MARK; logo.alt = uiRaw("a11y_logo", { brand: s.brand.full }); logo.hidden = false;
     $("#brandName").textContent = s.brand.name;
     $("#brandSub").textContent = s.brand.sub || s.brand.tagline;
     $$("[data-t]").forEach((el) => { el.textContent = uiRaw(el.dataset.t); });
     $$("[data-t-ph]").forEach((el) => { el.placeholder = uiRaw(el.dataset.tPh); });
+    $$("[data-t-aria]").forEach((el) => { el.setAttribute("aria-label", uiRaw(el.dataset.tAria)); });
+    langMenu();
 
     // announcement: a single still line (no scrolling text)
     const items = (s.announcement.items || []).filter(Boolean);
@@ -321,7 +358,7 @@
     if (wl) { wa.href = wl; wa.innerHTML = A.ui.whatsapp; wa.hidden = false; } else wa.hidden = true;
 
     // mobile menu
-    $("#menuList").innerHTML =
+    $("#menuList").innerHTML = `<div class="lang-row" role="group" aria-label="${ui("lang_label")}">${langLinks("chip")}</div>` +
       `<a href="#/">${ui("nav_home")} <small>${A.ui.arrowL}</small></a><a href="#/shop">${ui("menu_all")} <small>${num(countAll())}</small></a>` +
       state.cats.map((c) => `<a href="#/c/${esc(c.slug)}">${esc(c.name)} <small>${num(countCat(c.id))}</small></a>`).join("") +
       `<a href="#/?to=visit">${ui("nav_contact")} <small>${A.ui.arrowL}</small></a>`;
@@ -330,9 +367,36 @@
     renderFooter();
   }
 
+  /* ---------- language switch: a link per language (the page reloads in that language) ---------- */
+  const langHref = (code) => { const u = new URL(location.href); u.searchParams.set("lang", code); return u.pathname + u.search + u.hash; };
+  const langLinks = (cls) => (I18N ? I18N.order : []).map((c) => `<a class="${cls}${c === L ? " on" : ""}" href="${esc(langHref(c))}" hreflang="${c}" lang="${c}" dir="${I18N.langs[c].dir}" data-lang="${c}"${c === L ? ' aria-current="true"' : ""}>${esc(I18N.langs[c].name)}</a>`).join("");
+  const GLOBE = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9M12 3C9.4 5.6 8.1 8.6 8.1 12s1.3 6.4 3.9 9"/></svg>';
+  function langMenu() {
+    const btn = $("#langBtn"), pop = $("#langPop");
+    if (!btn || !I18N) return;
+    btn.innerHTML = `${GLOBE}<span class="lang-code" aria-hidden="true">${esc(LANG.short)}</span>`;
+    btn.setAttribute("aria-label", `${uiRaw("lang_label")}: ${LANG.name}`);
+    pop.innerHTML = langLinks("lang-opt");
+    // search engines: the same page in every language
+    if (!$('link[rel="alternate"][hreflang]')) {
+      const base = new URL(location.href); base.hash = ""; base.searchParams.delete("lang");
+      [...I18N.order, "x-default"].forEach((c) => {
+        const u = new URL(base.href); if (c !== "x-default") u.searchParams.set("lang", c);
+        const l = document.createElement("link"); l.rel = "alternate"; l.hreflang = c; l.href = u.href; document.head.appendChild(l);
+      });
+    }
+  }
+  function toggleLangPop(open) {
+    const btn = $("#langBtn"), pop = $("#langPop"); if (!btn) return;
+    open = open === undefined ? pop.hidden : open;
+    pop.hidden = !open; btn.setAttribute("aria-expanded", open ? "true" : "false");
+    if (open) { const cur = $(".lang-opt.on", pop) || $(".lang-opt", pop); if (cur) cur.focus(); }
+  }
+
   function socialLinks(cls = "icon-btn") {
     const c = state.s.contact;
-    const map = [["instagram", "انستغرام"], ["facebook", "فيسبوك"], ["tiktok", "تيك توك"], ["telegram", "تيليغرام"], ["snapchat", "سناب شات"]];
+    const map = L === "ar" ? [["instagram", "انستغرام"], ["facebook", "فيسبوك"], ["tiktok", "تيك توك"], ["telegram", "تيليغرام"], ["snapchat", "سناب شات"]]
+      : [["instagram", "Instagram"], ["facebook", "Facebook"], ["tiktok", "TikTok"], ["telegram", "Telegram"], ["snapchat", "Snapchat"]];
     let out = map.filter(([k]) => safeUrl(c[k])).map(([k, n]) => `<a class="${cls}" href="${esc(safeUrl(c[k]))}" target="_blank" rel="noopener" aria-label="${n}">${A.ui[k]}</a>`).join("");
     const wl = waLink(uiRaw("wa_hello"));
     if (wl) out = `<a class="${cls}" href="${esc(wl)}" target="_blank" rel="noopener" aria-label="${ui("lbl_whatsapp")}">${A.ui.whatsapp}</a>` + out;
@@ -353,7 +417,8 @@
           <li><a href="#/shop">${ui("footer_shop")}</a></li>
         </ul></div>
       </div>
-      <div class="copy">© ${new Date().getFullYear().toLocaleString("ar-IQ", { useGrouping: false })} — ${esc(s.footer.copyright)}</div>
+      <nav class="f-langs" aria-label="${ui("lang_label")}">${langLinks("")}</nav>
+      <div class="copy">© ${new Date().getFullYear().toLocaleString(LANG.locale, { useGrouping: false })} — ${esc(s.footer.copyright)}</div>
     </div>`;
   }
 
@@ -414,7 +479,7 @@
       return `<img class="main" ${imgSrc(imgs[0], SZ.card)} alt="${esc(p.name)}" loading="lazy" decoding="async">` +
         (imgs[1] ? `<img class="alt" ${imgSrc(imgs[1], SZ.card)} alt="" loading="lazy" decoding="async">` : "");
     }
-    return A.productArt(p, iconOf(p));
+    return artOf(p);
   }
   /* Images uploaded from the dashboard exist in three sizes (<name>.v.webp up to 1800 px,
      <name>.v-1080.webp, <name>.v-480.webp): the browser downloads only the size it needs.
@@ -435,7 +500,7 @@
     const out = !inStock(p);
     return `<article class="card glass spot edge tilt" data-card><span class="glare"></span>
       <div class="ph">${out ? `<span class="tag out">${ui("out_of_stock")}</span>` : p.badge ? `<span class="tag">${esc(p.badge)}</span>` : ""}${media(p)}</div>
-      <h4>${esc(p.name)}</h4>
+      <h4${DA}>${esc(p.name)}</h4>
       <div class="meta">${esc([c && c.name, p.stone || p.metal].filter(Boolean).join(" · "))}</div>
       <div class="row"><span class="price">${priceHTML(p)}</span>
         ${out ? "" : `<button class="add" type="button" data-add="${p.id}" aria-label="${ui("add_to_cart")}: ${esc(p.name)}">${A.ui.plus}</button>`}</div>
@@ -469,7 +534,7 @@
     if (!slides.length) {
       const feat = state.prods.filter((p) => p.featured);
       const pool = (feat.length > 1 ? feat : state.prods).slice(0, 4);
-      slides = pool.map((p) => ({ art: A.productArt(p, iconOf(p)), title: p.name, cap: [p.stone, p.metal].filter(Boolean).join(" · "), link: `#/p/${p.id}` }));
+      slides = pool.map((p) => ({ art: artOf(p), title: p.name, cap: [p.stone, p.metal].filter(Boolean).join(" · "), link: `#/p/${p.id}` }));
     }
     if (!slides.length) slides = [{ art: A.depIcon("star"), title: state.s.brand.name, cap: state.s.brand.tagline }];
     return slides;
@@ -480,10 +545,11 @@
     const slides = heroSlides();
     const stats = (s.hero.stats || []).filter((x) => x && x.value).slice();
     // live counts fill the row, so the hero never repeats the shipping figures shown in the globe section
-    const plural = (n, few, many) => (n % 100 >= 3 && n % 100 <= 10 ? few : many); // Arabic: 3–10 take the plural, 11+ the singular
-    if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: plural(state.cats.length, "أقسام", "قسماً") + " في المعرض" });
+    const arPlural = (n, few, many) => (n % 100 >= 3 && n % 100 <= 10 ? few : many); // Arabic: 3–10 take the plural, 11+ the singular
+    const otherLabel = (k, n) => uiRaw(`${k}_${plural(n) === "one" ? "one" : "other"}`);
+    if (state.cats.length && stats.length < 3) stats.push({ value: num(state.cats.length), label: L === "ar" ? arPlural(state.cats.length, "أقسام", "قسماً") + " في المعرض" : otherLabel("stat_depts", state.cats.length) });
     const nAll = countAll();
-    if (nAll && stats.length < 3) stats.push({ value: num(nAll), label: plural(nAll, "قطع", "قطعة") + " في المتجر" });
+    if (nAll && stats.length < 3) stats.push({ value: num(nAll), label: L === "ar" ? arPlural(nAll, "قطع", "قطعة") + " في المتجر" : otherLabel("stat_pieces", nAll) });
 
     const flips = [s.hero.title2, ...((s.hero.flip_more || []).filter(Boolean))].filter(Boolean);
     const line2 = flips.length > 1
@@ -506,9 +572,9 @@
             ${slides.map((sl, i) => `<a class="deck-card" data-i="${i}" ${safeUrl(sl.link) ? `href="${esc(safeUrl(sl.link))}"` : ""} aria-label="${esc(sl.title || "")}">
               ${slides.length > 1 ? `<span class="deck-no" aria-hidden="true">${String(i + 1).padStart(2, "0")} / ${String(slides.length).padStart(2, "0")}</span>` : ""}
               ${sl.img ? `<img ${imgSrc(sl.img, SZ.wide)} alt="${esc(sl.title || "")}" ${i ? 'loading="lazy"' : ""}>` : `<div class="slide-art">${sl.art}</div>`}
-              ${sl.title ? `<div class="cap"><b>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
+              ${sl.title ? `<div class="cap"><b${DA}>${esc(sl.title)}</b>${sl.cap ? `<small>${esc(sl.cap)}</small>` : ""}</div>` : ""}<span class="gloss"></span></a>`).join("")}
           </div>
-          ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="الصورة ${num(i + 1)}" data-dot="${i}"></button>`).join("")}</div>` : ""}
+          ${slides.length > 1 ? `<div class="show-dots">${slides.map((_, i) => `<button type="button" aria-label="${ui("a11y_photo", { n: num(i + 1) })}" data-dot="${i}"></button>`).join("")}</div>` : ""}
         </div>
       </div></header>`;
 
@@ -537,14 +603,14 @@
       html += `<section class="block" style="padding-top:0">
         <div class="wrap"><div class="sec-title"><span class="rule" aria-hidden="true"></span><h2 data-split>${splitWords(sec.featured.eyebrow, "grad")}</h2><span class="rule" aria-hidden="true"></span></div><div class="feature glass edge lit" data-feature>
         <div class="txt"><div>${eyebrow((c && c.name) || "")}</div>
-          <h2 data-split>${splitWords(fp.name)}</h2>
+          <h2 data-split${DA}>${splitWords(fp.name)}</h2>
           ${fp.description ? `<p data-rv>${esc(fp.description.split("\n")[0])}</p>` : ""}
           <div class="chips-spec" data-rv>${spec.map(([k, v]) => `<span><b>${k}</b>${esc(v)}</span>`).join("")}</div>
           <div class="price-big" data-rv>${money(fp.price)}${fp.old_price && fp.old_price > fp.price ? `<s>${num(fp.old_price)}</s>` : ""}</div>
           <div class="cta" data-rv><a class="btn shine" href="#/p/${fp.id}" data-magnet>${esc(sec.featured.button)}</a>
           ${inStock(fp) ? `<button class="btn glass-btn" type="button" data-add="${fp.id}">${A.ui.cart} ${ui("featured_add")}</button>` : ""}</div>
         </div>
-        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img ${imgSrc(fp.images[0], SZ.wide)} alt="${esc(fp.name)}" loading="lazy">` : A.productArt(fp, iconOf(fp))}</div>
+        <div class="pic" data-feature-pic><span class="halo h2"></span><span class="halo"></span>${fp.images && fp.images[0] ? `<img ${imgSrc(fp.images[0], SZ.wide)} alt="${esc(fp.name)}" loading="lazy">` : artOf(fp)}</div>
       </div></div></section>`;
     }
 
@@ -558,9 +624,9 @@
           const c = catOf(p);
           return `<a class="room-card glass edge" href="#/p/${p.id}">
             <span class="room-no" aria-hidden="true">${String(k + 1).padStart(2, "0")}</span>
-            <div class="room-ph">${p.images && p.images[0] ? `<img ${imgSrc(p.images[0], SZ.room)} alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${A.productArt(p, iconOf(p))}`}</div>
-            <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
-        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>${esc(sr.end_title)}</b><span>${pieces(countAll())} في المتجر</span><span class="t-go">${A.ui.arrowL}</span></a></div>
+            <div class="room-ph">${p.images && p.images[0] ? `<img ${imgSrc(p.images[0], SZ.room)} alt="${esc(p.name)}" loading="lazy">` : `<span class="halo"></span>${artOf(p)}`}</div>
+            <div class="room-txt"><small>${esc((c && c.name) || "")}</small><h3${DA}>${esc(p.name)}</h3><span class="price">${money(p.price)}</span></div></a>`;
+        }).join("")}<a class="room-card room-end glass" href="#/shop"><b>${esc(sr.end_title)}</b><span>${ui("room_count", { pieces: pieces(countAll()) })}</span><span class="t-go">${A.ui.arrowL}</span></a></div>
       </div></section>`;
     }
 
@@ -587,7 +653,7 @@
             <div class="glass"><b>${num(cs.length)}+</b><span>${esc(gl.stat_countries)}</span></div>
             <div class="glass"><b>${A.ui.shield}</b><span>${esc(gl.stat_pack)}</span></div>
           </div>
-          ${cs.length ? `<div class="g-countries" data-rv>${cs.slice(0, 9).map((c) => `<span>${esc(c)}</span>`).join("")}${cs.length > 9 ? `<span class="more">+${num(cs.length - 9)}</span>` : ""}</div>` : ""}
+          ${cs.length ? `<div class="g-countries" data-rv>${cs.slice(0, 9).map((c) => `<span>${esc(place(c))}</span>`).join("")}${cs.length > 9 ? `<span class="more">+${num(cs.length - 9)}</span>` : ""}</div>` : ""}
         </div>
         <div class="globe-wrap" data-rv>
           <div class="globe-halo" aria-hidden="true"></div>
@@ -601,7 +667,7 @@
     if (sec.about.show) {
       const values = (sec.about.values || []).filter((v) => v && v.title);
       html += `<section class="block" id="about"><div class="wrap about">
-        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img ${imgSrc(sec.about.image, SZ.half)} alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="شعار ${esc(s.brand.full)}" loading="lazy"></div>`}</div>
+        <div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img ${imgSrc(sec.about.image, SZ.half)} alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="${ui("a11y_logo", { brand: s.brand.full })}" loading="lazy"></div>`}</div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p class="lit-text" data-lit>${String(sec.about.text || "").split("\n").map((line) => line.split(/\s+/).filter(Boolean).map((w) => `<span class="lw">${esc(w)}</span>`).join(" ")).join("<br>")}</p>
           ${values.length ? `<div class="values" data-stagger>${values.map((v) => `<div class="glass">${A.ui[v.icon] || A.ui.shield}<span><b>${esc(v.title)}</b>${esc(v.text || "")}</span></div>`).join("")}</div>` : ""}
           ${sec.about.button ? `<div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>${esc(sec.about.button)} ${A.ui.arrow}</a></div>` : ""}</div>
@@ -758,7 +824,7 @@
       <section style="padding-bottom:40px"><div class="wrap">
         <div class="seg" data-rv><a class="chip${cat ? "" : " on"}" href="#/shop">${ui("filter_all")}</a>${state.cats.map((c) => `<a class="chip${cat && cat.id === c.id ? " on" : ""}" href="#/c/${esc(c.slug)}">${esc(c.name)}</a>`).join("")}</div>
         ${kids.length ? `<div class="seg seg-sub" data-rv><a class="chip${sub ? "" : " on"}" href="#/c/${esc(cat.slug)}">${ui("filter_all_sub", { name: cat.name })}</a>${kids.map((x) => `<a class="chip${sub && sub.id === x.id ? " on" : ""}" href="#/c/${esc(cat.slug)}/${esc(x.slug)}">${esc(x.name)}</a>`).join("")}</div>` : ""}
-        <div class="toolbar" data-rv><span class="count" id="shopCount">${paged ? ui("shop_count", { n: num(sub ? countSub(sub.id) : cat ? countCat(cat.id) : countAll()) }) : ui("shop_count", { n: num(list.length) })}</span>
+        <div class="toolbar" data-rv><span class="count" id="shopCount">${paged ? uiN("shop_count", sub ? countSub(sub.id) : cat ? countCat(cat.id) : countAll()) : uiN("shop_count", list.length)}</span>
           <label>${ui("sort_label")}
           <select id="sortSel" aria-label="${ui("sort_label")}">
             <option value="default">${ui("sort_default")}</option><option value="new">${ui("sort_new")}</option><option value="low">${ui("sort_low")}</option><option value="high">${ui("sort_high")}</option>
@@ -788,7 +854,7 @@
         return;
       }
       const items = (r.data.items || []).map(remember), total = r.data.total || 0;
-      $("#shopCount").innerHTML = ui("shop_count", { n: num(total) });
+      $("#shopCount").innerHTML = uiN("shop_count", total);
       let fresh;
       if (!offset) { box.innerHTML = grid(items); fresh = $$(".card", box); }
       else {
@@ -839,20 +905,20 @@
     const wa = waLink(`${uiRaw("wa_product", { name: p.name, price: `${num(p.price)} ${state.s.shop.currency}` })}\n${location.href}`);
     app.innerHTML = `<div class="wrap"><div class="product">
       <div class="gallery" data-rv>
-        <div class="g-main" id="gMain">${imgs.length ? `<img ${imgSrc(imgs[0], SZ.half)} alt="${esc(p.name)}">` : A.productArt(p, iconOf(p))}
+        <div class="g-main" id="gMain">${imgs.length ? `<img ${imgSrc(imgs[0], SZ.half)} alt="${esc(p.name)}">` : artOf(p)}
           ${imgs.length > 1 ? `<button class="icon-btn g-nav prev" type="button" aria-label="‹">${A.ui.arrowR}</button><button class="icon-btn g-nav next" type="button" aria-label="›">${A.ui.arrowL}</button>` : ""}</div>
-        ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="الصورة ${num(i + 1)}"><img ${smallSrc(u)} alt="" loading="lazy"></button>`).join("")}</div>` : ""}
+        ${imgs.length > 1 ? `<div class="g-thumbs">${imgs.map((u, i) => `<button type="button" class="${i ? "" : "on"}" data-g="${i}" aria-label="${ui("a11y_photo", { n: num(i + 1) })}"><img ${smallSrc(u)} alt="" loading="lazy"></button>`).join("")}</div>` : ""}
       </div>
       <div class="p-info">
         <nav class="crumbs" style="justify-content:flex-start" aria-label="${ui("nav_shop")}" data-rv><a href="#/">${ui("nav_home")}</a><span>/</span>${c ? `<a href="#/c/${esc(c.slug)}">${esc(c.name)}</a>${sc ? `<span>/</span><a href="#/c/${esc(c.slug)}/${esc(sc.slug)}">${esc(sc.name)}</a>` : ""}` : `<a href="#/shop">${ui("nav_shop")}</a>`}</nav>
         ${p.badge && !out ? `<span class="tag" style="position:static;display:inline-block;margin-top:10px" data-rv>${esc(p.badge)}</span>` : ""}
-        <h1 data-split>${splitWords(p.name)}</h1>
+        <h1 data-split${DA}>${splitWords(p.name)}</h1>
         <div class="p-price price" data-rv>${priceHTML(p)}</div>
-        ${p.description ? `<p class="desc" data-rv>${esc(p.description)}</p>` : ""}
+        ${p.description ? `<p class="desc" data-rv${DA}>${esc(p.description)}</p>` : ""}
         <dl class="spec glass" data-rv>${spec.map(([k, v]) => `<dt>${k}</dt><dd>${esc(v)}</dd>`).join("")}</dl>
         ${out ? `<div class="empty" style="padding:20px;margin-bottom:12px">${ui("out_note")}</div>` : `
         <div class="buy-row" data-rv>
-          <div class="qty" role="group" aria-label="${ui("qty")}"><button type="button" id="qMinus" aria-label="إنقاص">−</button><span id="qVal">${num(1)}</span><button type="button" id="qPlus" aria-label="زيادة">+</button></div>
+          <div class="qty" role="group" aria-label="${ui("qty")}"><button type="button" id="qMinus" aria-label="${ui("a11y_less")}">−</button><span id="qVal">${num(1)}</span><button type="button" id="qPlus" aria-label="${ui("a11y_more")}">+</button></div>
           <button class="btn shine" type="button" id="addBtn" data-magnet>${A.ui.cart} ${ui("add_to_cart")}</button>
         </div>
         <div class="buy-row" data-rv><button class="btn glass-btn block" type="button" id="buyNow">${ui("buy_now")}</button></div>`}
@@ -876,7 +942,7 @@
         img.alt = p.name;
         main.insertBefore(img, old.nextSibling);
         if (G) {
-          G.fromTo(img, { clipPath: "inset(0 0 0 100%)", scale: 1.1 }, { clipPath: "inset(0 0 0 0%)", scale: 1, duration: 0.9, ease: "expo.inOut", onComplete: () => old.remove() });
+          G.fromTo(img, { clipPath: LTR ? "inset(0 100% 0 0)" : "inset(0 0 0 100%)", scale: 1.1 }, { clipPath: "inset(0 0 0 0%)", scale: 1, duration: 0.9, ease: "expo.inOut", onComplete: () => old.remove() });
         } else old.remove();
       };
       $$("[data-g]").forEach((b) => b.addEventListener("click", () => go(+b.dataset.g)));
@@ -884,7 +950,7 @@
       $(".g-nav.prev", main).addEventListener("click", () => go(gi - 1));
       let sx = null;
       main.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
-      main.addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) go(gi + (dx > 0 ? 1 : -1)); sx = null; });
+      main.addEventListener("touchend", (e) => { if (sx === null) return; const dx = e.changedTouches[0].clientX - sx; if (Math.abs(dx) > 40) go(gi + ((LTR ? dx < 0 : dx > 0) ? 1 : -1)); sx = null; });
     }
     // quantity + add
     let q = 1;
@@ -957,8 +1023,8 @@
       return;
     }
     body.innerHTML = lines.map((l) => `<div class="c-item">
-      <a class="ph" href="#/p/${l.p.id}" data-close="cart">${l.p.images && l.p.images[0] ? `<img ${smallSrc(l.p.images[0])} alt="">` : A.productArt(l.p, iconOf(l.p))}</a>
-      <div><h5>${esc(l.p.name)}</h5><div class="price" style="font-size:14px">${money(l.p.price)}</div>
+      <a class="ph" href="#/p/${l.p.id}" data-close="cart">${l.p.images && l.p.images[0] ? `<img ${smallSrc(l.p.images[0])} alt="">` : artOf(l.p)}</a>
+      <div><h5${DA}>${esc(l.p.name)}</h5><div class="price" style="font-size:14px">${money(l.p.price)}</div>
         <div class="qty"><button type="button" data-q="${l.id}" data-d="-1" aria-label="−">−</button><span>${num(l.qty)}</span><button type="button" data-q="${l.id}" data-d="1" aria-label="+">+</button></div></div>
       <button class="rm" type="button" data-rm="${l.id}">${ui("cart_remove")}</button></div>`).join("");
     foot.innerHTML = `<div class="sum"><span>${ui("cart_subtotal")}</span><span>${money(t.sub)}</span></div>
@@ -1003,16 +1069,16 @@
     const lines = cartLines(), s = state.s, sh = s.shop;
     if (!lines.length) { toast(uiRaw("cart_is_empty")); return; }
     const countries = sh.intl_enabled ? (sh.countries || []).filter((c) => c && c !== LOCAL) : [];
-    $("#checkout").innerHTML = `<button class="icon-btn x" type="button" id="coClose" aria-label="إغلاق">${A.ui.close}</button>
+    $("#checkout").innerHTML = `<button class="icon-btn x" type="button" id="coClose" aria-label="${ui("a11y_close")}">${A.ui.close}</button>
       <h3 id="coTitle">${ui("co_title")}</h3><p style="color:var(--soft);margin-top:0" id="coLead"></p>
       <form id="coForm" novalidate>
         <div class="field"><label for="coName">${ui("co_name")}</label><input id="coName" name="name" required maxlength="120" autocomplete="name"></div>
         <div class="field"><label for="coPhone">${ui("co_phone")}</label><input id="coPhone" name="phone" type="tel" inputmode="tel" required maxlength="30" dir="ltr" placeholder="07XX XXX XXXX" autocomplete="tel"></div>
         ${countries.length ? `<div class="field"><label for="coCountry">${ui("co_country")}</label><select id="coCountry" name="country" autocomplete="country-name">
-          <option value="${LOCAL}">${LOCAL}</option>${countries.map((c) => `<option value="${esc(c)}">${esc(c)}</option>`).join("")}<option value="__other">${ui("co_other")}</option></select></div>
+          <option value="${LOCAL}">${esc(place(LOCAL))}</option>${countries.map((c) => `<option value="${esc(c)}">${esc(place(c))}</option>`).join("")}<option value="__other">${ui("co_other")}</option></select></div>
           <div class="field" id="coOtherWrap" hidden><label for="coOther">${ui("co_other_name")}</label><input id="coOther" name="other" maxlength="60" autocomplete="country-name"></div>` : ""}
         <div class="two">
-          <div class="field" id="coCityWrap"><label for="coCity">${ui("co_city")}</label><select id="coCity" name="city">${(sh.cities || []).map((c) => `<option>${esc(c)}</option>`).join("")}</select></div>
+          <div class="field" id="coCityWrap"><label for="coCity">${ui("co_city")}</label><select id="coCity" name="city">${(sh.cities || []).map((c) => `<option value="${esc(c)}">${esc(place(c))}</option>`).join("")}</select></div>
           <div class="field" id="coCityIntlWrap" hidden><label for="coCityIntl">${ui("co_city_intl")}</label><input id="coCityIntl" name="cityIntl" maxlength="80" autocomplete="address-level2"></div>
           <div class="field"><label for="coAddr" id="coAddrLbl">${ui("co_addr")}</label><input id="coAddr" name="address" maxlength="300" placeholder="${ui("co_addr_ph")}" autocomplete="street-address"></div>
         </div>
@@ -1111,9 +1177,13 @@
     }
     forgetCheckoutKey();
     const s = state.s;
-    const msg = [`السلام عليكم، طلب جديد من موقع ${s.brand.full}`, `رقم الطلب: #${data.order_no}`, `الاسم: ${cust.name}`, `الهاتف: ${cust.phone}`, intl ? `الدولة: ${country} — ${cust.city}${cust.address ? " — " + cust.address : ""}` : `المحافظة: ${cust.city}${cust.address ? " — " + cust.address : ""}`, "", "المنتجات:",
-      ...data.items.map((i) => `• ${i.name} × ${i.qty} — ${num(i.price * i.qty)} ${s.shop.currency}`), "",
-      `${intl ? "الشحن الدولي" : "التوصيل"}: ${data.shipping_tbd ? "يُحدَّد حسب الدولة" : data.delivery ? num(data.delivery) + " " + s.shop.currency : "مجاني"}`, `الإجمالي: ${num(data.total)} ${s.shop.currency}${data.shipping_tbd ? " + الشحن" : ""}`, cust.notes ? `ملاحظات: ${cust.notes}` : ""].filter((x) => x !== undefined).join("\n");
+    // the message the customer sends on WhatsApp, in the customer's language
+    const cur = s.shop.currency, addr = cust.address ? " — " + cust.address : "", nameOf = (i) => (findProd(i.id) || {}).name || i.name;
+    const msg = [uiRaw("wa_order", { brand: s.brand.full }), `${uiRaw("wa_order_no")}: #${data.order_no}`, `${uiRaw("form_name")}: ${cust.name}`, `${uiRaw("lbl_phone")}: ${cust.phone}`,
+      intl ? `${uiRaw("co_country")}: ${place(country)} — ${cust.city}${addr}` : `${uiRaw("co_city")}: ${place(cust.city)}${addr}`, "", `${uiRaw("wa_items")}:`,
+      ...data.items.map((i) => `• ${nameOf(i)} × ${i.qty} — ${num(i.price * i.qty)} ${cur}`), "",
+      `${uiRaw(intl ? "co_intl_shipping" : "co_delivery")}: ${data.shipping_tbd ? uiRaw("tbd") : data.delivery ? num(data.delivery) + " " + cur : uiRaw("free")}`,
+      `${uiRaw("co_total")}: ${num(data.total)} ${cur}${data.shipping_tbd ? " " + uiRaw("co_plus_shipping") : ""}`, cust.notes ? `${uiRaw("wa_notes")}: ${cust.notes}` : ""].filter((x) => x !== undefined).join("\n");
     const wa = s.shop.whatsapp_orders ? waLink(msg) : "";
     state.cart = []; saveCart(); renderCart();
     $("#checkout").innerHTML = `<div class="success"><div class="ok">${A.ui.check}</div>
@@ -1139,10 +1209,12 @@
   }
   let searchT = 0, searchSeq = 0;
   function showResults(list, total) {
-    $("#searchRes").innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${ui("search_results", { n: num(total) })}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
+    $("#searchRes").innerHTML = list.length ? `<p class="count" style="color:var(--soft)">${uiN("search_results", total)}</p>${grid(list)}` : `<div class="empty">${ui("search_none", { q: $("#searchInput").value })}</div>`;
   }
   function searchLocal(q) {
-    const all = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.badge, p.description, (catOf(p) || {}).name, (subOf(p) || {}).name].join(" ")).includes(q));
+    const src = (o) => (o && o._src) || {};
+    const all = state.prods.filter((p) => norm([p.name, p.stone, p.metal, p.badge, p.description, (catOf(p) || {}).name, (subOf(p) || {}).name,
+      src(p).name, src(p).stone, src(p).description, src(catOf(p)).name, src(subOf(p)).name].join(" ")).includes(q));
     showResults(all.slice(0, 24), all.length);
   }
   function doSearch() {
@@ -1220,7 +1292,7 @@
     const track = $("#roomTrack");
     if (track && innerWidth > 920) {
       const dist = () => Math.max(0, track.scrollWidth - track.clientWidth + 40);
-      G.to(track, { x: () => dist(), ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), pin: ".room-pin", scrub: 0.8, invalidateOnRefresh: true, anticipatePin: 1 } });
+      G.to(track, { x: () => (LTR ? -1 : 1) * dist(), ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), pin: ".room-pin", scrub: 0.8, invalidateOnRefresh: true, anticipatePin: 1 } });
       $$(".room-card .room-ph > svg, .room-card .room-ph > img", track).forEach((el) => G.fromTo(el, { rotate: -8 }, { rotate: 8, ease: "none", scrollTrigger: { trigger: "#showroom", start: "top top", end: () => "+=" + dist(), scrub: true } }));
     }
   }
@@ -1424,9 +1496,19 @@
   $("#menuBtn").addEventListener("click", () => openPanel("menu"));
   $("#cartBtn").addEventListener("click", () => { renderCart(); openPanel("cart"); });
   $("#searchBtn").addEventListener("click", openSearch);
+  // language links are built once; the page the visitor is on is read at click time
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest("a[data-lang]");
+    if (!a || e.metaKey || e.ctrlKey || e.shiftKey || e.button) return;
+    e.preventDefault(); location.href = langHref(a.dataset.lang);
+  });
+  if ($("#langBtn")) {
+    $("#langBtn").addEventListener("click", (e) => { e.stopPropagation(); toggleLangPop(); });
+    document.addEventListener("click", (e) => { if (!e.target.closest("#langPop")) toggleLangPop(false); });
+  }
   addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
-    closePanel("menu"); closePanel("cart"); closeSearch(); if ($("#checkoutBg").classList.contains("open")) closeCheckout();
+    closePanel("menu"); closePanel("cart"); closeSearch(); toggleLangPop(false); if ($("#checkoutBg").classList.contains("open")) closeCheckout();
   });
 
   /* ---------- boot ---------- */

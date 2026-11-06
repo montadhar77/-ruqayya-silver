@@ -715,3 +715,75 @@ html.lenis, html.lenis body { height: auto; }
 .net-note{padding-top:18px;position:relative;z-index:3}
 .net-note .glass{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:12px;padding:14px 18px;border-radius:16px}
 .net-note span{color:var(--soft);min-width:0}
+
+/* =========================================================================
+   Languages: Arabic and Urdu read right to left, English and German left to right.
+   The layout uses logical properties (inline-start/end), so only the few physical
+   effects below are mirrored; the fonts follow the script.
+   ========================================================================= */
+:root[lang="en"], :root[lang="de"] {
+  --display: "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  --body: "IBM Plex Sans", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+:root[lang="en"] body, :root[lang="de"] body { line-height: 1.7; }
+:root[lang="en"] .brand .brand-txt b, :root[lang="de"] .brand .brand-txt b { letter-spacing: .01em; }
+:root[lang="en"] .brand .brand-txt small, :root[lang="de"] .brand .brand-txt small { letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
+/* Urdu: Nastaliq headings need room above and below the letters */
+:root[lang="ur"] { --display: "Noto Nastaliq Urdu", "IBM Plex Sans Arabic", serif; }
+:root[lang="ur"] body { line-height: 2; }
+:root[lang="ur"] :is(h1, h2, h3, .hero h1, .title h2, .page-head h1, .p-info h1, .feature h2, .about h2, .globe-txt h2, .room-head h2, .sec-title h2) { line-height: 1.9; }
+:root[lang="ur"] .wl { padding-block: .3em .5em; margin-block: -.3em -.5em; }
+:root[lang="ur"] .flip > .fw { padding-block: .3em .5em; }
+:root[lang="ur"] .brand .brand-txt b { font-size: 24px; line-height: 1.5; }
+/* Nastaliq is taller and wider than the Arabic display face: headings a size smaller */
+:root[lang="ur"] .hero h1 { font-size: clamp(38px, 5vw, 74px); }
+:root[lang="ur"] :is(.title h2, .globe-txt h2, .room-head h2, .sec-title h2) { font-size: clamp(30px, 4.2vw, 56px); }
+:root[lang="ur"] .page-head h1 { font-size: clamp(32px, 5vw, 66px); }
+:root[lang="ur"] :is(.p-info h1, .feature h2, .about h2) { font-size: clamp(27px, 3.4vw, 46px); }
+:root[lang="ur"] footer.site .mark { font-size: clamp(46px, 11vw, 150px); }
+:root[lang="ur"] .intro .intro-name { font-size: clamp(38px, 9vw, 76px); }
+:root[lang="ur"] :is(.tile h3, .room-txt h3, .show-card .cap b, .deck-card .cap b) { font-size: 19px; }
+:root[lang="ur"] footer.site .mark { line-height: 1.9; }
+:root[lang="ur"] .intro .intro-name { line-height: 1.9; }
+
+/* mirrored for left-to-right (the body is written right to left for Arabic) */
+:root[dir="ltr"] body { direction: ltr; }
+/* longer phrases than the Arabic ones: the rotating words of the hero may wrap */
+:root:not([lang="ar"]) .flip { max-width: 100%; }
+:root:not([lang="ar"]) .flip > .fw { white-space: normal; }
+:root:not([lang="ar"]) .hero-txt { min-width: 0; }
+[dir="ltr"] .drawer { transform: translateX(-105%); }
+[dir="ltr"] .drawer.left { transform: translateX(105%); }
+[dir="ltr"] .drawer.open { transform: none; }
+[dir="ltr"] .show-dots button::after { transform-origin: left; }
+[dir="ltr"] .room-hint svg { animation-name: nudge-ltr; }
+@keyframes nudge-ltr { 50% { transform: translateX(6px); } }
+[dir="ltr"] .sec-title .rule { background: linear-gradient(to right, transparent, color-mix(in srgb, var(--gold) 75%, transparent)); }
+[dir="ltr"] .sec-title .rule:last-child { background: linear-gradient(to left, transparent, color-mix(in srgb, var(--gold) 75%, transparent)); }
+[dir="ltr"] .sec-title .rule:first-child::after { left: auto; right: 0; }
+[dir="ltr"] .sec-title .rule:last-child::after { right: auto; left: 0; }
+[dir="ltr"] .tile:hover .t-go { transform: rotate(-45deg); }
+
+/* language switch: a globe in the bar (larger screens), a row in the phone menu, links in the footer */
+.lang-wrap { position: relative; }
+.lang-btn .lang-code { position: absolute; bottom: -5px; inset-inline-end: -6px; min-width: 22px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 18px; text-align: center;
+  background: var(--deep); color: var(--emerald); border: 1px solid color-mix(in srgb, var(--emerald) 55%, transparent); letter-spacing: .02em; }
+:root[lang="ar"] .lang-btn .lang-code, :root[lang="ur"] .lang-btn .lang-code { font-size: 11px; line-height: 16px; }
+.lang-pop { position: absolute; top: calc(100% + 10px); inset-inline-end: 0; z-index: 45; min-width: 168px; padding: 6px; border-radius: 18px; display: grid; gap: 2px;
+  background: color-mix(in srgb, var(--paper) 92%, var(--deep)); border: 1px solid var(--line-2); box-shadow: 0 24px 60px -20px rgba(0,0,0,.6); }
+.lang-pop[hidden] { display: none; }
+.lang-opt { display: block; padding: 9px 14px; border-radius: 12px; font-size: 15px; color: var(--soft); text-align: center; transition: background .25s, color .25s; }
+.lang-opt[lang="en"], .lang-opt[lang="de"] { font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; }
+.lang-opt[lang="ar"], .lang-opt[lang="ur"] { font-family: "IBM Plex Sans Arabic", Tahoma, sans-serif; }
+.lang-opt:hover, .lang-opt:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
+.lang-opt.on { color: var(--deep); background: var(--emerald); }
+.lang-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }
+.lang-row .chip { border: 1px solid var(--line-2); min-height: 36px; padding: 6px 14px; font-size: 14px; }
+.lang-row .chip.on { background: var(--emerald); color: var(--deep); border-color: transparent; }
+.menu-list .lang-row a { display: inline-flex; border-bottom: 1px solid var(--line-2); padding: 6px 14px; font-size: 14px; }
+.menu-list .lang-row a.on { border-bottom-color: transparent; }
+footer.site .f-langs { display: flex; flex-wrap: wrap; justify-content: center; gap: 4px 18px; margin-top: 30px; font-size: 14px; }
+footer.site .f-langs a { color: var(--soft); padding: 4px 2px; transition: color .3s; }
+footer.site .f-langs a:hover { color: var(--ink); }
+footer.site .f-langs a.on { color: var(--emerald); }
+@media (max-width: 560px) { .lang-wrap { display: none; } }
