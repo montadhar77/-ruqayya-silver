@@ -1,0 +1,25 @@
+{
+  "name": "معرض رقية (عليها السلام)",
+  "short_name": "معرض رقية",
+  "description": "فضيات وأحجار كريمة وهدايا العتبات المقدسة · كربلاء المقدسة",
+  "lang": "ar",
+  "dir": "rtl",
+  "start_url": "../",
+  "scope": "../",
+  "display": "standalone",
+  "background_color": "#0b0d0c",
+  "theme_color": "#0b0d0c",
+  "icons": [
+    {
+      "src": "img/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "img/apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png"
+    }
+  ]
+}

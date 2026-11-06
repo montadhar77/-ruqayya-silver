@@ -1,0 +1,1237 @@
+/* =========================================================================
+   لوحة تحكم معرض رقية — full control of the public site
+   Products · departments · orders · messages · every text, image, color,
+   the opening video, contact details and shop settings.
+   ========================================================================= */
+(() => {
+  "use strict";
+  const cfg = window.RQ_CONFIG, A = window.RQ_ART, DEF = window.RQ_DEFAULTS;
+  const db = window.supabase.createClient(cfg.url, cfg.key, {
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: "rq-admin", detectSessionInUrl: false }
+  });
+  const SITE = new URL("../", location.href).href;
+  const root = document.getElementById("root");
+  if (window.top !== window.self) { try { window.top.location = window.location.href; } catch (e) { document.body.innerHTML = ""; } return; }
+
+  /* ---------- helpers ---------- */
+  const $ = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const esc = (t) => String(t ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const toLatin = (t) => String(t ?? "").replace(/[٠-٩]/g, (d) => "٠١٢٣٤٥٦٧٨٩".indexOf(d)).replace(/[۰-۹]/g, (d) => "۰۱۲۳۴۵۶۷۸۹".indexOf(d));
+  const intOrNull = (v) => { const d = toLatin(v).replace(/[^\d]/g, ""); return d === "" ? null : parseInt(d, 10); };
+  const num = (n) => Number(n || 0).toLocaleString("ar-IQ");
+  const money = (n) => `${num(n)} ${esc(state.s.shop.currency || "د.ع")}`;
+  const when = (d) => { try { return new Date(d).toLocaleString("ar-IQ", { dateStyle: "medium", timeStyle: "short" }); } catch (e) { return d; } };
+  const clone = (o) => JSON.parse(JSON.stringify(o));
+  /* Sign-in by user name: "name" means the account name@admin.ruqaya.invalid (a reserved
+     domain that can never receive mail, so no password-reset link can be sent anywhere).
+     An e-mail address typed in full still works. */
+  const ADMIN_DOMAIN = "admin.ruqaya.invalid";
+  const loginEmail = (v) => { v = toLatin(String(v || "")).trim().toLowerCase(); return v.includes("@") ? v : `${v}@${ADMIN_DOMAIN}`; };
+  // same Arabic rules as private.ar_norm() in the database (أ/إ/آ → ا, ة → ه, ى → ي, no harakat…)
+  const arNorm = (t) => toLatin(String(t ?? "")).replace(/[\u064B-\u065F\u0670\u0640]/g, "").replace(/[أإآٱ]/g, "ا").replace(/ى/g, "ي").replace(/ة/g, "ه")
+    .replace(/ؤ/g, "و").replace(/ئ/g, "ي").toLowerCase().replace(/\s+/g, " ").trim();
+  const waNumber = (p) => {
+    let d = toLatin(p).replace(/\D/g, "");
+    if (!d) return "";
+    if (d.startsWith("00")) d = d.slice(2);
+    if (d.startsWith("0")) d = "964" + d.slice(1); else if (d.length === 10 && d.startsWith("7")) d = "964" + d;
+    return d;
+  };
+  let toastT;
+  function toast(msg, err) {
+    const t = $("#toast"); t.textContent = msg; t.classList.toggle("err", !!err); t.classList.add("show");
+    clearTimeout(toastT); toastT = setTimeout(() => t.classList.remove("show"), err ? 4200 : 2600);
+  }
+  function errMsg(e) {
+    const m = String((e && (e.message || e.error_description)) || e || "");
+    if (/Invalid login/i.test(m)) return "البريد أو كلمة المرور غير صحيحة";
+    if (/row-level security|permission|not authorized|JWT/i.test(m)) return "لا تملك صلاحية لهذا الإجراء — سجّل الدخول من جديد";
+    if (/duplicate key.*slug/i.test(m)) return "الرابط المختصر مستخدم لقسم آخر";
+    if (/Payload too large|exceeded the maximum/i.test(m)) return "الملف أكبر من الحد المسموح (٥٠ ميغابايت)";
+    if (/Failed to fetch|NetworkError/i.test(m)) return "تعذّر الاتصال بالإنترنت";
+    if (/out_of_stock_on_restore/.test(m)) return "لا يمكن إعادة هذا الطلب: قطعه بيعت لطلب آخر ولم يعد المخزون يكفي. عدّل المخزون أولاً.";
+    return m || "حدث خطأ غير متوقع";
+  }
+  const getPath = (o, p) => p.split(".").reduce((a, k) => (a == null ? undefined : a[k]), o);
+  function setPath(o, p, v) {
+    const ks = p.split("."); let cur = o;
+    ks.slice(0, -1).forEach((k, i) => { if (cur[k] == null || typeof cur[k] !== "object") cur[k] = /^\d+$/.test(ks[i + 1]) ? [] : {}; cur = cur[k]; });
+    cur[ks[ks.length - 1]] = v;
+  }
+
+  /* ---------- icons ---------- */
+  const S = (d) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${d}</svg>`;
+  const I = {
+    dash: S('<rect x="3.5" y="3.5" width="7" height="8" rx="1.5"/><rect x="13.5" y="3.5" width="7" height="5" rx="1.5"/><rect x="13.5" y="11.5" width="7" height="9" rx="1.5"/><rect x="3.5" y="14.5" width="7" height="6" rx="1.5"/>'),
+    box: S('<path d="M12 3 4 7v10l8 4 8-4V7z"/><path d="m4 7 8 4 8-4M12 11v10"/>'),
+    folder: S('<path d="M3.5 7a2 2 0 0 1 2-2H10l2 2h6.5a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/>'),
+    receipt: S('<path d="M6 3h12v18l-3-2-3 2-3-2-3 2z"/><path d="M9 8h6M9 12h6M9 16h4"/>'),
+    mail: A.ui.mail,
+    home: S('<path d="M4 11 12 4l8 7v9H4z"/><path d="M10 20v-6h4v6"/>'),
+    palette: S('<path d="M12 3a9 9 0 1 0 0 18c1.2 0 2-.8 2-2 0-.6-.3-1-.6-1.4-.3-.4-.6-.8-.6-1.4 0-1.1.9-2 2-2H17a4 4 0 0 0 4-4c0-4-4-7.2-9-7.2z"/><circle cx="7.5" cy="11" r="1.2"/><circle cx="10" cy="7" r="1.2"/><circle cx="14.5" cy="7" r="1.2"/>'),
+    phone: A.ui.phone,
+    user: S('<circle cx="12" cy="8" r="4"/><path d="M4 21c1.5-4 4.5-6 8-6s6.5 2 8 6"/>'),
+    logout: S('<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l-4 4 4 4M6 12h10"/>'),
+    eye: S('<path d="M2.5 12S6 5.5 12 5.5 21.5 12 21.5 12 18 18.5 12 18.5 2.5 12 2.5 12z"/><circle cx="12" cy="12" r="3"/>'),
+    edit: S('<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/>'),
+    trash: S('<path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/>'),
+    copy: S('<rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V5a1 1 0 0 0-1-1H5a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h3"/>'),
+    star: S('<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>'),
+    starOn: '<svg viewBox="0 0 24 24" fill="#b08d57" stroke="#b08d57" stroke-width="1.7" stroke-linejoin="round" aria-hidden="true"><path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/></svg>',
+    up: S('<path d="m6 15 6-6 6 6"/>'),
+    down: S('<path d="m6 9 6 6 6-6"/>'),
+    left: S('<path d="m9 6 6 6-6 6"/>'),
+    right: S('<path d="m15 6-6 6 6 6"/>'),
+    img: S('<rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="2"/><path d="m4 18 5-5 4 4 2.5-2.5L20 19"/>'),
+    video: S('<rect x="3" y="6" width="13" height="12" rx="2"/><path d="m16 10 5-3v10l-5-3z"/>'),
+    plus: A.ui.plus, close: A.ui.close, check: A.ui.check, menu: A.ui.menu, whatsapp: A.ui.whatsapp,
+    print: S('<path d="M7 9V3h10v6M7 17H4v-7h16v7h-3"/><rect x="7" y="14" width="10" height="7"/>'),
+    refresh: S('<path d="M20 12a8 8 0 1 1-2.3-5.7M20 4v5h-5"/>'),
+    ext: S('<path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/>'),
+    sparkle: S('<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8z"/>'),
+    type: S('<path d="M5 6V4.5h14V6M12 4.5v15M9 19.5h6"/>'),
+    search: S('<circle cx="11" cy="11" r="6.5"/><path d="m20 20-4.2-4.2"/>'),
+    globe: S('<circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.9 5.6 3.9 9s-1.3 6.4-3.9 9M12 3C9.4 5.6 8.1 8.6 8.1 12s1.3 6.4 3.9 9"/>')
+  };
+
+  /* ---------- state ---------- */
+  const state = { user: null, raw: {}, s: clone(DEF), cats: [], prods: [], orders: [], recent: [], inq: [], page: "", dirty: false, draft: null, pf: { q: "", cat: "", st: "", n: 60 }, of: { st: "", q: "" }, counts: { orders: 0, inq: 0 },
+    stats: null, oList: { total: 0, counts: null }, legacy: false, inqMore: false };
+  const STATUS = { new: "جديد", confirmed: "مؤكد", shipped: "قيد التوصيل", delivered: "تم التسليم", cancelled: "ملغي" };
+
+  /* ---------- data ---------- */
+  async function q(promise) { const { data, error } = await promise; if (error) throw error; return data; }
+  async function loadSettings() { const d = await q(db.from("settings").select("data").eq("id", 1).maybeSingle()); state.raw = (d && d.data) || {}; state.s = window.rqMerge(DEF, state.raw); }
+  async function loadCats() { state.cats = await q(db.from("categories").select("*").order("sort").order("created_at")); }
+  /* Products: the list needs only these columns (the editor loads the full row). Fetched
+     1000 at a time, because the database API returns at most 1000 rows per request. */
+  const LEAN = "id,category_id,name,price,old_price,images,badge,metal,stone,stock,featured,active,sort,created_at,updated_at";
+  let leanCols = LEAN + ",subcategory_id";
+  async function loadProds() {
+    const out = [];
+    for (let from = 0; ; from += 1000) {
+      let r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      if (r.error && leanCols !== LEAN && /subcategory_id/.test(r.error.message || "")) {   // database before 0009
+        leanCols = LEAN;
+        r = await db.from("products").select(leanCols).order("sort").order("created_at", { ascending: false }).order("id").range(from, from + 999);
+      }
+      if (r.error) throw r.error;
+      const part = r.data || [];
+      out.push(...part);
+      if (part.length < 1000) break;
+    }
+    state.prods = out;
+  }
+  async function fullProduct(p) { return "description" in p ? p : q(db.from("products").select("*").eq("id", p.id).single()); }
+  const missingFn = (e) => e && (e.code === "PGRST202" || e.code === "42883" || /Could not find the function/i.test(e.message || ""));
+  /* Orders: one page at a time from admin_orders() (filter, search and per-status counts on
+     the server). Before that database function exists: the previous 500 most recent. */
+  const OPAGE = 50;
+  async function fetchOrders(offset = 0, f = state.of) {
+    const { data, error } = await db.rpc("admin_orders", { p_status: f.st || null, p_q: f.q.trim() || null, p_limit: OPAGE, p_offset: offset });
+    if (error) { if (missingFn(error)) { state.legacy = true; return null; } throw error; }
+    return data;
+  }
+  async function loadOrders() {
+    if (!state.legacy) {
+      const d = await fetchOrders(0);
+      if (d) { state.orders = d.items; state.oList = { total: d.total, counts: d.counts }; if (!state.of.st && !state.of.q.trim()) state.recent = d.items.slice(0, 6); return; }
+    }
+    state.orders = await q(db.from("orders").select("*").order("created_at", { ascending: false }).limit(500));
+    state.recent = state.orders.slice(0, 6);
+  }
+  async function loadRecent() {
+    if (state.legacy) return loadOrders();
+    const d = await fetchOrders(0, { st: "", q: "" });
+    if (d) state.recent = d.items.slice(0, 6);
+  }
+  async function loadStats() {
+    if (state.legacy) { state.stats = null; return; }
+    const { data, error } = await db.rpc("admin_stats");
+    if (error) { if (missingFn(error)) state.stats = null; else throw error; return; }
+    state.stats = data;
+  }
+  const IPAGE = 200;
+  async function loadInq(more = false) {
+    const from = more ? state.inq.length : 0;
+    const part = await q(db.from("inquiries").select("*").order("created_at", { ascending: false }).range(from, from + IPAGE - 1));
+    state.inq = more ? state.inq.concat(part) : part;
+    state.inqMore = part.length === IPAGE;
+  }
+  async function loadAll() { await Promise.all([loadSettings(), loadCats(), loadProds(), loadOrders(), loadInq()]); await loadStats().catch(() => {}); updatePills(); }
+  const catName = (id) => (state.cats.find((c) => c.id === id) || {}).name || "بدون قسم";
+  // departments and their sub-departments (0009); older databases have no parent_id
+  const subsOK = () => state.cats.length > 0 && "parent_id" in state.cats[0];
+  /* Translations (English, Urdu, German) of products and departments: column i18n (0010).
+     The dashboard stays in Arabic; every translated field is optional. */
+  const I18N = window.RQ_I18N;
+  const TR_LANGS = ["en", "ur", "de"];
+  const i18nOK = () => !!I18N && state.cats.length > 0 && "i18n" in state.cats[0];
+  const trVal = (o, lang, f) => ((o && o.i18n && o.i18n[lang]) || {})[f] || "";
+  const autoTerm = (v, lang) => { const t = I18N ? I18N.term(v, lang) : v; return t && t !== v ? t : ""; };
+  // translation inputs for one row; data-tr="<lang>.<field>"
+  const trFields = (o, fields) => TR_LANGS.map((lang) => {
+    const LN = I18N.langs[lang];
+    return `<fieldset class="tr-lang"><legend>${LN.name}</legend>${fields.map(([f, label, area, auto]) => {
+      const ph = auto ? esc(auto(lang)) : "";
+      return `<div class="field"><label>${label}</label>${area
+        ? `<textarea data-tr="${lang}.${f}" dir="${LN.dir}" lang="${lang}" rows="3">${esc(trVal(o, lang, f))}</textarea>`
+        : `<input type="text" data-tr="${lang}.${f}" dir="${LN.dir}" lang="${lang}" value="${esc(trVal(o, lang, f))}" ${ph ? `placeholder="${ph}"` : ""} maxlength="200">`}</div>`;
+    }).join("")}</fieldset>`;
+  }).join("");
+  // collect the translation inputs back into the row's i18n object (empty fields removed)
+  function readTr(box, before) {
+    const out = clone(before || {});
+    $$("[data-tr]", box).forEach((el) => {
+      const [lang, f] = el.dataset.tr.split("."), v = el.value.trim();
+      if (v) (out[lang] = out[lang] || {})[f] = v; else if (out[lang]) delete out[lang][f];
+    });
+    Object.keys(out).forEach((k) => { if (!out[k] || typeof out[k] !== "object" || !Object.keys(out[k]).length) delete out[k]; });
+    return out;
+  }
+  const topCats = () => state.cats.filter((c) => !c.parent_id);
+  const subsOf = (id) => state.cats.filter((c) => c.parent_id === id).sort((a, b) => (a.sort || 0) - (b.sort || 0));
+  const iconOf = (p) => (state.cats.find((c) => c.id === p.category_id) || {}).icon || "star";
+
+  /* ---------- uploads ---------- */
+  /* Photos are re-encoded in the browser (WebP, JPEG where WebP is unavailable), which also
+     drops hidden metadata such as the phone's GPS location. Stored in three sizes:
+     <name>.v.webp (≤1800 px), <name>.v-1080.webp and <name>.v-480.webp; the site picks one with srcset. */
+  const SIZES = [[1800, ""], [1080, "-1080"], [480, "-480"]];
+  async function encodeSizes(file, quality = 0.86) {
+    let bmp;
+    try { bmp = await createImageBitmap(file, { imageOrientation: "from-image" }); } catch (e) { bmp = await createImageBitmap(file); }
+    let type = null;
+    const out = [];
+    for (const [max, suffix] of SIZES) {
+      const k = Math.min(1, max / Math.max(bmp.width, bmp.height));
+      const c = document.createElement("canvas"); c.width = Math.max(1, Math.round(bmp.width * k)); c.height = Math.max(1, Math.round(bmp.height * k));
+      c.getContext("2d").drawImage(bmp, 0, 0, c.width, c.height);
+      const blob = (t, qy) => new Promise((r) => c.toBlob(r, t, qy));
+      let b = null;
+      if (type !== "image/jpeg") { b = await blob("image/webp", quality); if (b && b.type === "image/webp") type = "image/webp"; else b = null; }
+      if (!b) { b = await blob("image/jpeg", quality); type = "image/jpeg"; }
+      if (!b) return null;
+      out.push({ suffix, blob: b });
+    }
+    if (bmp.close) bmp.close();
+    return { type, files: out };
+  }
+  async function upload(file, folder) {
+    const isImg = /^image\//.test(file.type), isVid = /^video\//.test(file.type);
+    if (!isImg && !isVid) throw new Error("نوع الملف غير مدعوم — اختر صورة أو فيديو");
+    if (file.size > 50 * 1024 * 1024) throw new Error("الملف أكبر من ٥٠ ميغابايت — صغّر حجمه ثم أعد المحاولة");
+    const keepAlpha = folder === "brand" && /png|svg|gif/.test(file.type);
+    const name = `${folder}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    const put = async (path, body, type) => {
+      const { error } = await db.storage.from(cfg.bucket).upload(path, body, { contentType: type, cacheControl: "31536000", upsert: false });
+      if (error) throw error;
+    };
+    const sized = isImg && !/svg|gif/.test(file.type) && !keepAlpha ? await encodeSizes(file).catch(() => null) : null;
+    if (sized) {
+      const ext = sized.type === "image/webp" ? "webp" : "jpg";
+      // smaller sizes first: the main address is only returned once every size exists
+      for (const f of sized.files.slice().reverse()) await put(`${name}.v${f.suffix}.${ext}`, f.blob, sized.type);
+      return db.storage.from(cfg.bucket).getPublicUrl(`${name}.v.${ext}`).data.publicUrl;
+    }
+    const type = file.type;
+    const ext = { "image/webp": "webp", "image/jpeg": "jpg", "image/png": "png", "image/gif": "gif", "image/svg+xml": "svg", "video/mp4": "mp4", "video/webm": "webm", "video/quicktime": "mov" }[type] || (file.name.split(".").pop() || "bin").toLowerCase();
+    await put(`${name}.${ext}`, file, type);
+    return db.storage.from(cfg.bucket).getPublicUrl(`${name}.${ext}`).data.publicUrl;
+  }
+
+  /* ---------- modal helpers ---------- */
+  function modal(html, cls = "") {
+    const bg = document.createElement("div");
+    bg.className = "modal-bg";
+    bg.innerHTML = `<div class="modal ${cls}" role="dialog" aria-modal="true">${html}</div>`;
+    document.body.appendChild(bg); document.body.classList.add("locked");
+    const close = () => { bg.remove(); if (!$(".modal-bg")) document.body.classList.remove("locked"); };
+    bg.addEventListener("click", (e) => { if (e.target === bg) close(); });
+    $$("[data-x]", bg).forEach((b) => b.addEventListener("click", close));
+    const first = $("input, select, textarea", bg); if (first && innerWidth > 640) setTimeout(() => first.focus(), 60);
+    return { el: bg, close };
+  }
+  function confirmBox(msg, ok = "حذف", danger = true) {
+    return new Promise((res) => {
+      const m = modal(`<div class="modal-h"><h2>تأكيد</h2></div><div class="modal-b"><p style="margin:0">${msg}</p></div>
+        <div class="modal-f"><button class="btn ${danger ? "danger" : ""}" id="cOk" type="button">${ok}</button><button class="btn light" type="button" id="cNo">إلغاء</button></div>`, "sm");
+      $("#cOk", m.el).onclick = () => { m.close(); res(true); };
+      $("#cNo", m.el).onclick = () => { m.close(); res(false); };
+    });
+  }
+  const toggleHTML = (attrs, on, label = "") => `<label class="toggle"><input type="checkbox" ${attrs} ${on ? "checked" : ""}><span class="tr"></span>${label ? `<span>${label}</span>` : ""}</label>`;
+
+  /* =======================================================================
+     LOGIN
+     ======================================================================= */
+  function renderLogin(msg) {
+    root.innerHTML = `<div class="login"><div class="login-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <form class="login-card" id="loginForm" novalidate>
+        <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
+        <p class="sub">لوحة التحكم</p>
+        ${msg ? `<div class="notice" style="font-size:14px">${esc(msg)}</div>` : ""}
+        <div class="field"><label for="lEmail">اسم المستخدم</label><input id="lEmail" type="text" dir="ltr" autocomplete="username" autocapitalize="none" spellcheck="false" required></div>
+        <div class="field"><label for="lPass">كلمة المرور</label>
+          <div class="pw-wrap"><input id="lPass" type="password" dir="ltr" autocomplete="current-password" required><button class="pw-eye" type="button" id="pwEye" aria-label="إظهار كلمة المرور">${I.eye}</button></div></div>
+        <button class="btn block login-btn" type="submit">تسجيل الدخول ${I.left}</button>
+        <p class="login-foot"><a href="${SITE}">العودة إلى الموقع</a><span>اتصال آمن ومشفّر</span></p>
+      </form></div>`;
+    $("#pwEye").onclick = () => { const i = $("#lPass"); i.type = i.type === "password" ? "text" : "password"; };
+    $("#loginForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = $("button[type=submit]", e.target); btn.disabled = true; btn.textContent = "جارٍ الدخول…";
+      const { error } = await db.auth.signInWithPassword({ email: loginEmail($("#lEmail").value), password: $("#lPass").value });
+      if (error) { btn.disabled = false; btn.innerHTML = `تسجيل الدخول ${I.left}`; toast(errMsg(error), true); return; }
+      start();
+    });
+  }
+
+  /* =======================================================================
+     TWO-STEP VERIFICATION (TOTP: Google / Microsoft Authenticator…)
+     ======================================================================= */
+  function renderMfa(mode, f) {
+    root.innerHTML = `<div class="login"><div class="login-aurora" aria-hidden="true"><i></i><i></i><i></i></div>
+      <form class="login-card" id="mfaForm" novalidate>
+        <img class="login-logo" src="../assets/img/logo.webp" alt="شعار معرض رقية" width="150">
+        <p class="sub">${mode === "enroll" ? "تفعيل التحقق بخطوتين" : "التحقق بخطوتين"}</p>
+        ${mode === "enroll" ? `<p class="mfa-help">لحماية لوحة التحكم، افتح تطبيق المصادقة على هاتفك (Google Authenticator أو Microsoft Authenticator)، امسح الرمز، ثم اكتب الرقم المكوّن من ٦ خانات. يُطلب هذا الرقم عند كل دخول.</p>
+          <div class="mfa-qr"><img src="${esc(f.qr)}" alt="رمز QR لتفعيل التحقق بخطوتين" width="184" height="184"></div>
+          <p class="mfa-help">لا تستطيع المسح؟ أدخل هذا المفتاح يدوياً:<br><code dir="ltr" id="mfaSecret">${esc(f.secret)}</code></p>`
+          : `<p class="mfa-help">اكتب الرقم المكوّن من ٦ خانات الظاهر الآن في تطبيق المصادقة على هاتفك.</p>`}
+        <div class="field"><label for="mfaCode">رمز التحقق</label><input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" dir="ltr" maxlength="6" required placeholder="••••••"></div>
+        <button class="btn block login-btn" type="submit">تأكيد ${I.left}</button>
+        <p class="login-foot"><button type="button" class="link-btn" id="mfaOut">تسجيل الخروج</button><span>اتصال آمن ومشفّر</span></p>
+      </form></div>`;
+    setTimeout(() => $("#mfaCode") && $("#mfaCode").focus(), 50);
+    $("#mfaOut").onclick = async () => { manualOut = true; await db.auth.signOut(); renderLogin(); };
+    $("#mfaForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const code = toLatin($("#mfaCode").value).replace(/\D/g, "");
+      if (code.length !== 6) { toast("اكتب الرمز المكوّن من ٦ أرقام", true); return; }
+      const btn = $("button[type=submit]", e.target); btn.disabled = true;
+      const { error } = await db.auth.mfa.challengeAndVerify({ factorId: f.factorId, code });
+      btn.disabled = false;
+      if (error) { toast("الرمز غير صحيح أو انتهت صلاحيته، اكتب الرقم الجديد", true); $("#mfaCode").select(); return; }
+      if (mode === "enroll") toast("تم تفعيل التحقق بخطوتين ✓");
+      start();
+    });
+  }
+  // true when the session may open the dashboard now; otherwise shows the code / enrolment screen
+  async function mfaReady() {
+    const { data: gate, error } = await db.rpc("admin_gate");
+    if (error || !gate || !gate.admin || !gate.mfa_required || gate.aal === "aal2") return true;   // older database, non-admin, or done
+    const { data: fl, error: e1 } = await db.auth.mfa.listFactors();
+    if (e1) { renderLogin("تعذّر التحقق من الحساب: " + errMsg(e1)); return false; }
+    const verified = (fl.all || []).filter((x) => x.factor_type === "totp" && x.status === "verified");
+    if (verified.length) { renderMfa("verify", { factorId: verified[0].id }); return false; }
+    for (const x of (fl.all || []).filter((x) => x.status !== "verified")) await db.auth.mfa.unenroll({ factorId: x.id });   // half-finished set-ups
+    const { data: en, error: e2 } = await db.auth.mfa.enroll({ factorType: "totp", friendlyName: "لوحة معرض رقية" });
+    if (e2) { renderLogin("تعذّر بدء التحقق بخطوتين: " + errMsg(e2)); return false; }
+    renderMfa("enroll", { factorId: en.id, qr: en.totp.qr_code, secret: en.totp.secret });
+    return false;
+  }
+
+  /* ---------- automatic sign-out after 30 minutes without activity ---------- */
+  const IDLE_MS = Math.min(Number((() => { try { return sessionStorage.getItem("rq_idle_ms"); } catch (e) { return 0; } })()) || 30 * 60e3, 30 * 60e3);
+  let lastActive = Date.now(), manualOut = false;
+  ["pointerdown", "keydown", "wheel", "touchstart"].forEach((ev) => addEventListener(ev, () => { lastActive = Date.now(); }, { passive: true, capture: true }));
+  setInterval(async () => {
+    if (!state.user || Date.now() - lastActive < IDLE_MS) return;
+    state.user = null; clearInterval(poll); manualOut = true;
+    await db.auth.signOut();
+    renderLogin("خرجت تلقائياً بعد فترة بلا نشاط، حمايةً للوحة. سجّل الدخول من جديد.");
+  }, Math.min(15e3, IDLE_MS / 2));
+
+  /* =======================================================================
+     SHELL + ROUTER
+     ======================================================================= */
+  const NAV = [
+    ["dashboard", "الرئيسية", I.dash], ["orders", "الطلبات", I.receipt, "orders"], ["products", "المنتجات", I.box], ["categories", "الأقسام", I.folder], ["inquiries", "الرسائل", I.mail, "inq"],
+    ["sep", "تخصيص الموقع"], ["home", "محتوى الصفحة الرئيسية", I.home], ["texts", "نصوص الموقع (كل الكلمات)", I.type], ["identity", "الهوية والألوان والافتتاحية", I.palette], ["contact", "التواصل والمتجر", I.phone], ["languages", "اللغات والترجمة", I.globe],
+    ["sep", "الحساب"], ["account", "حسابي", I.user]
+  ];
+  function renderShell() {
+    root.innerHTML = `<div class="shell">
+      <aside class="side" id="side" aria-label="القائمة">
+        <div class="brand"><img src="${esc(state.s.brand.logo || "../assets/img/logo-mark.webp")}" alt=""><div><b>${esc(state.s.brand.name)}</b><small>لوحة التحكم</small></div></div>
+        <nav>${NAV.map(([k, l, ic, pill]) => k === "sep" ? `<div class="sep">${l}</div>` : `<a href="#/${k}" data-nav="${k}">${ic}<span>${l}</span>${pill ? `<span class="pill" data-pill="${pill}" hidden></span>` : ""}</a>`).join("")}</nav>
+        <div class="foot"><a href="${SITE}" target="_blank" rel="noopener">${I.eye} عرض الموقع</a><button type="button" id="logout">${I.logout} تسجيل الخروج</button></div>
+      </aside>
+      <div class="side-bg" id="sideBg"></div>
+      <div class="main">
+        <div class="topbar"><button class="icon" type="button" id="menuBtn" aria-label="القائمة">${I.menu}</button><b>${esc(state.s.brand.name)}</b><a class="icon" href="${SITE}" target="_blank" rel="noopener" aria-label="عرض الموقع">${I.eye}</a></div>
+        <main class="content" id="page"></main>
+      </div>
+    </div>
+    <div class="savebar" id="savebar"><span>لديك تغييرات غير محفوظة</span><div style="display:flex;gap:8px"><button class="btn light" type="button" id="discard">تراجع</button><button class="btn" type="button" id="saveBtn">${I.check} حفظ ونشر</button></div></div>`;
+    const side = $("#side"), sbg = $("#sideBg");
+    $("#menuBtn").onclick = () => { side.classList.add("open"); sbg.classList.add("open"); };
+    sbg.onclick = () => { side.classList.remove("open"); sbg.classList.remove("open"); };
+    $$("[data-nav]").forEach((a) => a.addEventListener("click", () => { side.classList.remove("open"); sbg.classList.remove("open"); }));
+    $("#logout").onclick = async () => { if (state.dirty && !(await confirmBox("لديك تغييرات غير محفوظة. هل تريد الخروج بدون حفظ؟", "خروج"))) return; state.dirty = false; manualOut = true; state.user = null; clearInterval(poll); await db.auth.signOut(); renderLogin(); };
+    $("#saveBtn").onclick = saveSettings;
+    $("#discard").onclick = () => { state.dirty = false; showSave(false); route(true); };
+    updatePills();
+  }
+  function updatePills() {
+    state.counts.orders = state.stats ? state.stats.orders_new : state.orders.filter((o) => o.status === "new").length;
+    state.counts.inq = state.stats ? state.stats.inquiries_unread : state.inq.filter((m) => !m.is_read).length;
+    $$("[data-pill]").forEach((p) => { const n = state.counts[p.dataset.pill]; p.textContent = num(n); p.hidden = !n; });
+  }
+  let lastHash = "";
+  async function route(force) {
+    if (!$("#page")) return; // not signed in / still loading
+    const page = (location.hash.replace(/^#\/?/, "").split("?")[0]) || "dashboard";
+    if (!force && state.dirty && page !== state.page) {
+      const go = await confirmBox("لديك تغييرات غير محفوظة في هذه الصفحة. هل تريد المغادرة بدون حفظ؟", "مغادرة");
+      if (!go) { history.replaceState(null, "", lastHash || "#/" + state.page); return; }
+      state.dirty = false; showSave(false);
+    }
+    lastHash = location.hash;
+    state.page = page;
+    $$("[data-nav]").forEach((a) => a.classList.toggle("on", a.dataset.nav === page));
+    const old = $("#page"); if (old) { const fresh = old.cloneNode(false); old.replaceWith(fresh); } // drop listeners of the previous page
+    const P = { dashboard: pageDashboard, orders: pageOrders, products: pageProducts, categories: pageCategories, inquiries: pageInquiries, home: () => pageSettings("home"), texts: () => pageSettings("texts"), identity: () => pageSettings("identity"), contact: () => pageSettings("contact"), languages: pageLanguages, account: pageAccount };
+    (P[page] || pageDashboard)();
+    scrollTo(0, 0);
+  }
+  addEventListener("hashchange", () => route());
+  addEventListener("beforeunload", (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ""; } });
+  const page = () => $("#page");
+
+  /* =======================================================================
+     DASHBOARD
+     ======================================================================= */
+  function pageDashboard() {
+    const s = state.s;
+    const now = new Date(), st = state.stats;
+    const sales = st ? st.sales_month : state.orders.filter((o) => o.status !== "cancelled" && new Date(o.created_at).getMonth() === now.getMonth() && new Date(o.created_at).getFullYear() === now.getFullYear()).reduce((a, o) => a + (o.total || 0), 0);
+    const noPhotos = { length: st ? st.products_no_photo : state.prods.filter((p) => !(p.images || []).length).length };
+    const active = st ? st.products_active : state.prods.filter((p) => p.active).length, allProds = st ? st.products_total : state.prods.length;
+    const todo = [
+      !allProds && ["أضف منتجاتك الأولى مع صورها وأسعارها — المتجر فارغ حالياً", "#/products?new=1"],
+      !s.contact.whatsapp && ["أضف رقم واتساب ليصلك تفاصيل كل طلب ويستطيع الزبائن مراسلتك", "#/contact"],
+      !s.contact.phone && ["أضف رقم الهاتف وأوقات الدوام", "#/contact"],
+      noPhotos.length && [`أضف صور منتجاتك — ${num(noPhotos.length)} منتج بدون صور`, "#/products"],
+      !s.intro.video && ["ارفع فيديو الافتتاحية (ظهور الشعار)", "#/identity", true]
+    ].filter(Boolean);
+    page().innerHTML = `<div class="page-title"><div><h1>أهلاً بك</h1><p>نظرة سريعة على المعرض</p></div><a class="btn" href="#/products?new=1">${I.plus} إضافة منتج</a></div>
+      <div class="stats">
+        <a class="stat" href="#/orders"><div class="ic">${I.receipt}</div><div><b>${num(state.counts.orders)}</b><span>طلبات جديدة</span></div></a>
+        <div class="stat"><div class="ic">${I.sparkle}</div><div><b>${num(sales)}</b><span>مبيعات هذا الشهر (${esc(s.shop.currency)})</span></div></div>
+        <a class="stat" href="#/products"><div class="ic">${I.box}</div><div><b>${num(active)}</b><span>منتج معروض من ${num(allProds)}</span></div></a>
+        <a class="stat" href="#/inquiries"><div class="ic">${I.mail}</div><div><b>${num(state.counts.inq)}</b><span>رسائل غير مقروءة</span></div></a>
+      </div>
+      ${todo.length ? `<div class="card"><h2>خطوات لإكمال الموقع</h2><div class="rows">${todo.map(([t, h, opt]) => `<a class="row click" href="${h}" style="grid-template-columns:auto 1fr auto;text-decoration:none"><span class="status ${opt ? "s-confirmed" : "s-new"}">${opt ? "اختياري" : "مطلوب"}</span><span>${t}</span><span>${I.left}</span></a>`).join("")}</div></div>` : ""}
+      <div class="card"><div class="card-h"><h2>آخر الطلبات</h2><a class="btn ghost sm" href="#/orders">كل الطلبات</a></div>
+        ${state.recent.length ? `<div class="rows">${state.recent.map(orderRow).join("")}</div>` : `<div class="empty">لا توجد طلبات بعد — ستظهر هنا فور وصولها.</div>`}</div>
+      <div class="card"><h2>روابط سريعة</h2><div style="display:flex;gap:8px;flex-wrap:wrap">
+        <a class="btn light" href="#/home">${I.home} تعديل الصفحة الرئيسية</a><a class="btn light" href="#/texts">${I.type} نصوص الموقع</a><a class="btn light" href="#/identity">${I.palette} الشعار والألوان</a>
+        <a class="btn light" href="#/categories">${I.folder} الأقسام</a><a class="btn light" href="${SITE}" target="_blank" rel="noopener">${I.eye} عرض الموقع</a></div></div>`;
+    bindOrderRows();
+  }
+
+  /* =======================================================================
+     PRODUCTS
+     ======================================================================= */
+  const small = (u) => String(u || "").replace(/\.v\.(webp|jpg)$/i, ".v-480.$1");
+  function thumb(p) {
+    const img = (p.images || [])[0];
+    return img ? `<img src="${esc(small(img))}" alt="" loading="lazy">` : A.productArt(p, iconOf(p));
+  }
+  function pageProducts() {
+    const f = state.pf;
+    page().innerHTML = `<div class="page-title"><div><h1>المنتجات</h1><p>${num(state.prods.length)} منتج — اضغط على أي منتج لتعديله</p></div><button class="btn" type="button" id="addProd">${I.plus} إضافة منتج</button></div>
+      <div class="toolbar">
+        <input class="input" type="search" id="pSearch" placeholder="ابحث بالاسم أو الحجر…" value="${esc(f.q)}" aria-label="بحث">
+        <select class="input" id="pCat" aria-label="القسم"><option value="">كل الأقسام</option>${topCats().map((c) => `<option value="${c.id}" ${f.cat === c.id ? "selected" : ""}>${esc(c.name)}</option>` + subsOf(c.id).map((x) => `<option value="${x.id}" ${f.cat === x.id ? "selected" : ""}>— ${esc(x.name)}</option>`).join("")).join("")}<option value="none" ${f.cat === "none" ? "selected" : ""}>بدون قسم</option></select>
+        <select class="input" id="pSt" aria-label="الحالة"><option value="">كل الحالات</option><option value="on" ${f.st === "on" ? "selected" : ""}>معروض</option><option value="off" ${f.st === "off" ? "selected" : ""}>مخفي</option><option value="feat" ${f.st === "feat" ? "selected" : ""}>مميز</option><option value="out" ${f.st === "out" ? "selected" : ""}>نفدت الكمية</option></select>
+      </div>
+      <div class="rows" id="pList"></div>`;
+    const draw = () => {
+      const qy = arNorm(f.q.trim());
+      let list = state.prods.filter((p) => (!qy || arNorm([p.name, p.stone, p.metal, p.badge].join(" ")).includes(qy)) &&
+        (!f.cat || (f.cat === "none" ? !p.category_id : p.category_id === f.cat || p.subcategory_id === f.cat)) &&
+        (!f.st || (f.st === "on" && p.active) || (f.st === "off" && !p.active) || (f.st === "feat" && p.featured) || (f.st === "out" && p.stock === 0)));
+      const total = list.length; list = list.slice(0, f.n);
+      $("#pList").innerHTML = list.length ? list.map((p) => `<div class="row click ${p.active ? "" : "off"}" data-pid="${p.id}">
+        <div class="th">${thumb(p)}</div>
+        <div><h3>${esc(p.name)} ${p.featured ? `<span title="مميز" style="display:inline-block;width:16px;vertical-align:-2px">${I.starOn}</span>` : ""}</h3>
+          <div class="meta"><span>${esc(catName(p.category_id))}${p.subcategory_id ? ` · ${esc(catName(p.subcategory_id))}` : ""}</span><span class="price">${money(p.price)}</span>${p.stock === 0 ? `<span class="status s-cancelled">نفدت</span>` : p.stock ? `<span>المخزون: ${num(p.stock)}</span>` : ""}${!p.active ? `<span class="status s-cancelled">مخفي</span>` : ""}${(p.images || []).length ? `<span>${num(p.images.length)} صورة</span>` : `<span style="color:var(--warn)">بدون صور</span>`}</div></div>
+        <div class="acts">
+          ${toggleHTML(`data-act="active" aria-label="إظهار على الموقع"`, p.active, "معروض")}
+          <button class="icon" type="button" data-act="feat" aria-label="${p.featured ? "إلغاء التمييز" : "تمييز"}" title="مميز">${p.featured ? I.starOn : I.star}</button>
+          <button class="icon" type="button" data-act="edit" aria-label="تعديل">${I.edit}</button>
+          <button class="icon" type="button" data-act="dup" aria-label="نسخ" title="نسخ">${I.copy}</button>
+          <button class="icon danger" type="button" data-act="del" aria-label="حذف">${I.trash}</button>
+        </div></div>`).join("") + (total > list.length ? `<button class="btn light" type="button" id="pMore" style="align-self:center">عرض المزيد (${num(total - list.length)})</button>` : "") : `<div class="empty">لا توجد منتجات مطابقة.</div>`;
+    };
+    draw();
+    $("#pSearch").addEventListener("input", (e) => { f.q = e.target.value; f.n = 60; draw(); });
+    $("#pCat").addEventListener("change", (e) => { f.cat = e.target.value; f.n = 60; draw(); });
+    $("#pSt").addEventListener("change", (e) => { f.st = e.target.value; f.n = 60; draw(); });
+    $("#addProd").onclick = () => editProduct(null);
+    $("#pList").addEventListener("click", async (e) => {
+      if (e.target.closest("#pMore")) { f.n += 60; draw(); return; }
+      const row = e.target.closest("[data-pid]"); if (!row) return;
+      const p = state.prods.find((x) => x.id === row.dataset.pid);
+      const act = (e.target.closest("[data-act]") || {}).dataset?.act;
+      if (act === "active") return; // handled on change
+      if (e.target.closest(".toggle")) return;
+      try {
+        if (act === "feat") { await q(db.from("products").update({ featured: !p.featured }).eq("id", p.id)); p.featured = !p.featured; draw(); toast(p.featured ? "أصبح المنتج مميزاً" : "أُلغي التمييز"); }
+        else if (act === "dup") { const c = clone(await fullProduct(p)); delete c.id; delete c.created_at; delete c.updated_at; c.name += " (نسخة)"; c.active = false; const n = await q(db.from("products").insert(c).select().single()); state.prods.unshift(n); draw(); toast("تم نسخ المنتج (مخفي حتى تعدّله)"); editProduct(n); }
+        else if (act === "del") { if (!(await confirmBox(`حذف «${esc(p.name)}» نهائياً؟`))) return; await q(db.from("products").delete().eq("id", p.id)); state.prods = state.prods.filter((x) => x.id !== p.id); draw(); toast("تم الحذف"); }
+        else editProduct(await fullProduct(p));
+      } catch (err) { toast(errMsg(err), true); }
+    });
+    $("#pList").addEventListener("change", async (e) => {
+      const cb = e.target.closest('[data-act="active"]'); if (!cb) return;
+      const p = state.prods.find((x) => x.id === e.target.closest("[data-pid]").dataset.pid);
+      try { await q(db.from("products").update({ active: cb.checked }).eq("id", p.id)); p.active = cb.checked; draw(); toast(cb.checked ? "المنتج ظاهر على الموقع" : "المنتج مخفي عن الموقع"); }
+      catch (err) { cb.checked = !cb.checked; toast(errMsg(err), true); }
+    });
+    if (/new=1/.test(location.hash)) { history.replaceState(null, "", "#/products"); editProduct(null); }
+  }
+
+  function editProduct(p) {
+    const isNew = !p;
+    const pfCat = state.cats.find((c) => c.id === state.pf.cat);
+    const d = p ? clone(p) : { name: "", category_id: pfCat ? pfCat.parent_id || pfCat.id : (topCats()[0] || {}).id || null, subcategory_id: pfCat && pfCat.parent_id ? pfCat.id : null, price: null, old_price: null, images: [], badge: "", description: "", metal: "", stone: "", weight: "", size: "", stock: null, featured: false, active: true, sort: Math.max(0, ...state.prods.map((x) => x.sort || 0)) + 1 };
+    const m = modal(`<div class="modal-h"><h2>${isNew ? "منتج جديد" : "تعديل المنتج"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
+      <form class="modal-b" id="pForm" novalidate>
+        <div class="field"><span class="lbl">الصور</span><span class="hint">الصورة الأولى هي الرئيسية. تُضغط الصور تلقائياً لتفتح بسرعة. يمكنك اختيار عدة صور مرة واحدة.</span><div class="imgs" id="pImgs"></div></div>
+        <div class="field"><label for="fName">اسم المنتج *</label><input type="text" id="fName" value="${esc(d.name)}" maxlength="200" required></div>
+        <div class="grid2">
+          <div class="field"><label for="fCat">القسم</label><select id="fCat"><option value="">بدون قسم</option>${topCats().map((c) => `<option value="${c.id}" ${d.category_id === c.id ? "selected" : ""}>${esc(c.name)}</option>`).join("")}</select></div>
+          <div class="field"><label for="fBadge">شارة (اختياري)</label><input type="text" id="fBadge" value="${esc(d.badge)}" maxlength="30" placeholder="جديد، الأكثر طلباً…"></div>
+        </div>
+        <div class="field" id="fSubWrap" hidden><label for="fSub">القسم الفرعي</label><select id="fSub"></select><span class="hint">مثلاً «خواتم العقيق الرجالية». تُدار الأقسام الفرعية من صفحة «الأقسام».</span></div>
+        <div class="grid2">
+          <div class="field"><label for="fPrice">السعر (${esc(state.s.shop.currency)}) *</label><input type="text" inputmode="numeric" id="fPrice" value="${d.price ?? ""}" dir="ltr" placeholder="150000"></div>
+          <div class="field"><label for="fOld">السعر قبل الخصم (اختياري)</label><input type="text" inputmode="numeric" id="fOld" value="${d.old_price ?? ""}" dir="ltr"></div>
+        </div>
+        <div class="field"><label for="fDesc">الوصف</label><textarea id="fDesc" maxlength="4000">${esc(d.description)}</textarea></div>
+        <div class="grid2">
+          <div class="field"><label for="fMetal">المعدن</label><input type="text" id="fMetal" value="${esc(d.metal)}" placeholder="فضة ٩٢٥"></div>
+          <div class="field"><label for="fStone">الحجر</label><input type="text" id="fStone" value="${esc(d.stone)}" placeholder="عقيق يماني"></div>
+          <div class="field"><label for="fWeight">الوزن</label><input type="text" id="fWeight" value="${esc(d.weight)}" placeholder="١٢ غرام"></div>
+          <div class="field"><label for="fSize">المقاس / الحجم</label><input type="text" id="fSize" value="${esc(d.size)}" placeholder="٢٠ أو ١٠٠ مل"></div>
+        </div>
+        <div class="grid2">
+          <div class="field"><label for="fStock">الكمية المتوفرة</label><input type="text" inputmode="numeric" id="fStock" value="${d.stock ?? ""}" dir="ltr" placeholder="اتركه فارغاً = غير محدود"><span class="hint">ضع ٠ ليظهر «نفدت الكمية»</span></div>
+          <div class="field"><label for="fSort">ترتيب الظهور</label><input type="text" inputmode="numeric" id="fSort" value="${d.sort ?? 0}" dir="ltr"><span class="hint">الرقم الأصغر يظهر أولاً</span></div>
+        </div>
+        <div style="display:flex;gap:24px;flex-wrap:wrap">${toggleHTML('id="fActive"', d.active, "ظاهر على الموقع")}${toggleHTML('id="fFeat"', d.featured, "منتج مميز (يظهر في الواجهة)")}</div>
+        ${i18nOK() ? `<details class="tr-box" id="pTr"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+          <p class="hint">تظهر للزائر حسب لغته. اترك أي خانة فارغة ليظهر النص العربي — أما الحجر والمعدن والشارة فتُترجم تلقائياً (الظاهرة بلون باهت) إن كانت من الأحجار المعروفة.</p>
+          ${trFields(d, [["name", "اسم المنتج"], ["description", "الوصف", true], ["stone", "الحجر", false, (l) => autoTerm(d.stone, l)], ["metal", "المعدن", false, (l) => autoTerm(d.metal, l)], ["badge", "الشارة", false, (l) => autoTerm(d.badge, l)]])}</details>` : ""}
+      </form>
+      <div class="modal-f"><button class="btn" type="button" id="pSave">${I.check} حفظ المنتج</button><button class="btn light" type="button" data-x>إلغاء</button>
+        ${isNew ? "" : `<a class="btn ghost" href="${SITE}#/p/${d.id}" target="_blank" rel="noopener" style="margin-inline-start:auto">${I.eye} عرض</a>`}</div>`);
+    let busy = 0;
+    // the automatic stone / metal / badge translations follow what is typed in Arabic
+    const refreshAuto = () => [["stone", "#fStone"], ["metal", "#fMetal"], ["badge", "#fBadge"]].forEach(([f, sel]) => TR_LANGS.forEach((l) => {
+      const el = m.el.querySelector(`[data-tr="${l}.${f}"]`); if (el) el.placeholder = autoTerm($(sel, m.el).value, l);
+    }));
+    if (i18nOK()) { ["#fStone", "#fMetal", "#fBadge"].forEach((sel) => $(sel, m.el).addEventListener("input", refreshAuto)); refreshAuto(); }
+    // sub-department list follows the chosen department
+    const drawSubs = () => {
+      const kids = subsOK() ? subsOf($("#fCat", m.el).value) : [];
+      $("#fSubWrap", m.el).hidden = !kids.length;
+      $("#fSub", m.el).innerHTML = `<option value="">— بدون قسم فرعي —</option>` + kids.map((x) => `<option value="${x.id}" ${d.subcategory_id === x.id ? "selected" : ""}>${esc(x.name)}${x.active ? "" : " (مخفي)"}</option>`).join("");
+    };
+    drawSubs();
+    $("#fCat", m.el).addEventListener("change", () => { d.subcategory_id = null; drawSubs(); });
+    $("#fSub", m.el).addEventListener("change", (e) => { d.subcategory_id = e.target.value || null; });
+    const drawImgs = () => {
+      $("#pImgs", m.el).innerHTML = d.images.map((u, i) => `<div class="img-item"><img src="${esc(small(u))}" alt="">${i === 0 ? `<span class="main-tag">الرئيسية</span>` : ""}
+        <div class="ctrl"><button type="button" data-mv="${i}" data-d="-1" aria-label="تقديم">${I.right}</button><button type="button" data-rmimg="${i}" aria-label="حذف الصورة">${I.trash}</button><button type="button" data-mv="${i}" data-d="1" aria-label="تأخير">${I.left}</button></div></div>`).join("") +
+        Array.from({ length: busy }, () => `<div class="img-item"><div class="uploading"><div class="spin"></div></div></div>`).join("") +
+        `<label class="img-add">${I.img}<span>إضافة صور</span><input type="file" accept="image/*" multiple id="imgIn"></label>`;
+      $("#imgIn", m.el).addEventListener("change", async (e) => {
+        const files = Array.from(e.target.files || []); if (!files.length) return;
+        busy += files.length; drawImgs();
+        for (const file of files) {
+          try { d.images.push(await upload(file, "products")); } catch (err) { toast(errMsg(err), true); }
+          busy--; drawImgs();
+        }
+      });
+    };
+    drawImgs();
+    $("#pImgs", m.el).addEventListener("click", (e) => {
+      const mv = e.target.closest("[data-mv]"), rm = e.target.closest("[data-rmimg]");
+      if (mv) { const i = +mv.dataset.mv, j = i + +mv.dataset.d; if (j < 0 || j >= d.images.length) return; [d.images[i], d.images[j]] = [d.images[j], d.images[i]]; drawImgs(); }
+      if (rm) { d.images.splice(+rm.dataset.rmimg, 1); drawImgs(); }
+    });
+    $("#pSave", m.el).onclick = async () => {
+      if (busy) { toast("انتظر حتى ينتهي رفع الصور"); return; }
+      const name = $("#fName", m.el).value.trim(), price = intOrNull($("#fPrice", m.el).value);
+      if (!name) { toast("اكتب اسم المنتج", true); $("#fName", m.el).focus(); return; }
+      if (price === null) { toast("اكتب السعر بالأرقام", true); $("#fPrice", m.el).focus(); return; }
+      const row = {
+        name, price, category_id: $("#fCat", m.el).value || null, ...(subsOK() ? { subcategory_id: $("#fSub", m.el).value || null } : {}), badge: $("#fBadge", m.el).value.trim(), old_price: intOrNull($("#fOld", m.el).value),
+        description: $("#fDesc", m.el).value.trim(), metal: $("#fMetal", m.el).value.trim(), stone: $("#fStone", m.el).value.trim(), weight: $("#fWeight", m.el).value.trim(), size: $("#fSize", m.el).value.trim(),
+        stock: intOrNull($("#fStock", m.el).value), sort: intOrNull($("#fSort", m.el).value) || 0, active: $("#fActive", m.el).checked, featured: $("#fFeat", m.el).checked, images: d.images,
+        ...(i18nOK() ? { i18n: readTr($("#pTr", m.el), d.i18n) } : {})
+      };
+      const btn = $("#pSave", m.el); btn.disabled = true;
+      try {
+        if (isNew) { const n = await q(db.from("products").insert(row).select(leanCols).single()); state.prods.unshift(n); }
+        else { const n = await q(db.from("products").update(row).eq("id", d.id).select(leanCols).single()); state.prods = state.prods.map((x) => (x.id === n.id ? n : x)); }
+        state.prods.sort((a, b) => (a.sort - b.sort) || (b.created_at || "").localeCompare(a.created_at || ""));
+        m.close(); toast(isNew ? "تمت إضافة المنتج — ظاهر على الموقع الآن" : "تم حفظ التعديلات");
+        if (state.page === "products") pageProducts(); else if (state.page === "dashboard") pageDashboard();
+      } catch (err) { btn.disabled = false; toast(errMsg(err), true); }
+    };
+  }
+
+  /* =======================================================================
+     CATEGORIES
+     ======================================================================= */
+  function pageCategories() {
+    page().innerHTML = `<div class="page-title"><div><h1>الأقسام</h1><p>رتّب الأقسام وأقسامها الفرعية، وغيّر أسماءها وأيقوناتها أو صورها</p></div><button class="btn" type="button" id="addCat">${I.plus} إضافة قسم</button></div><div class="rows" id="cList"></div>`;
+    const siblings = (c) => (c.parent_id ? subsOf(c.parent_id) : topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0)));
+    const countOf = (c) => state.prods.filter((p) => (c.parent_id ? p.subcategory_id === c.id : p.category_id === c.id)).length;
+    const rowHTML = (c, i, n) => `<div class="row ${c.active ? "" : "off"} ${c.parent_id ? "sub" : ""}" data-cid="${c.id}"${c.parent_id ? ' style="margin-inline-start:34px;padding-block:8px"' : ""}>
+        <div class="th">${c.image_url ? `<img src="${esc(c.image_url)}" alt="">` : A.depIcon(c.icon)}</div>
+        <div><h3>${esc(c.name)}</h3><div class="meta">${c.subtitle ? `<span>${esc(c.subtitle)}</span>` : ""}<span>${num(countOf(c))} منتج</span>${!c.parent_id && subsOK() ? `<span>${num(subsOf(c.id).length)} قسم فرعي</span>` : ""}${c.active ? "" : `<span class="status s-cancelled">مخفي</span>`}</div></div>
+        <div class="acts">
+          ${!c.parent_id && subsOK() ? `<button class="icon" type="button" data-act="addsub" aria-label="إضافة قسم فرعي" title="إضافة قسم فرعي">${I.plus}</button>` : ""}
+          <button class="icon" type="button" data-act="up" aria-label="تحريك للأعلى" ${i === 0 ? "disabled" : ""}>${I.up}</button>
+          <button class="icon" type="button" data-act="down" aria-label="تحريك للأسفل" ${i === n - 1 ? "disabled" : ""}>${I.down}</button>
+          ${toggleHTML('data-act="active" aria-label="إظهار"', c.active, "ظاهر")}
+          <button class="icon" type="button" data-act="edit" aria-label="تعديل">${I.edit}</button>
+          <button class="icon danger" type="button" data-act="del" aria-label="حذف">${I.trash}</button>
+        </div></div>`;
+    const draw = () => {
+      const tops = topCats().sort((a, b) => (a.sort || 0) - (b.sort || 0));
+      $("#cList").innerHTML = tops.length ? tops.map((c, i) => rowHTML(c, i, tops.length) + subsOf(c.id).map((x, k, all) => rowHTML(x, k, all.length)).join("")).join("") : `<div class="empty">لا توجد أقسام.</div>`;
+    };
+    draw();
+    $("#addCat").onclick = () => editCategory(null);
+    $("#cList").addEventListener("click", async (e) => {
+      const row = e.target.closest("[data-cid]"); if (!row || e.target.closest(".toggle")) return;
+      const c = state.cats.find((x) => x.id === row.dataset.cid);
+      const act = (e.target.closest("[data-act]") || {}).dataset?.act; if (!act || !c) return;
+      try {
+        if (act === "up" || act === "down") {
+          const list = siblings(c), i = list.indexOf(c), j = act === "up" ? i - 1 : i + 1; if (j < 0 || j >= list.length) return;
+          [list[i], list[j]] = [list[j], list[i]];
+          list.forEach((x, k) => (x.sort = k + 1));
+          draw();
+          await Promise.all([list[i], list[j]].map((x) => q(db.from("categories").update({ sort: x.sort }).eq("id", x.id))));
+        } else if (act === "addsub") editCategory(null, c.id);
+        else if (act === "edit") editCategory(c);
+        else if (act === "del") {
+          const n = countOf(c), kids = c.parent_id ? [] : subsOf(c.id);
+          const note = [n ? `منتجاته (${num(n)}) لن تُحذف${c.parent_id ? "، وتبقى في القسم الرئيسي" : "، لكنها ستصبح «بدون قسم»"}.` : "", kids.length ? `ستُحذف أقسامه الفرعية (${num(kids.length)}) معه.` : ""].filter(Boolean).join("<br>");
+          if (!(await confirmBox(`حذف قسم «${esc(c.name)}»؟${note ? `<br><small>${note}</small>` : ""}`))) return;
+          await q(db.from("categories").delete().eq("id", c.id));
+          const gone = new Set([c.id, ...kids.map((x) => x.id)]);
+          state.cats = state.cats.filter((x) => !gone.has(x.id));
+          state.prods.forEach((p) => { if (gone.has(p.subcategory_id)) p.subcategory_id = null; if (p.category_id === c.id) p.category_id = null; });
+          draw(); toast("تم حذف القسم");
+        }
+      } catch (err) { toast(errMsg(err), true); }
+    });
+    $("#cList").addEventListener("change", async (e) => {
+      const cb = e.target.closest('[data-act="active"]'); if (!cb) return;
+      const c = state.cats.find((x) => x.id === e.target.closest("[data-cid]").dataset.cid);
+      try { await q(db.from("categories").update({ active: cb.checked }).eq("id", c.id)); c.active = cb.checked; draw(); }
+      catch (err) { cb.checked = !cb.checked; toast(errMsg(err), true); }
+    });
+  }
+  function editCategory(c, parentId) {
+    const isNew = !c;
+    const parent0 = c ? c.parent_id || null : parentId || null;
+    const d = c ? clone(c) : { name: "", subtitle: "", slug: "", icon: parentId ? (state.cats.find((x) => x.id === parentId) || {}).icon || "gift" : "gift", image_url: "", active: true, parent_id: parent0,
+      sort: (parent0 ? subsOf(parent0).length : topCats().length) + 1 };
+    const hasKids = c && !c.parent_id && subsOf(c.id).length > 0;
+    const m = modal(`<div class="modal-h"><h2>${isNew ? (parent0 ? "قسم فرعي جديد" : "قسم جديد") : "تعديل القسم"}</h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
+      <div class="modal-b">
+        <div class="field"><label for="cName">اسم القسم *</label><input type="text" id="cName" value="${esc(d.name)}" maxlength="120" placeholder="${parent0 ? "خواتم العقيق الرجالية" : ""}"></div>
+        ${subsOK() ? `<div class="field"><label for="cParent">يتبع قسم</label><select id="cParent" ${hasKids ? "disabled" : ""}><option value="">— قسم رئيسي —</option>${topCats().filter((x) => !c || x.id !== c.id).map((x) => `<option value="${x.id}" ${parent0 === x.id ? "selected" : ""}>${esc(x.name)}</option>`).join("")}</select>${hasKids ? `<span class="hint">لهذا القسم أقسام فرعية، لذا يبقى قسماً رئيسياً.</span>` : `<span class="hint">اختر قسماً ليصبح هذا قسماً فرعياً داخله (مثل «خواتم العقيق» داخل «خواتم رجالية»).</span>`}</div>` : ""}
+        <div class="field"><label for="cSub">وصف قصير</label><input type="text" id="cSub" value="${esc(d.subtitle)}" maxlength="120" placeholder="عقيق · فيروز"></div>
+        <div class="field"><label for="cSlug">الرابط المختصر (بالإنجليزي)</label><input type="text" id="cSlug" value="${esc(d.slug)}" dir="ltr" placeholder="mens-rings" maxlength="60"><span class="hint">يظهر في رابط القسم. حروف إنجليزية صغيرة وأرقام وشرطة فقط — اتركه فارغاً ليُنشأ تلقائياً.</span></div>
+        <div class="field"><span class="lbl">الأيقونة</span><div class="icons" id="cIcons">${Object.keys(A.dep).map((k) => `<button type="button" data-ic="${k}" class="${d.icon === k ? "on" : ""}" aria-label="${A.depNames[k] || k}" title="${A.depNames[k] || k}">${A.depIcon(k)}</button>`).join("")}</div></div>
+        <div class="field"><span class="lbl">صورة القسم (اختياري — تظهر بدل الأيقونة)</span><div class="media-field" id="cImg"></div></div>
+        ${toggleHTML('id="cActive"', d.active, "ظاهر على الموقع")}
+        ${i18nOK() ? `<details class="tr-box" id="cTr" style="margin-top:14px"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+          <p class="hint">اسم القسم ووصفه بلغة الزائر. اترك الخانة فارغة ليظهر بالعربية.</p>${trFields(d, [["name", "اسم القسم"], ["subtitle", "وصف قصير"]])}</details>` : ""}
+      </div>
+      <div class="modal-f"><button class="btn" type="button" id="cSave">${I.check} حفظ القسم</button><button class="btn light" type="button" data-x>إلغاء</button></div>`);
+    const drawImg = (loading) => {
+      $("#cImg", m.el).innerHTML = `<div class="media-prev">${loading ? `<div class="spin"></div>` : d.image_url ? `<img src="${esc(d.image_url)}" alt="">` : "لا توجد صورة"}</div>
+        <label class="btn light up-btn">${I.img} رفع صورة<input type="file" accept="image/*"></label>${d.image_url ? `<button class="btn danger" type="button" id="cImgRm">إزالة</button>` : ""}`;
+      $("input[type=file]", m.el.querySelector("#cImg")).addEventListener("change", async (e) => {
+        const f = e.target.files[0]; if (!f) return; drawImg(true);
+        try { d.image_url = await upload(f, "categories"); } catch (err) { toast(errMsg(err), true); }
+        drawImg();
+      });
+      const rm = $("#cImgRm", m.el); if (rm) rm.onclick = () => { d.image_url = ""; drawImg(); };
+    };
+    drawImg();
+    $("#cIcons", m.el).addEventListener("click", (e) => { const b = e.target.closest("[data-ic]"); if (!b) return; d.icon = b.dataset.ic; $$("[data-ic]", m.el).forEach((x) => x.classList.toggle("on", x === b)); });
+    $("#cSave", m.el).onclick = async () => {
+      const name = $("#cName", m.el).value.trim(); if (!name) { toast("اكتب اسم القسم", true); return; }
+      let slug = $("#cSlug", m.el).value.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
+      if (!slug) slug = "cat-" + Date.now().toString(36);
+      const row = { name, subtitle: $("#cSub", m.el).value.trim(), slug, icon: d.icon, image_url: d.image_url, active: $("#cActive", m.el).checked };
+      if (i18nOK()) row.i18n = readTr($("#cTr", m.el), d.i18n);
+      if (subsOK() && $("#cParent", m.el) && !$("#cParent", m.el).disabled) row.parent_id = $("#cParent", m.el).value || null;
+      try {
+        if (isNew) { row.sort = d.sort; const n = await q(db.from("categories").insert(row).select().single()); state.cats.push(n); }
+        else {
+          const n = await q(db.from("categories").update(row).eq("id", d.id).select().single()); state.cats = state.cats.map((x) => (x.id === n.id ? n : x));
+          if ((c.parent_id || null) !== (n.parent_id || null)) await loadProds();   // its products moved with it
+        }
+        m.close(); toast("تم حفظ القسم"); pageCategories();
+      } catch (err) { toast(errMsg(err), true); }
+    };
+  }
+
+  /* =======================================================================
+     ORDERS
+     ======================================================================= */
+  function orderRow(o) {
+    const n = (o.items || []).reduce((a, i) => a + (i.qty || 0), 0);
+    return `<div class="row click" data-oid="${o.id}" style="grid-template-columns:auto 1fr auto">
+      <div style="font-family:Georgia,serif;font-size:18px;color:var(--em);direction:ltr">#${o.order_no}</div>
+      <div><h3>${esc(o.customer_name)} <span class="status s-${o.status}">${STATUS[o.status]}</span></h3>
+        <div class="meta"><span dir="ltr">${esc(o.phone)}</span><span>${o.country && o.country !== "العراق" ? `${esc(o.country)} · ` : ""}${esc(o.city)}</span><span>${num(n)} قطعة</span><span>${when(o.created_at)}</span></div></div>
+      <div class="price">${money(o.total)}</div></div>`;
+  }
+  const findOrder = (id) => state.orders.find((o) => o.id === id) || state.recent.find((o) => o.id === id);
+  function bindOrderRows() { $$("[data-oid]").forEach((r) => r.addEventListener("click", () => openOrder(findOrder(r.dataset.oid)))); }
+  function pageOrders() {
+    if (!state.legacy) return pageOrdersPaged();
+    const f = state.of;
+    const counts = Object.fromEntries(Object.keys(STATUS).map((k) => [k, state.orders.filter((o) => o.status === k).length]));
+    page().innerHTML = `<div class="page-title"><div><h1>الطلبات</h1><p>${num(state.orders.length)} طلب</p></div><button class="btn light" type="button" id="oRef">${I.refresh} تحديث</button></div>
+      <div class="tabs" role="tablist"><button class="tab ${!f.st ? "on" : ""}" data-st="">الكل<span class="n">${num(state.orders.length)}</span></button>${Object.entries(STATUS).map(([k, l]) => `<button class="tab ${f.st === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${num(counts[k])}</span></button>`).join("")}</div>
+      <div class="toolbar"><input class="input" type="search" id="oSearch" placeholder="ابحث بالاسم أو الهاتف أو رقم الطلب…" value="${esc(f.q)}" aria-label="بحث"></div>
+      <div class="rows" id="oList"></div>`;
+    const draw = () => {
+      const qy = toLatin(f.q.trim());
+      const list = state.orders.filter((o) => (!f.st || o.status === f.st) && (!qy || [o.customer_name, toLatin(o.phone), String(o.order_no), o.city, o.country].join(" ").includes(qy)));
+      $("#oList").innerHTML = list.length ? list.map(orderRow).join("") : `<div class="empty">لا توجد طلبات هنا.</div>`;
+      bindOrderRows();
+    };
+    draw();
+    $$("[data-st]").forEach((b) => b.addEventListener("click", () => { f.st = b.dataset.st; pageOrders(); }));
+    $("#oSearch").addEventListener("input", (e) => { f.q = e.target.value; draw(); });
+    $("#oRef").onclick = async () => { try { await loadOrders(); updatePills(); pageOrders(); toast("تم التحديث"); } catch (err) { toast(errMsg(err), true); } };
+  }
+  function pageOrdersPaged() {
+    const f = state.of, c = state.oList.counts || {};
+    page().innerHTML = `<div class="page-title"><div><h1>الطلبات</h1><p id="oTotal">${num(c.all || 0)} طلب</p></div><button class="btn light" type="button" id="oRef">${I.refresh} تحديث</button></div>
+      <div class="tabs" role="tablist"><button class="tab ${!f.st ? "on" : ""}" data-st="">الكل<span class="n">${num(c.all || 0)}</span></button>${Object.entries(STATUS).map(([k, l]) => `<button class="tab ${f.st === k ? "on" : ""}" data-st="${k}">${l}<span class="n">${num(c[k] || 0)}</span></button>`).join("")}</div>
+      <div class="toolbar"><input class="input" type="search" id="oSearch" placeholder="ابحث بالاسم أو الهاتف أو رقم الطلب…" value="${esc(f.q)}" aria-label="بحث"></div>
+      <div class="rows" id="oList"></div>`;
+    const draw = () => {
+      const more = state.oList.total > state.orders.length;
+      $("#oList").innerHTML = state.orders.length
+        ? state.orders.map(orderRow).join("") + (more ? `<button class="btn light" type="button" id="oMore" style="align-self:center">عرض المزيد (${num(state.oList.total - state.orders.length)})</button>` : "")
+        : `<div class="empty">لا توجد طلبات هنا.</div>`;
+      bindOrderRows();
+      const mb = $("#oMore");
+      if (mb) mb.onclick = async () => {
+        mb.disabled = true;
+        try { const d = await fetchOrders(state.orders.length); if (d) { state.orders = state.orders.concat(d.items); state.oList.total = d.total; } draw(); }
+        catch (err) { mb.disabled = false; toast(errMsg(err), true); }
+      };
+    };
+    draw();
+    const reload = async () => { await loadOrders(); if (state.page === "orders") pageOrders(); };
+    $$("[data-st]").forEach((b) => b.addEventListener("click", () => { f.st = b.dataset.st; reload().catch((err) => toast(errMsg(err), true)); }));
+    let t = 0;
+    $("#oSearch").addEventListener("input", (e) => {
+      f.q = e.target.value; clearTimeout(t);
+      t = setTimeout(async () => {
+        try { await loadOrders(); if (state.page !== "orders") return; const c2 = state.oList.counts || {}; $$("[data-st]").forEach((b) => { $(".n", b).textContent = num(b.dataset.st ? c2[b.dataset.st] || 0 : c2.all || 0); }); $("#oTotal").textContent = `${num(c2.all || 0)} طلب`; draw(); }
+        catch (err) { toast(errMsg(err), true); }
+      }, 300);
+    });
+    $("#oRef").onclick = async () => { try { await Promise.all([loadOrders(), loadStats()]); updatePills(); pageOrders(); toast("تم التحديث"); } catch (err) { toast(errMsg(err), true); } };
+  }
+  function openOrder(o) {
+    if (!o) return;
+    const s = state.s;
+    const intlOrder = o.country && o.country !== "العراق";
+    const wa = intlOrder ? toLatin(o.phone).replace(/\D/g, "").replace(/^00/, "") : waNumber(o.phone);
+    const waText = `مرحباً ${o.customer_name}، معكم ${s.brand.full}.\nبخصوص طلبكم رقم #${o.order_no} بقيمة ${num(o.total)} ${s.shop.currency}.`;
+    const m = modal(`<div class="modal-h"><h2>طلب <span dir="ltr">#${o.order_no}</span></h2><button class="icon" type="button" data-x aria-label="إغلاق">${I.close}</button></div>
+      <div class="modal-b">
+        <div class="field no-print"><span class="lbl">حالة الطلب</span><div class="status-btns" id="oStatus">${Object.entries(STATUS).map(([k, l]) => `<button type="button" data-set="${k}" class="s-${k} ${o.status === k ? "on" : ""}">${l}</button>`).join("")}</div></div>
+        <dl class="kv"><dt>الزبون</dt><dd>${esc(o.customer_name)}</dd><dt>الهاتف</dt><dd dir="ltr" style="text-align:right">${esc(o.phone)}</dd><dt>الدولة</dt><dd>${esc(o.country || "العراق")}</dd><dt>${o.country && o.country !== "العراق" ? "المدينة" : "المحافظة"}</dt><dd>${esc(o.city)}</dd><dt>العنوان</dt><dd>${esc(o.address) || "—"}</dd>${o.notes ? `<dt>ملاحظات</dt><dd>${esc(o.notes)}</dd>` : ""}<dt>التاريخ</dt><dd>${when(o.created_at)}</dd></dl>
+        <div class="o-items">${(o.items || []).map((i) => `<div class="o-item"><div class="th">${i.image ? `<img src="${esc(small(i.image))}" alt="">` : ""}</div><div><b>${esc(i.name)}</b><div style="color:var(--soft);font-size:13px">${money(i.price)} × ${num(i.qty)}</div></div><div class="price">${money(i.price * i.qty)}</div></div>`).join("")}</div>
+        <dl class="kv"><dt>المجموع</dt><dd>${money(o.subtotal)}</dd><dt>${o.country && o.country !== "العراق" ? "الشحن الدولي" : "التوصيل"}</dt><dd>${o.delivery ? money(o.delivery) : o.country && o.country !== "العراق" ? "يُحدَّد مع الزبون" : "مجاني"}</dd><dt><b>الإجمالي</b></dt><dd class="price">${money(o.total)}</dd></dl>
+        ${"notified_at" in o ? `<p class="hint no-print" id="oAlert" style="margin:-4px 0 14px">إشعار تيليجرام: ${o.notified_at ? (o.notify_error === "disabled" ? "الإشعارات متوقفة" : "أُرسل ✓") : o.notify_error ? `لم يصل بعد — ستُعاد المحاولة تلقائياً (${esc(o.notify_error.slice(0, 60))})` : "قيد الإرسال"}</p>` : ""}
+        <div class="field no-print"><label for="oNote">ملاحظة داخلية (لا يراها الزبون)</label><textarea id="oNote" style="min-height:70px">${esc(o.admin_note)}</textarea></div>
+      </div>
+      <div class="modal-f">
+        ${wa ? `<a class="btn wa" href="https://wa.me/${wa}?text=${encodeURIComponent(waText)}" target="_blank" rel="noopener">${I.whatsapp} واتساب الزبون</a>` : ""}
+        <a class="btn light" href="tel:${esc(toLatin(o.phone).replace(/[^\d+]/g, ""))}">${I.phone} اتصال</a>
+        <button class="btn light" type="button" id="oPrint">${I.print} طباعة</button>
+        <button class="btn light" type="button" id="oNoteSave">حفظ الملاحظة</button>
+        <button class="btn danger" type="button" id="oDel" style="margin-inline-start:auto">${I.trash}</button>
+      </div>`);
+    $("#oStatus", m.el).addEventListener("click", async (e) => {
+      const b = e.target.closest("[data-set]"); if (!b || b.dataset.set === o.status) return;
+      try {
+        const was = o.status;
+        await q(db.from("orders").update({ status: b.dataset.set }).eq("id", o.id)); o.status = b.dataset.set; $$("[data-set]", m.el).forEach((x) => x.classList.toggle("on", x === b));
+        state.recent.forEach((x) => { if (x.id === o.id) x.status = o.status; }); state.orders.forEach((x) => { if (x.id === o.id) x.status = o.status; });
+        await loadStats().catch(() => {}); updatePills();
+        const moved = (was === "cancelled") !== (o.status === "cancelled") && (o.stock_state === "reserved" || o.stock_state === "released");
+        if (moved) o.stock_state = o.status === "cancelled" ? "released" : "reserved";
+        toast(`حالة الطلب: ${STATUS[o.status]}${moved ? (o.status === "cancelled" ? " — أُعيدت القطع إلى المخزون" : " — حُجزت القطع من المخزون مجدداً") : ""}`);
+        if (moved) await loadProds().catch(() => {});
+        refreshOrderViews();
+      }
+      catch (err) { toast(errMsg(err), true); }
+    });
+    $("#oNoteSave", m.el).onclick = async () => { try { const v = $("#oNote", m.el).value; await q(db.from("orders").update({ admin_note: v }).eq("id", o.id)); o.admin_note = v; toast("حُفظت الملاحظة"); } catch (err) { toast(errMsg(err), true); } };
+    $("#oPrint", m.el).onclick = () => print();
+    $("#oDel", m.el).onclick = async () => {
+      if (!(await confirmBox(`حذف الطلب #${o.order_no} نهائياً؟`))) return;
+      try { await q(db.from("orders").delete().eq("id", o.id)); state.orders = state.orders.filter((x) => x.id !== o.id); state.recent = state.recent.filter((x) => x.id !== o.id); if (state.oList.total) state.oList.total--; m.close(); await loadStats().catch(() => {}); updatePills(); await loadProds().catch(() => {}); refreshOrderViews(); toast(o.stock_state === "reserved" ? "حُذف الطلب وأُعيدت قطعه إلى المخزون" : "حُذف الطلب"); }
+      catch (err) { toast(errMsg(err), true); }
+    };
+  }
+  function refreshOrderViews() {
+    if (state.page === "orders") { if (state.legacy) pageOrders(); else loadOrders().then(() => { if (state.page === "orders") pageOrders(); }).catch(() => pageOrders()); }
+    if (state.page === "dashboard") pageDashboard();
+  }
+
+  /* =======================================================================
+     INQUIRIES
+     ======================================================================= */
+  function pageInquiries() {
+    page().innerHTML = `<div class="page-title"><div><h1>الرسائل</h1><p>رسائل نموذج «راسلنا» في الموقع</p></div></div><div class="rows" id="mList"></div>`;
+    const draw = () => {
+      $("#mList").innerHTML = state.inq.length ? state.inq.map((x) => {
+        const wa = waNumber(x.phone);
+        return `<div class="row" data-mid="${x.id}" style="grid-template-columns:1fr;${x.is_read ? "" : "border-color:var(--gold)"}">
+          <div><h3>${x.is_read ? "" : `<span class="status s-new">جديدة</span> `}${esc(x.name)}</h3><div class="meta"><span dir="ltr">${esc(x.phone) || "بدون هاتف"}</span><span>${when(x.created_at)}</span></div>
+          <p style="margin:8px 0 0;white-space:pre-line">${esc(x.body)}</p></div>
+          <div class="acts" style="justify-content:flex-start">
+            ${wa ? `<a class="btn wa sm" href="https://wa.me/${wa}?text=${encodeURIComponent(`مرحباً ${x.name}، معكم ${state.s.brand.full}.`)}" target="_blank" rel="noopener">${I.whatsapp} رد على واتساب</a>` : ""}
+            ${x.is_read ? "" : `<button class="btn light sm" type="button" data-act="read">${I.check} تم الاطلاع</button>`}
+            <button class="btn danger sm" type="button" data-act="del">${I.trash} حذف</button>
+          </div></div>`;
+      }).join("") + (state.inqMore ? `<button class="btn light" type="button" id="mMore" style="align-self:center">عرض رسائل أقدم</button>` : "") : `<div class="empty">لا توجد رسائل بعد.</div>`;
+    };
+    draw();
+    $("#mList").addEventListener("click", async (e) => {
+      if (e.target.closest("#mMore")) { try { await loadInq(true); draw(); } catch (err) { toast(errMsg(err), true); } return; }
+      const b = e.target.closest("[data-act]"); if (!b) return;
+      const x = state.inq.find((i) => i.id === b.closest("[data-mid]").dataset.mid);
+      try {
+        if (b.dataset.act === "read") { await q(db.from("inquiries").update({ is_read: true }).eq("id", x.id)); x.is_read = true; }
+        if (b.dataset.act === "del") { if (!(await confirmBox("حذف هذه الرسالة؟"))) return; await q(db.from("inquiries").delete().eq("id", x.id)); state.inq = state.inq.filter((i) => i.id !== x.id); }
+        await loadStats().catch(() => {}); updatePills(); draw();
+      } catch (err) { toast(errMsg(err), true); }
+    });
+  }
+
+  /* =======================================================================
+     SETTINGS (generic form builder — every text, image and color)
+     ======================================================================= */
+  const SH = (p, l, extra = {}) => ({ p, l, ...extra });
+  const showT = (p) => SH(p, "إظهار هذا القسم في الموقع", { t: "toggle" });
+  const TX = (k, l, extra = {}) => SH("ui." + k, l, { ph: (DEF.ui || {})[k] || "", ...extra });
+  const SCHEMA = {
+    home: {
+      title: "محتوى الصفحة الرئيسية", sub: "كل النصوص والصور في الصفحة الرئيسية، بالترتيب الذي تظهر به",
+      groups: [
+        { title: "الواجهة الرئيسية (أعلى الصفحة)", fields: [
+          SH("hero.eyebrow", "السطر الصغير فوق العنوان"), SH("hero.title1", "العنوان — السطر الأول"), SH("hero.title2", "العنوان — السطر الثاني (بلون متدرّج)"), SH("hero.flip_more", "كلمات تتبدّل مع السطر الثاني", { t: "strings", add: "إضافة عبارة", hint: "تتناوب هذه العبارات مكان السطر الثاني بحركة ناعمة. احذفها كلها ليبقى السطر ثابتاً." }),
+          SH("hero.text", "النص التعريفي", { t: "textarea" }), SH("hero.cta1", "نص الزر الأول (يفتح المتجر)"), SH("hero.cta2", "نص الزر الثاني (ينزل إلى الأقسام)"),
+          SH("hero.slides", "صور البطاقات المتحركة أعلى الصفحة", { t: "list", add: "إضافة صورة", hint: "تتبدّل البطاقات بحركة ناعمة. إن تركتها فارغة تُعرض صور المنتجات المميزة تلقائياً.", fields: [{ k: "image", l: "الصورة", t: "image", folder: "slides" }, { k: "title", l: "عنوان على الصورة" }, { k: "caption", l: "سطر صغير تحته" }, { k: "link", l: "رابط عند الضغط (اختياري)", dir: "ltr" }] }),
+          SH("hero.slide_seconds", "مدة كل صورة بالثواني", { t: "number" }),
+          SH("hero.stats", "الأرقام تحت النص", { t: "list", add: "إضافة رقم", hint: "إذا كانت الأرقام أقل من ثلاثة يُكمَّل الصف تلقائياً بعدد الأقسام وعدد القطع.", fields: [{ k: "value", l: "الرقم" }, { k: "label", l: "الوصف" }] })
+        ] },
+        { title: "سطر الإعلان أعلى الموقع", fields: [SH("announcement.enabled", "إظهار السطر", { t: "toggle" }), SH("announcement.items", "نص الإعلان (يظهر الأول فقط، ثابتاً)", { t: "strings", add: "إضافة نص" })] },
+        { title: "قسم «أقسام المعرض»", fields: [showT("sections.departments.show"), SH("sections.departments.eyebrow", "السطر الصغير"), SH("sections.departments.title", "العنوان"), SH("sections.departments.text", "الوصف")] },
+        { title: "قسم «قطعة الموسم»", fields: [showT("sections.featured.show"), SH("sections.featured.product_id", "المنتج المعروض", { t: "product", hint: "إن لم تختر، يُعرض أول منتج مميز." }), SH("sections.featured.eyebrow", "السطر الصغير"), SH("sections.featured.button", "نص الزر")] },
+        { title: "قسم «جولة في المعرض» (البطاقات الأفقية)", fields: [showT("sections.showroom.show"), SH("sections.showroom.eyebrow", "السطر الصغير"), SH("sections.showroom.title", "العنوان"), SH("sections.showroom.hint", "التلميح على الكمبيوتر"), SH("sections.showroom.hint_touch", "التلميح على الهاتف"), SH("sections.showroom.end_title", "عنوان البطاقة الأخيرة"), { p: "sections.showroom._note", t: "note", l: "تظهر هنا المنتجات المميزة (أو أول ٦ منتجات). اختر المنتجات المميزة بالنجمة في صفحة المنتجات." }] },
+        { title: "قسم «المجموعة المختارة»", fields: [showT("sections.collection.show"), SH("sections.collection.eyebrow", "السطر الصغير"), SH("sections.collection.title", "العنوان"), SH("sections.collection.text", "الوصف"), SH("sections.collection.count", "عدد المنتجات المعروضة", { t: "number" })] },
+        { title: "قسم «من كربلاء إلى العالم» (الكرة الأرضية)", fields: [SH("sections.globe.show", "إظهار القسم (يظهر فقط عند تفعيل الشحن الدولي)", { t: "toggle" }), SH("sections.globe.eyebrow", "السطر الصغير"), SH("sections.globe.title", "العنوان"), SH("sections.globe.text", "النص", { t: "textarea" }), SH("sections.globe.stat_cities", "وصف عدد المحافظات"), SH("sections.globe.stat_countries", "وصف عدد الدول"), SH("sections.globe.stat_pack", "البطاقة الثالثة"), SH("sections.globe.pin", "الاسم على الكرة"), SH("sections.globe.hint", "التلميح على الكمبيوتر"), SH("sections.globe.hint_touch", "التلميح على الهاتف")] },
+        { title: "قسم «عن المعرض»", fields: [showT("sections.about.show"), SH("sections.about.image", "الصورة بجانب النص (بدونها يظهر الشعار)", { t: "image", folder: "about" }), SH("sections.about.eyebrow", "السطر الصغير"), SH("sections.about.title", "العنوان"), SH("sections.about.text", "النص", { t: "textarea" }),
+          SH("sections.about.values", "البطاقات الصغيرة تحت النص", { t: "list", add: "إضافة بطاقة", fields: [{ k: "icon", l: "الأيقونة", t: "select", options: [["shield", "ضمان"], ["gift", "هدية"], ["truck", "توصيل"], ["check", "علامة صح"], ["pin", "موقع"], ["clock", "وقت"], ["phone", "هاتف"], ["mail", "رسالة"]] }, { k: "title", l: "العنوان" }, { k: "text", l: "السطر تحته" }] }),
+          SH("sections.about.button", "نص الزر (اتركه فارغاً لإخفائه)")] },
+        { title: "آراء الزبائن", fields: [showT("sections.testimonials.show"), SH("sections.testimonials.title", "العنوان"), SH("sections.testimonials.items", "الآراء", { t: "list", add: "إضافة رأي", hint: "لا يظهر القسم إلا بعد إضافة رأي واحد على الأقل.", fields: [{ k: "name", l: "الاسم" }, { k: "city", l: "المدينة" }, { k: "text", l: "الرأي", t: "textarea" }] })] },
+        { title: "قسم «زورونا» ونموذج المراسلة", fields: [showT("sections.visit.show"), SH("sections.visit.eyebrow", "السطر الصغير"), SH("sections.visit.title", "العنوان"), SH("sections.visit.image", "صورة في بطاقة العنوان (اختياري — مثل صورة واجهة المعرض)", { t: "image", folder: "visit" }), SH("sections.visit.form_title", "عنوان النموذج"), SH("sections.visit.form_text", "وصف النموذج")] }
+      ]
+    },
+    texts: {
+      title: "نصوص الموقع", sub: "كل كلمة تظهر للزائر — الأزرار، العناوين، السلة، نموذج الطلب، الرسائل",
+      search: true, open: 1,
+      groups: [
+        { title: "القائمة العلوية والبحث", fields: [TX("nav_home", "رابط «الرئيسية»"), TX("nav_shop", "رابط «المتجر»"), TX("nav_departments", "رابط «الأقسام»"), TX("nav_contact", "رابط «تواصل معنا»"), TX("menu_title", "عنوان القائمة في الهاتف"), TX("menu_all", "«كل المنتجات» في قائمة الهاتف"), TX("search_placeholder", "النص داخل خانة البحث"), TX("search_results", "عدد نتائج البحث", { hint: "{n} = العدد" }), TX("search_none", "عند عدم وجود نتائج", { hint: "{q} = كلمة البحث" }), TX("intro_skip", "زر تخطّي الافتتاحية")] },
+        { title: "الصفحة الرئيسية", fields: [TX("soon", "بدل العدد في قسم بلا منتجات"), TX("filter_all", "زر «الكل» في التصفية"), TX("filter_all_sub", "زر «الكل» داخل قسم له أقسام فرعية", { hint: "{name} = اسم القسم" }), TX("featured_add", "زر الإضافة في «قطعة الموسم»"), TX("collection_more", "زر عرض كل المنتجات", { hint: "{n} = عدد المنتجات" }), TX("collection_empty", "عند عدم وجود منتجات")] },
+        { title: "صفحة المتجر والأقسام", fields: [TX("shop_title", "عنوان صفحة كل المنتجات"), TX("shop_count", "عدد المنتجات", { hint: "{n} = العدد" }), TX("shop_more", "زر «عرض المزيد» (المتاجر الكبيرة)", { hint: "{n} = عدد المنتجات المتبقية" }), TX("sort_label", "كلمة «ترتيب»"), TX("sort_default", "ترتيب: المقترح"), TX("sort_new", "ترتيب: الأحدث"), TX("sort_low", "ترتيب: الأرخص"), TX("sort_high", "ترتيب: الأغلى"), TX("empty_category", "قسم بلا منتجات"), TX("out_of_stock", "شارة نفاد الكمية")] },
+        { title: "صفحة المنتج", fields: [TX("spec_category", "خانة: القسم"), TX("spec_metal", "خانة: المعدن"), TX("spec_stone", "خانة: الحجر"), TX("spec_weight", "خانة: الوزن"), TX("spec_size", "خانة: المقاس"), TX("spec_stock", "خانة: التوفر"), TX("in_stock", "متوفر"), TX("in_stock_n", "متوفر مع العدد", { hint: "{n} = الكمية" }), TX("qty", "كلمة «الكمية»"), TX("add_to_cart", "زر «أضف إلى السلة»"), TX("buy_now", "زر «اطلب الآن»"), TX("ask_whatsapp", "زر السؤال على واتساب"), TX("out_note", "رسالة نفاد الكمية"), TX("assure_1", "الضمان الأول"), TX("assure_2", "الضمان الثاني (مع الشحن الدولي)"), TX("assure_2_local", "الضمان الثاني (بدون شحن دولي)"), TX("assure_3", "الضمان الثالث"), TX("related", "عنوان «قد يعجبك أيضاً»"), TX("notfound_title", "منتج غير موجود — العنوان"), TX("notfound_text", "منتج غير موجود — النص"), TX("notfound_btn", "منتج غير موجود — الزر")] },
+        { title: "السلة", fields: [TX("cart_title", "عنوان السلة"), TX("cart_empty", "السلة فارغة"), TX("cart_browse", "زر تصفّح المنتجات"), TX("cart_remove", "زر الحذف"), TX("cart_subtotal", "المجموع الفرعي"), TX("cart_delivery", "سطر التوصيل"), TX("cart_free_hint", "تلميح التوصيل المجاني", { hint: "{amount} = المبلغ المتبقي" }), TX("cart_intl_hint", "تلميح الشحن الدولي"), TX("cart_total", "الإجمالي"), TX("cart_checkout", "زر إتمام الطلب"), TX("added_toast", "رسالة الإضافة إلى السلة", { hint: "{name} = اسم المنتج" }), TX("cart_is_empty", "تنبيه السلة الفارغة"), TX("free", "كلمة «مجاني»"), TX("tbd", "عندما تُحدَّد أجرة الشحن لاحقاً")] },
+        { title: "نموذج إتمام الطلب", fields: [TX("co_title", "العنوان"), TX("co_name", "خانة الاسم"), TX("co_phone", "خانة الهاتف"), TX("co_country", "خانة الدولة"), TX("co_other", "خيار «دولة أخرى»"), TX("co_other_name", "خانة اسم الدولة"), TX("co_city", "خانة المحافظة"), TX("co_city_intl", "خانة المدينة (خارج العراق)"), TX("co_addr", "خانة العنوان"), TX("co_addr_intl", "خانة العنوان (خارج العراق)"), TX("co_addr_ph", "مثال داخل خانة العنوان"), TX("co_addr_ph_intl", "مثال داخل خانة العنوان (خارج العراق)"), TX("co_notes", "خانة الملاحظات"), TX("co_notes_ph", "مثال داخل خانة الملاحظات"), TX("co_sub", "المجموع"), TX("co_delivery", "التوصيل"), TX("co_intl_shipping", "الشحن الدولي"), TX("co_total", "الإجمالي"), TX("co_plus_shipping", "«+ الشحن»"), TX("co_submit", "زر تأكيد الطلب"), TX("co_sending", "أثناء الإرسال")] },
+        { title: "تنبيهات نموذج الطلب", fields: [TX("co_err_name", "الاسم ناقص"), TX("co_err_phone", "الهاتف غير صحيح"), TX("co_err_country", "اسم الدولة ناقص"), TX("co_err_city", "المدينة ناقصة"), TX("co_err_addr", "العنوان ناقص"), TX("co_err_stock", "قطعة نفدت"), TX("co_err_gone", "قطعة لم تعد متوفرة"), TX("co_err_failed", "فشل الإرسال"), TX("co_err_busy", "طلبات كثيرة من نفس الجهاز/الرقم"), TX("co_err_human", "فشل التحقق من أن الزائر ليس روبوتاً")] },
+        { title: "انقطاع الاتصال", fields: [TX("net_down", "رسالة تعذّر الاتصال"), TX("net_retry", "زر إعادة المحاولة"), TX("net_retrying", "أثناء المحاولة"), TX("form_busy", "رسائل كثيرة من نفس الجهاز")] },
+        { title: "بعد إتمام الطلب", fields: [TX("ok_title", "العنوان"), TX("ok_text", "رسالة الشكر", { t: "textarea", hint: "{name} = اسم الزبون" }), TX("ok_no", "«رقم طلبك»"), TX("ok_wa", "زر إرسال الطلب على واتساب"), TX("ok_continue", "زر متابعة التسوق")] },
+        { title: "بطاقة التواصل ونموذج «راسلنا»", fields: [TX("lbl_address", "عنوان: العنوان"), TX("map_link", "رابط الخريطة"), TX("lbl_hours", "عنوان: أوقات الدوام"), TX("lbl_phone", "عنوان: الهاتف"), TX("lbl_whatsapp", "عنوان: واتساب"), TX("lbl_email", "عنوان: البريد"), TX("form_name", "خانة الاسم"), TX("form_phone", "خانة الهاتف"), TX("form_body", "خانة الرسالة"), TX("form_send", "زر الإرسال"), TX("form_sending", "أثناء الإرسال"), TX("form_ok", "بعد الإرسال بنجاح"), TX("form_err", "فشل الإرسال"), TX("form_need_name", "تنبيه: الاسم ناقص"), TX("form_need_body", "تنبيه: الرسالة ناقصة")] },
+        { title: "التذييل أسفل الصفحات", fields: [TX("footer_departments", "عنوان عمود الأقسام"), TX("footer_contact", "عنوان عمود التواصل"), TX("footer_shop", "رابط المتجر")] },
+        { title: "رسائل واتساب الجاهزة", fields: [TX("wa_hello", "التحية عند فتح واتساب"), TX("wa_inquiry", "رسالة زر واتساب العائم", { hint: "{brand} = اسم المعرض" }), TX("wa_product", "رسالة «اسأل عنه على واتساب»", { hint: "{name} = اسم المنتج، {price} = السعر" }),
+          TX("wa_order", "أول سطر في رسالة الطلب على واتساب", { hint: "{brand} = اسم المعرض" }), TX("wa_order_no", "«رقم الطلب» في رسالة الطلب"), TX("wa_items", "«المنتجات» في رسالة الطلب"), TX("wa_notes", "«ملاحظات» في رسالة الطلب")] }
+      ]
+    },
+    identity: {
+      title: "الهوية والألوان والافتتاحية", sub: "الاسم، الشعار، فيديو الافتتاحية، ألوان الموقع بالكامل",
+      groups: [
+        { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.sub", "السطر الصغير تحت الاسم في الشريط العلوي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true, fallback: "../assets/img/logo.webp", hint: "يُستخدم شعار معرض رقية الحالي إذا لم ترفع شعاراً آخر." }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
+        { title: "الافتتاحية (عند فتح الموقع)", fields: [
+          SH("intro.enabled", "تشغيل الافتتاحية", { t: "toggle" }),
+          SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو يظهر الشعار بحركة ناعمة." }),
+          SH("intro.subtitle", "السطر تحت الاسم (في الحركة بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
+        ] },
+        { title: "الوضع الداكن والفاتح", fields: [
+          SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
+          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" })
+        ] },
+        { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
+        { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
+        { title: "التذييل أسفل الموقع", fields: [SH("footer.text", "النص التعريفي", { t: "textarea" }), SH("footer.copyright", "سطر الحقوق")] },
+        { title: "الظهور في Google وعند مشاركة الرابط", fields: [SH("seo.title", "عنوان الموقع"), SH("seo.description", "الوصف", { t: "textarea" })] }
+      ]
+    },
+    contact: {
+      title: "التواصل والمتجر", sub: "أرقام التواصل، الحسابات، التوصيل والدفع",
+      groups: [
+        { title: "معلومات التواصل", fields: [SH("contact.whatsapp", "رقم واتساب", { dir: "ltr", hint: "مثال: 07701234567 — تصلك عليه تفاصيل الطلبات ويظهر زر واتساب في الموقع." }), SH("contact.phone", "رقم الهاتف", { dir: "ltr" }), SH("contact.address", "العنوان"), SH("contact.hours", "أوقات الدوام", { hint: "مثال: يومياً من ١٠ صباحاً إلى ١١ ليلاً" }), SH("contact.map_url", "رابط الموقع على خرائط Google", { dir: "ltr" }), SH("contact.email", "البريد الإلكتروني", { dir: "ltr" })] },
+        { title: "حسابات التواصل الاجتماعي", fields: [SH("contact.instagram", "انستغرام (الرابط كاملاً)", { dir: "ltr" }), SH("contact.facebook", "فيسبوك", { dir: "ltr" }), SH("contact.tiktok", "تيك توك", { dir: "ltr" }), SH("contact.telegram", "تيليغرام", { dir: "ltr" }), SH("contact.snapchat", "سناب شات", { dir: "ltr" })] },
+        { title: "التوصيل داخل العراق", fields: [SH("shop.currency", "العملة"), SH("shop.delivery_fee", "أجرة التوصيل داخل العراق", { t: "number" }), SH("shop.free_delivery_over", "توصيل مجاني للطلبات فوق (٠ = لا يوجد)", { t: "number" }), SH("shop.payment_note", "ملاحظة الدفع"), SH("shop.whatsapp_orders", "بعد الطلب، اعرض زر «أرسل الطلب على واتساب» للزبون", { t: "toggle" }), SH("shop.cities", "المحافظات في نموذج الطلب", { t: "strings", add: "إضافة محافظة" })] },
+        { title: "الشحن الدولي", fields: [
+          SH("shop.intl_enabled", "استقبال طلبات من خارج العراق", { t: "toggle" }),
+          SH("shop.intl_delivery_fee", "أجرة الشحن الدولي (٠ = تُحدَّد لكل طلب وتتواصل مع الزبون)", { t: "number" }),
+          SH("shop.intl_free_over", "شحن دولي مجاني للطلبات فوق (٠ = لا يوجد)", { t: "number" }),
+          SH("shop.intl_note", "ملاحظة الشحن الدولي (تظهر عند اختيار دولة أخرى)", { t: "textarea" }),
+          SH("shop.intl_payment_note", "ملاحظة الدفع للطلبات الدولية"),
+          SH("shop.countries", "الدول في نموذج الطلب", { t: "strings", add: "إضافة دولة", hint: "العراق يظهر أولاً دائماً، ويستطيع الزبون اختيار «دولة أخرى» وكتابة اسمها." })
+        ] },
+        { title: "إشعارات تيليجرام", fields: [
+          SH("notify.orders", "رسالة فورية على تيليجرام عند كل طلب جديد", { t: "toggle" }),
+          SH("notify.inquiries", "رسالة على تيليجرام عند كل رسالة جديدة من الموقع", { t: "toggle" }),
+          { p: "notify._note", t: "note", l: `إذا تعذّر الإرسال (انقطاع أو خطأ) تُعاد المحاولة تلقائياً كل دقيقة حتى يصل الإشعار. ربط البوت يتم مرة واحدة من إعدادات الخادم (دليل التشغيل).<br><button class="btn light" type="button" id="tgTest" style="margin-top:10px">${I.check} إرسال رسالة تجريبية</button>` }
+        ] }
+      ]
+    }
+  };
+  const COLOR_LABELS = { deep: ["لون الخلفية", ""], emerald: ["اللون الأساسي (الأزرار واللمعان)", ""], accent: ["اللون الثانوي", ""], paper: ["لون البطاقات", ""], pearl: ["الخلفية الثانية", ""], silver: ["الفضّي", ""], ink: ["لون النص", ""] };
+
+  function fieldHTML(f, d) {
+    const v = getPath(d, f.p);
+    const id = "f_" + f.p.replace(/[.\s]/g, "_");
+    const hint = f.hint ? `<span class="hint">${f.hint}</span>` : "";
+    switch (f.t) {
+      case "toggle": return `<div class="field">${toggleHTML(`data-p="${f.p}" data-type="bool"`, v !== false, f.l)}${hint}</div>`;
+      case "textarea": return `<div class="field"><label for="${id}">${f.l}</label><textarea id="${id}" data-p="${f.p}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.lang ? `lang="${f.lang}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${esc(v)}</textarea>${hint}</div>`;
+      case "note": return `<p class="hint" style="margin:-4px 0 14px">${f.l}</p>`;
+      case "number": return `<div class="field"><label for="${id}">${f.l}</label><input type="text" inputmode="decimal" id="${id}" data-p="${f.p}" data-type="num" value="${esc(v)}" dir="ltr">${hint}</div>`;
+      case "image": case "video": {
+        const vid = f.t === "video";
+        return `<div class="field" data-fp="${f.p}"><span class="lbl">${f.l}</span><div class="media-field">
+          <div class="media-prev ${f.logo ? "logo" : ""}">${v ? (vid ? `<video src="${esc(v)}" muted playsinline loop autoplay></video>` : `<img src="${esc(v)}" alt="">`) : f.fallback ? `<img src="${esc(f.fallback)}" alt="">` : vid ? "لا يوجد فيديو" : "لا توجد صورة"}</div>
+          <label class="btn light up-btn">${vid ? I.video : I.img} ${v ? "تغيير" : "رفع"}<input type="file" accept="${vid ? "video/*" : "image/*"}" data-up="${f.p}" data-folder="${f.folder || "media"}"></label>
+          ${v ? `<button class="btn danger" type="button" data-clear="${f.p}">إزالة</button>` : ""}</div>${hint}</div>`;
+      }
+      case "select": return `<div class="field"><label for="${id}">${f.l}</label><select id="${id}" data-p="${f.p}">${f.options.map(([val, lab]) => `<option value="${val}" ${v === val ? "selected" : ""}>${lab}</option>`).join("")}</select>${hint}</div>`;
+      case "product": return `<div class="field"><label for="${id}">${f.l}</label><select id="${id}" data-p="${f.p}"><option value="">تلقائي</option>${state.prods.map((p) => `<option value="${p.id}" ${v === p.id ? "selected" : ""}>${esc(p.name)}</option>`).join("")}</select>${hint}</div>`;
+      case "strings": {
+        const arr = Array.isArray(v) ? v : [];
+        return `<div class="field" data-fp="${f.p}"><span class="lbl">${f.l}</span>${hint}<div>${arr.map((x, i) => `<div class="str-row"><input class="input" type="text" data-p="${f.p}.${i}" value="${esc(x)}" aria-label="${f.l} ${i + 1}">
+          <button class="icon" type="button" data-move="${f.p}" data-i="${i}" data-d="-1" aria-label="تحريك للأعلى">${I.up}</button><button class="icon danger" type="button" data-del="${f.p}" data-i="${i}" aria-label="حذف">${I.trash}</button></div>`).join("")}</div>
+          <button class="btn ghost sm" type="button" data-addstr="${f.p}">${I.plus} ${f.add || "إضافة"}</button></div>`;
+      }
+      case "list": {
+        const arr = Array.isArray(v) ? v : [];
+        return `<div class="field" data-fp="${f.p}"><span class="lbl">${f.l}</span>${hint}<div class="rep">${arr.map((item, i) => `<div class="rep-item"><div class="rep-ctl">
+            <button class="icon" type="button" data-move="${f.p}" data-i="${i}" data-d="-1" aria-label="تحريك للأعلى">${I.up}</button><button class="icon" type="button" data-move="${f.p}" data-i="${i}" data-d="1" aria-label="تحريك للأسفل">${I.down}</button><button class="icon danger" type="button" data-del="${f.p}" data-i="${i}" aria-label="حذف">${I.trash}</button></div>
+            ${f.fields.map((sf) => fieldHTML({ ...sf, p: `${f.p}.${i}.${sf.k}` }, d)).join("")}</div>`).join("")}</div>
+          <button class="btn ghost sm" type="button" data-additem="${f.p}" style="margin-top:8px">${I.plus} ${f.add || "إضافة"}</button></div>`;
+      }
+      case "colors": {
+        const base = f.p, t = getPath(d, base) || {}, def = getPath(DEF, base) || {};
+        const val = (k) => esc(t[k] || def[k]);
+        return `<div data-fp="${base}-colors"><div class="colors">${Object.keys(COLOR_LABELS).map((k) => `<label class="color"><input type="color" data-p="${base}.${k}" value="${val(k)}" aria-label="${COLOR_LABELS[k][0]}"><div><b>${COLOR_LABELS[k][0]}</b><input type="text" data-p="${base}.${k}" value="${val(k)}" aria-label="رمز ${COLOR_LABELS[k][0]}"></div></label>`).join("")}</div>
+          <div class="preview-strip" data-strip="${base}" aria-hidden="true">${["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${val(k)}"></div>`).join("")}</div>
+          <button class="btn ghost sm" type="button" data-reset="${base}" style="margin-top:12px">${I.refresh} استعادة الألوان الأصلية</button></div>`;
+      }
+      default: return `<div class="field"><label for="${id}">${f.l}</label><input type="text" id="${id}" data-p="${f.p}" value="${esc(v)}" ${f.dir ? `dir="${f.dir}"` : ""} ${f.lang ? `lang="${f.lang}"` : ""} ${f.ph ? `placeholder="${esc(f.ph)}"` : ""}>${hint}</div>`;
+    }
+  }
+  /* =======================================================================
+     LANGUAGES — every text of the site in English, Urdu and German
+     Built from the same lists as the pages above. Each field shows the Arabic text;
+     an empty field uses the built-in translation (shown faded) while the Arabic is
+     unchanged. Saved in settings.data.i18n.<lang>.
+     ======================================================================= */
+  const SKIP_T = ["toggle", "number", "image", "video", "select", "product", "colors", "note"];
+  function langSchema(code) {
+    const LN = I18N.langs[code], raw = state.raw || {};
+    const groups = [];
+    const add = (fields, path, label, area) => {
+      const ar = getPath(state.s, path);
+      if (typeof ar !== "string" || !ar.trim()) return;
+      const b = I18N.builtIn(path, code, raw);
+      fields.push({ p: `i18n.${code}.${path}`, l: `${label}<span class="ar-orig" dir="rtl" lang="ar">${esc(ar)}</span>`, t: area || ar.length > 90 ? "textarea" : undefined,
+        ph: b.text && !b.stale ? b.text : "", dir: LN.dir, lang: code,
+        hint: b.stale ? `<span class="tr-stale">غيّرتَ هذا النص بالعربية، لذا يظهر بالعربية حتى تكتب ترجمته هنا.</span>` : "" });
+    };
+    ["home", "texts", "identity", "contact"].forEach((key) => SCHEMA[key].groups.forEach((g) => {
+      const fields = [];
+      g.fields.forEach((f) => {
+        if (!f.p || f.dir || SKIP_T.includes(f.t) || f.p === "shop.cities" || f.p === "shop.countries") return;
+        const v = getPath(state.s, f.p);
+        if (f.t === "strings") { (Array.isArray(v) ? v : []).forEach((x, i) => add(fields, `${f.p}.${i}`, `${f.l} — ${num(i + 1)}`)); return; }
+        if (f.t === "list") {
+          (Array.isArray(v) ? v : []).forEach((item, i) => f.fields.forEach((sf) => { if (!sf.dir && !SKIP_T.includes(sf.t)) add(fields, `${f.p}.${i}.${sf.k}`, `${f.l} — ${num(i + 1)} — ${sf.l}`, sf.t === "textarea"); }));
+          return;
+        }
+        add(fields, f.p, f.l, f.t === "textarea");
+      });
+      if (fields.length) groups.push({ title: g.title, fields });
+    }));
+    const names = ["العراق", ...(state.s.shop.countries || []), ...(state.s.shop.cities || [])].filter((x, i, a) => x && a.indexOf(x) === i);
+    groups.push({ title: "أسماء الدول والمحافظات (في نموذج الطلب والكرة الأرضية)", fields: names.map((n) => ({ p: `i18n.${code}.places.${n}`, l: `<span class="ar-orig" dir="rtl" lang="ar" style="margin:0">${esc(n)}</span>`,
+      ph: (I18N.places[code] || {})[n] || "", dir: LN.dir, lang: code })) });
+    const tabs = `<div class="tabs" role="tablist">${TR_LANGS.map((c) => `<button class="tab ${c === code ? "on" : ""}" type="button" role="tab" aria-selected="${c === code}" data-lang="${c}" lang="${c}">${I18N.langs[c].name}</button>`).join("")}</div>
+      <div class="notice">${I.globe}<span>الموقع يظهر لكل زائر بلغة جهازه (العربية، English، اردو، Deutsch) ويستطيع تغييرها من زر اللغة. المنتجات والأقسام تُترجم من صفحة كل منتج وكل قسم. لوحة التحكم تبقى بالعربية.</span></div>`;
+    return { title: `الترجمة — ${LN.name}`, sub: "النصوص العامة للموقع بهذه اللغة. اترك أي خانة فارغة لتبقى الترجمة الجاهزة (الظاهرة بلون باهت).", search: true, open: 1, groups, top: tabs,
+      preview: `${SITE}?lang=${code}` };
+  }
+  function pageLanguages() {
+    if (!I18N) { page().innerHTML = `<div class="empty">ملف اللغات غير موجود.</div>`; return; }
+    const want = new URLSearchParams(location.hash.split("?")[1] || "").get("l");
+    const code = TR_LANGS.includes(want) ? want : TR_LANGS[0];
+    SCHEMA["lang_" + code] = langSchema(code);
+    pageSettings("lang_" + code);
+    $$(".tabs [data-lang]", page()).forEach((b) => b.addEventListener("click", async () => {
+      if (b.dataset.lang === code) return;
+      if (state.dirty && !(await confirmBox("لديك ترجمات غير محفوظة في هذه اللغة. هل تريد الانتقال بدون حفظ؟", "انتقال"))) return;
+      state.dirty = false; showSave(false);
+      location.hash = `#/languages?l=${b.dataset.lang}`;   // hashchange → route()
+    }));
+  }
+  function findField(groups, p) {
+    for (const g of groups) for (const f of g.fields) if (f.p === p) return f;
+    return null;
+  }
+  function pageSettings(key) {
+    const sc = SCHEMA[key];
+    state.draft = clone(state.s);
+    const d = state.draft;
+    page().innerHTML = `<div class="page-title"><div><h1>${sc.title}</h1><p>${sc.sub}</p></div><a class="btn light" href="${sc.preview || SITE}" target="_blank" rel="noopener">${I.eye} معاينة الموقع</a></div>
+      ${sc.top || ""}<div class="notice info">بعد أي تعديل اضغط «حفظ ونشر» في الأسفل — يظهر التغيير في الموقع فوراً.${sc.search ? " اترك أي خانة فارغة ليعود نصها الأصلي (الظاهر بلون باهت)." : ""}</div>
+      ${sc.search ? `<div class="toolbar"><div class="search-in">${I.search}<input class="input" type="search" id="txSearch" placeholder="ابحث عن أي كلمة في الموقع… مثل: السلة، واتساب، تأكيد" aria-label="بحث في النصوص"></div></div>` : ""}
+      ${sc.groups.map((g, gi) => `<section class="card collapsible ${sc.search ? "tx" : ""} ${gi < (sc.open || 2) ? "open" : ""}"><h2 tabindex="0" role="button">${g.title}</h2><div class="body">${g.fields.map((f) => fieldHTML(f, d)).join("")}</div></section>`).join("")}`;
+    const pg = page();
+    const sIn = $("#txSearch", pg);
+    if (sIn) sIn.addEventListener("input", () => {
+      const qy = sIn.value.trim();
+      $$(".collapsible", pg).forEach((sec) => {
+        let any = false;
+        $$(".body > .field", sec).forEach((fl) => {
+          const inp = $("input, textarea", fl);
+          const hay = fl.textContent + " " + (inp ? inp.value + " " + (inp.placeholder || "") : "");
+          const hit = !qy || hay.includes(qy); fl.hidden = !hit; any = any || hit;
+        });
+        sec.hidden = !any; if (qy && any) sec.classList.add("open");
+      });
+    });
+    const redraw = (p) => {
+      const f = findField(sc.groups, p) || findSub(sc.groups, p);
+      const box = pg.querySelector(`[data-fp="${CSS.escape(p)}"]`);
+      if (f && box) box.outerHTML = fieldHTML(f, d);
+    };
+    const dirty = () => { state.dirty = true; showSave(true); };
+    pg.addEventListener("click", (e) => {
+      const h = e.target.closest(".collapsible > h2"); if (h) { h.parentElement.classList.toggle("open"); return; }
+      const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],[data-reset]");
+      if (!t) return;
+      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
+      if (t.dataset.clear) { setPath(d, t.dataset.clear, ""); redraw(t.dataset.clear); dirty(); return; }
+      const p = t.dataset.addstr || t.dataset.additem || t.dataset.del || t.dataset.move;
+      const arr = Array.isArray(getPath(d, p)) ? getPath(d, p) : [];
+      if (t.dataset.addstr) arr.push("");
+      if (t.dataset.additem) { const f = findField(sc.groups, p); arr.push(Object.fromEntries(f.fields.map((sf) => [sf.k, ""]))); }
+      if (t.dataset.del) arr.splice(+t.dataset.i, 1);
+      if (t.dataset.move) { const i = +t.dataset.i, j = i + +t.dataset.d; if (j < 0 || j >= arr.length) return; [arr[i], arr[j]] = [arr[j], arr[i]]; }
+      setPath(d, p, arr); redraw(p); dirty();
+      if (t.dataset.addstr || t.dataset.additem) {
+        const box = pg.querySelector(`[data-fp="${CSS.escape(p)}"]`);
+        const last = box && (t.dataset.additem ? $$(".rep-item", box).pop() : $$(".str-row", box).pop());
+        const inp = last && $("input[type=text], textarea", last); if (inp) inp.focus();
+      }
+    });
+    pg.addEventListener("keydown", (e) => { if (e.key === "Enter" && e.target.matches(".collapsible > h2")) e.target.parentElement.classList.toggle("open"); });
+    const onInput = (e) => {
+      const el = e.target; const p = el.dataset.p; if (!p) return;
+      let v = el.type === "checkbox" ? el.checked : el.value;
+      if (el.dataset.type === "num") { const n = parseFloat(toLatin(v).replace(/[^\d.]/g, "")); v = isNaN(n) ? 0 : n; }
+      setPath(d, p, v); dirty();
+      const tm = p.match(/^(theme(?:_light)?)\.(\w+)$/);
+      if (tm && el.type !== "checkbox" && el.tagName !== "SELECT") {
+        $$(`[data-p="${p}"]`, pg).forEach((x) => { if (x !== el && (/^#[0-9a-f]{6}$/i.test(v) || x.type !== "color")) x.value = v; });
+        const strip = pg.querySelector(`[data-strip="${tm[1]}"]`); if (strip) strip.innerHTML = ["deep", "pearl", "paper", "emerald", "accent", "silver"].map((k) => `<div style="background:${esc((d[tm[1]] || {})[k])}"></div>`).join("");
+      }
+    };
+    pg.addEventListener("input", onInput);
+    pg.addEventListener("change", async (e) => {
+      const el = e.target;
+      if (el.type === "checkbox" || el.tagName === "SELECT") onInput(e);
+      if (!el.dataset.up) return;
+      const file = el.files[0]; if (!file) return;
+      const p = el.dataset.up, box = el.closest("[data-fp]"), prev = $(".media-prev", box);
+      prev.innerHTML = `<div class="spin"></div>`;
+      try { const url = await upload(file, el.dataset.folder); setPath(d, p, url); dirty(); toast("تم الرفع — اضغط «حفظ ونشر» لتطبيقه"); }
+      catch (err) { toast(errMsg(err), true); }
+      redraw(p);
+    });
+  }
+  function findSub(groups, p) {
+    // nested list item fields, e.g. hero.slides.0.image
+    const m = p.match(/^(.*)\.(\d+)\.([^.]+)$/); if (!m) return null;
+    const parent = findField(groups, m[1]); if (!parent || !parent.fields) return null;
+    const sf = parent.fields.find((x) => x.k === m[3]); return sf ? { ...sf, p } : null;
+  }
+  function showSave(on) { const b = $("#savebar"); if (b) b.classList.toggle("show", on); }
+  async function saveSettings() {
+    const btn = $("#saveBtn"); btn.disabled = true;
+    const data = state.draft || state.s;
+    try {
+      await q(db.from("settings").upsert({ id: 1, data }));
+      state.s = window.rqMerge(DEF, data); state.raw = data; state.dirty = false; showSave(false);
+      toast("تم الحفظ ✓ التغييرات ظاهرة في الموقع الآن");
+      const b = $(".side .brand b"); if (b) b.textContent = state.s.brand.name;
+    } catch (err) { toast(errMsg(err), true); }
+    btn.disabled = false;
+  }
+
+  /* =======================================================================
+     ACCOUNT
+     ======================================================================= */
+  function pageAccount() {
+    page().innerHTML = `<div class="page-title"><div><h1>حسابي</h1><p dir="ltr" style="text-align:start">${esc(String(state.user.email || "").replace("@" + ADMIN_DOMAIN, ""))}</p></div></div>
+      <form class="card" id="pwForm" novalidate style="max-width:520px"><h2>تغيير كلمة المرور</h2>
+        <div class="field"><label for="pw1">كلمة المرور الجديدة</label><input type="password" id="pw1" dir="ltr" autocomplete="new-password" minlength="12"><span class="hint">١٢ حرفاً على الأقل — اجمع بين حروف وأرقام ورموز.</span></div>
+        <div class="field"><label for="pw2">أعد كتابتها</label><input type="password" id="pw2" dir="ltr" autocomplete="new-password"></div>
+        <button class="btn" type="submit">حفظ كلمة المرور</button></form>
+      <div class="card" style="max-width:520px"><h2>التحقق بخطوتين</h2><p class="hint" id="mfaState">…</p></div>
+      <div class="card" style="max-width:520px"><h2>مساحة الصور</h2><p class="hint" id="mediaState">ملفات رُفعت ثم لم تعد مستخدمة في أي منتج أو قسم أو إعداد أو طلب سابق. حذفها يوفّر مساحة التخزين ولا يغيّر شيئاً في الموقع.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn light" type="button" id="mediaScan">${I.refresh} فحص الملفات غير المستخدمة</button><button class="btn danger" type="button" id="mediaClean" hidden></button></div></div>
+      <div class="card" style="max-width:520px"><h2>الجلسة</h2><p class="hint">تخرج اللوحة تلقائياً بعد ٣٠ دقيقة بلا نشاط.</p><button class="btn danger" type="button" id="out2">${I.logout} تسجيل الخروج</button></div>`;
+    db.auth.mfa.getAuthenticatorAssuranceLevel().then(({ data }) => {
+      const el = $("#mfaState"); if (!el) return;
+      el.textContent = data && data.currentLevel === "aal2" ? "مفعّل ✓ — يُطلب رمز تطبيق المصادقة عند كل دخول." : "غير مفعّل لهذا الحساب بعد.";
+    }).catch(() => {});
+    $("#pwForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const a = $("#pw1").value, b = $("#pw2").value;
+      if (a.length < 12) { toast("كلمة المرور قصيرة — ١٢ حرفاً على الأقل", true); return; }
+      if (a !== b) { toast("كلمتا المرور غير متطابقتين", true); return; }
+      const { error } = await db.auth.updateUser({ password: a });
+      if (error) { toast(errMsg(error), true); return; }
+      e.target.reset(); toast("تم تغيير كلمة المرور");
+    });
+    $("#out2").onclick = () => $("#logout").click();
+    let unused = [];
+    const mb = (n) => `${num(Math.round((n / 1048576) * 10) / 10)} ميغابايت`;
+    $("#mediaScan").onclick = async () => {
+      const b = $("#mediaScan"); b.disabled = true;
+      const { data, error } = await db.rpc("admin_unused_media");
+      b.disabled = false;
+      if (error) { toast(missingFn(error) ? "هذه الميزة تعمل بعد تحديث قاعدة البيانات (الترحيل 0007)" : errMsg(error), true); return; }
+      unused = data.names || [];
+      $("#mediaState").textContent = data.count ? `${num(data.count)} ملف غير مستخدم (${mb(data.bytes)}).` : "لا توجد ملفات غير مستخدمة ✓";
+      const c = $("#mediaClean"); c.hidden = !unused.length; c.textContent = `حذف ${num(unused.length)} ملف`;
+    };
+    $("#mediaClean").onclick = async () => {
+      if (!unused.length || !(await confirmBox(`حذف ${num(unused.length)} ملف غير مستخدم نهائياً؟`, "حذف"))) return;
+      const c = $("#mediaClean"); c.disabled = true;
+      try {
+        for (let i = 0; i < unused.length; i += 100) {
+          const { error } = await db.storage.from(cfg.bucket).remove(unused.slice(i, i + 100));
+          if (error) throw error;
+        }
+        toast(`حُذف ${num(unused.length)} ملف`); unused = []; c.hidden = true; $("#mediaState").textContent = "تم التنظيف ✓";
+      } catch (err) { toast(errMsg(err), true); }
+      c.disabled = false;
+    };
+  }
+
+  /* =======================================================================
+     BOOT
+     ======================================================================= */
+  let poll;
+  async function checkNew() {
+    if (!state.legacy && state.stats) {
+      try {
+        const before = state.stats;
+        await loadStats(); if (!state.stats) return;
+        const st = state.stats; updatePills();
+        if (st.orders_total > before.orders_total || st.last_order_at !== before.last_order_at) {
+          await loadRecent();
+          if (state.page === "orders" && !state.of.st && !state.of.q.trim()) await loadOrders();
+          if (st.orders_total > before.orders_total) toast("وصل طلب جديد!");
+          refreshOrderViews();
+        } else if (st.last_inquiry_at !== before.last_inquiry_at) {
+          await loadInq(); toast("وصلت رسالة جديدة"); if (state.page === "inquiries") pageInquiries();
+        }
+      } catch (e) { /* offline: try again next time */ }
+      return;
+    }
+    try {
+      const [o, m] = await Promise.all([
+        db.from("orders").select("*").order("created_at", { ascending: false }).limit(500),
+        db.from("inquiries").select("*").order("created_at", { ascending: false }).limit(500)
+      ]);
+      if (o.error || m.error) return;
+      const before = state.counts.orders, beforeM = state.counts.inq;
+      state.orders = o.data; state.recent = o.data.slice(0, 6); state.inq = m.data; updatePills();
+      if (state.counts.orders > before) { toast("وصل طلب جديد!"); refreshOrderViews(); }
+      else if (state.counts.inq > beforeM) { toast("وصلت رسالة جديدة"); if (state.page === "inquiries") pageInquiries(); }
+    } catch (e) { /* offline: try again next time */ }
+  }
+  async function start() {
+    const { data: { session } } = await db.auth.getSession();
+    if (!session) { renderLogin(); return; }
+    if (!(await mfaReady())) return;
+    state.user = session.user; lastActive = Date.now(); manualOut = false;
+    const { data: ok, error } = await db.rpc("am_i_admin");
+    if (error || !ok) { await db.auth.signOut(); renderLogin("هذا الحساب لا يملك صلاحية إدارة الموقع."); return; }
+    root.innerHTML = `<div class="loading"><div class="spin"></div></div>`;
+    try { await loadAll(); } catch (e) { root.innerHTML = `<div class="loading"><div class="empty">تعذّر تحميل البيانات: ${esc(errMsg(e))}<br><br><button class="btn" type="button" id="reloadBtn">إعادة المحاولة</button></div></div>`; $("#reloadBtn").onclick = () => location.reload(); return; }
+    renderShell();
+    route(true);
+    clearInterval(poll); poll = setInterval(checkNew, 45000);
+  }
+  // dashboard button: ask the notify-test function (admins only) to send a Telegram test message
+  document.addEventListener("click", async (e) => {
+    const b = e.target.closest("#tgTest"); if (!b) return;
+    b.disabled = true;
+    let r = null;
+    try { const { data, error } = await db.functions.invoke("notify-test", { body: {} }); r = error ? { ok: false, error: "failed" } : data; } catch (err) { r = null; }
+    b.disabled = false;
+    toast(r && r.ok ? "وصلت الرسالة التجريبية إلى تيليجرام ✓" : r && r.error === "not_configured" ? "لم يُربط بوت تيليجرام بعد — راجع دليل التشغيل" : "تعذّر إرسال الرسالة التجريبية", !(r && r.ok));
+  });
+  // session ended without the admin asking (expired / revoked / signed out in another tab)
+  db.auth.onAuthStateChange((ev) => {
+    if (ev !== "SIGNED_OUT") return;
+    clearInterval(poll);
+    if (state.user && !manualOut) { state.user = null; renderLogin("انتهت الجلسة، سجّل الدخول من جديد."); }
+    manualOut = false;
+  });
+  start();
+})();
