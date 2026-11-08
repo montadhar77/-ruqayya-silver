@@ -69,10 +69,10 @@ if (SITE) {
     url: SITE, logo: `${SITE}assets/img/logo.png`, image: `${SITE}assets/img/share.jpg`,
     description: "فضيات وأحجار كريمة وهدايا العتبات المقدسة — توصيل لكل محافظات العراق وشحن دولي.",
     address: { "@type": "PostalAddress", addressLocality: "كربلاء", addressCountry: "IQ" }, areaServed: "Worldwide",
-    availableLanguage: ["ar", "en", "ur", "de"], currenciesAccepted: "IQD", paymentAccepted: "Cash" };
+    availableLanguage: ["ar", "en", "fa", "ur", "de"], currenciesAccepted: "IQD", paymentAccepted: "Cash" };
   page = page.replace("</head>", `<script type="application/ld+json">${JSON.stringify(ld)}</script>\n</head>`);
   writeFileSync(join(OUT, "index.html"), page);
-  const langs = ["ar", "en", "ur", "de"], url = (l) => `${SITE}?lang=${l}`;
+  const langs = ["ar", "en", "fa", "ur", "de"], url = (l) => `${SITE}?lang=${l}`;
   const alts = langs.map((l) => `<xhtml:link rel="alternate" hreflang="${l}" href="${url(l)}"/>`).join("") + `<xhtml:link rel="alternate" hreflang="x-default" href="${SITE}"/>`;
   writeFileSync(join(OUT, "sitemap.xml"), `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9" xmlns:xhtml="http://www.w3.org/1999/xhtml">\n` +
     [SITE, ...langs.map(url)].map((u) => `  <url><loc>${u}</loc>${alts}</url>`).join("\n") + "\n</urlset>\n");

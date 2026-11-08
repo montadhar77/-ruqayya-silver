@@ -1,4 +1,4 @@
-"""The site in Arabic, English, Urdu and German: the device language picks it, ?lang= and
+"""The site in Arabic, English, Persian, Urdu and German: the device language picks it, ?lang= and
 the language links change it, products/departments/countries appear translated while
 orders are still saved in Arabic, and the dashboard edits the translations."""
 import json
@@ -39,7 +39,7 @@ def translated(stk):
     sql(stk, seed[seed.index("update public.categories c set i18n"):])
     sql(stk, "update public.products set i18n = %s::jsonb where id = %s", (json.dumps({
         "en": {"name": "Nishapur Turquoise Ring", "description": "Sky-blue turquoise in a handmade 925 silver setting."},
-        "ur": {"name": "نیشاپوری فیروزے کی انگوٹھی"}, "de": {"name": "Nishapur-Türkisring"}}, ensure_ascii=False), P_TURQ))
+        "ur": {"name": "نیشاپوری فیروزے کی انگوٹھی"}, "de": {"name": "Nishapur-Türkisring"}, "fa": {"name": "انگشتر فیروزه‌ی نیشابوری"}}, ensure_ascii=False), P_TURQ))
     before = sql(stk, "select data from public.settings where id = 1")[0][0]
     # start from the shop's original texts: other tests change Arabic texts, which then (by
     # design) stay Arabic in the other languages until they are translated
@@ -53,7 +53,7 @@ def translated(stk):
 
 
 @pytest.mark.parametrize("locale,lang,direction,home", [("en-US", "en", "ltr", "Home"), ("de-DE", "de", "ltr", "Startseite"),
-                                                         ("ur-PK", "ur", "rtl", "ہوم"), ("ar-IQ", "ar", "rtl", "الرئيسية"),
+                                                         ("ur-PK", "ur", "rtl", "ہوم"), ("fa-IR", "fa", "rtl", "خانه"), ("ar-IQ", "ar", "rtl", "الرئيسية"),
                                                          ("fr-FR", "ar", "rtl", "الرئيسية")])
 def test_device_language_picks_the_site_language(tab, stk, translated, locale, lang, direction, home):
     t = tab(locale=locale)
@@ -62,7 +62,7 @@ def test_device_language_picks_the_site_language(tab, stk, translated, locale, l
     assert t.page.evaluate("[document.documentElement.lang, document.documentElement.dir]") == [lang, direction]
     assert t.page.inner_text(".nav-links a[data-link=home]") == home
     tiles = t.page.locator(".tile h3").all_inner_texts()
-    assert tiles[0] == {"en": "Men's Rings", "de": "Herrenringe", "ur": "مردانہ انگوٹھیاں", "ar": "خواتم رجالية"}[lang]
+    assert tiles[0] == {"en": "Men's Rings", "de": "Herrenringe", "ur": "مردانہ انگوٹھیاں", "fa": "انگشترهای مردانه", "ar": "خواتم رجالية"}[lang]
     if lang in ("en", "de"):      # the site's own words (product names stay Arabic until translated)
         own = " ".join(t.page.locator(sel).first.inner_text() for sel in (".nav-links", ".hero-txt", "#departments", "#collection .title", "#visit", "footer .cols"))
         assert not re.search(r"[؀-ۿ]", own), "Arabic text left: " + own[:300]
@@ -80,7 +80,7 @@ def test_lang_parameter_wins_and_is_remembered(tab, stk, translated):
     assert "آئٹمز" in t.page.inner_text("#shopCount")
 
 
-@pytest.mark.parametrize("lang", ["en", "ur", "de"])
+@pytest.mark.parametrize("lang", ["en", "fa", "ur", "de"])
 @pytest.mark.parametrize("w,h", [(390, 844), (1440, 900)])
 def test_pages_have_no_layout_problems_in_every_language(tab, stk, translated, lang, w, h):
     t = tab(width=w, height=h, locale="ar-IQ")
@@ -101,7 +101,7 @@ def test_drawers_open_on_the_right_side_left_to_right(tab, stk, translated):
     time.sleep(0.8)
     box = t.page.locator("#menu").bounding_box()
     assert box["x"] >= -1 and box["x"] + box["width"] <= 391, box
-    assert t.page.locator("#menuList .lang-row a").all_inner_texts() == ["العربية", "English", "اردو", "Deutsch"]
+    assert t.page.locator("#menuList .lang-row a").all_inner_texts() == ["العربية", "English", "فارسی", "اردو", "Deutsch"]
     t.page.click("[data-close=menu]")
     time.sleep(0.9)
     assert t.page.locator("#menu").bounding_box()["x"] >= 390            # slid away to the right (where it came from)
@@ -123,6 +123,19 @@ def test_product_page_is_translated_with_latin_digits(tab, stk, translated):
     time.sleep(0.4)
     assert "خاتم" in t.page.inner_text(".p-info h1") and t.page.get_attribute(".p-info h1", "dir") == "auto"
     assert "Dur-e-Najaf" in t.page.inner_text(".spec")
+    assert not t.errors, t.errors
+
+
+def test_persian_page_uses_persian_digits_and_words(tab, stk, translated):
+    t = tab(locale="fa-IR")
+    t.page.goto(f"{stk['site']}/index.html#/p/{P_TURQ}")
+    t.page.wait_for_selector(".p-info h1")
+    assert t.page.evaluate("[document.documentElement.lang, document.documentElement.dir]") == ["fa", "rtl"]
+    assert t.page.inner_text(".p-info h1").replace("\n", " ") == "انگشتر فیروزه‌ی نیشابوری"
+    assert "۲۴۰٬۰۰۰ دینار عراق" in t.page.inner_text(".p-price")
+    spec = t.page.inner_text(".spec")
+    assert "فیروزه‌ی نیشابوری" in spec and "نقره‌ی ۹۲۵" in spec and "انگشترهای مردانه" in spec
+    assert t.page.inner_text("#addBtn").strip() == "افزودن به سبد"
     assert not t.errors, t.errors
 
 

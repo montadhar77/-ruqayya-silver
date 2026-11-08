@@ -1,4 +1,4 @@
-"""0010: translations (English, Urdu, German) of products and departments."""
+"""0010: translations (English, Persian, Urdu, German) of products and departments."""
 import json
 
 import psycopg
@@ -25,12 +25,13 @@ def test_seed_translates_departments_and_stone_subdepartments():
             harness.run_sql_file(db, next(m for m in harness.migrations() if m.name.startswith(v)))
         got = dict(harness.admin_sql(db, "select slug, i18n from public.categories"))
         assert got["mens-rings"]["en"]["name"] == "Men's Rings" and got["mens-rings"]["de"]["name"] == "Herrenringe"
-        assert got["mens-rings"]["ur"]["name"] == "مردانہ انگوٹھیاں"
+        assert got["mens-rings"]["ur"]["name"] == "مردانہ انگوٹھیاں" and got["mens-rings"]["fa"]["name"] == "انگشترهای مردانه"
         assert got["misbaha"]["en"] == {"name": "Prayer Beads", "subtitle": "Yusr · Amber · Agate"}
         assert got["mens-rings-aqeeq"]["en"]["name"] == "Men's Agate Rings"
         assert got["womens-rings-zircon"]["de"]["name"] == "Damen-Zirkonringe"
         subs = [s for s in got if s.startswith(("mens-rings-", "womens-rings-"))]
-        assert len(subs) == 18 and all(set(got[s]) == {"en", "ur", "de"} for s in subs)
+        assert len(subs) == 18 and all(set(got[s]) == {"en", "fa", "ur", "de"} for s in subs)
+        assert got["womens-rings-pearl"]["fa"] == {"name": "انگشترهای مروارید زنانه", "subtitle": "مروارید"}
         assert got["own-dept"] == {}                                     # departments the owner added stay as they are
     finally:
         harness.drop_db(db)
@@ -49,13 +50,14 @@ def test_translations_reach_the_storefront(anon, db):
 
 def test_search_finds_translated_names_descriptions_and_departments(anon, db):
     tr(db, "products", P1, {"en": {"name": "Nishapur Turquoise Ring", "description": "Sky-blue stone in 925 silver"}})
-    tr(db, "products", P3, {"ur": {"name": "سیاہ یسر تسبیح"}, "de": {"name": "Schwarze Yusr-Gebetskette"}})
+    tr(db, "products", P3, {"ur": {"name": "سیاہ یسر تسبیح"}, "de": {"name": "Schwarze Yusr-Gebetskette"}, "fa": {"name": "تسبیح یُسر سیاه"}})
     tr(db, "categories", MENS, {"en": {"name": "Men's Rings"}, "de": {"name": "Herrenringe"}})
     ids = lambda q: [x["id"] for x in anon.one("select public.search_products(%s)", (q,))["items"]]
     assert ids("turquoise") == [P1]                        # case does not matter
     assert ids("SKY-BLUE") == [P1]
     assert ids("gebetskette") == [P3]
     assert ids("یسر تسبیح") == [P3]
+    assert ids("تسبیح یسر سیاه") == [P3]                    # Persian (the harakat do not matter)
     assert set(ids("herrenringe")) == {P1, P2}              # translated department name
     assert ids("خاتم الفيروز")[0] == P1                    # Arabic search as before
 
@@ -83,6 +85,15 @@ def test_i18n_doc_ignores_odd_shapes(db):
     [(empty, flat, both)] = harness.admin_sql(db, """select private.i18n_doc('{}'), private.i18n_doc('{"en": "flat"}'),
         private.i18n_doc('{"en": {"name": "Ring", "n": 5}, "de": {"name": "Ring Ä"}}')""")
     assert (empty, flat) == ("", "") and sorted(both.split()) == ["ring", "ring", "ä"]   # numbers are not text
+
+
+def test_seed_adds_languages_and_keeps_written_ones(db):
+    """Re-running the department seed adds missing languages but keeps what is already written."""
+    harness.admin_sql(db, """update public.categories set i18n = '{"en": {"name": "My rings"}}' where id = %s""", (MENS,))   # slug mens-rings
+    seed = next(m for m in harness.migrations() if m.name.startswith("0010")).read_text()
+    harness.admin_sql(db, seed[seed.index("update public.categories c set i18n"):])
+    got = harness.admin_sql(db, "select i18n from public.categories where id = %s", (MENS,))[0][0]
+    assert got["en"] == {"name": "My rings"} and got["fa"]["name"] == "انگشترهای مردانه" and got["de"]["name"] == "Herrenringe"
 
 
 def test_admin_writes_translations_visitor_cannot(admin, anon, visitor, db):
