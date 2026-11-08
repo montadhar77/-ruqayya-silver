@@ -1,4 +1,4 @@
-/* Languages of the public site: Arabic (the original), English, Urdu and German.
+/* Languages of the public site: Arabic (the original), English, Persian, Urdu and German.
    - Arabic texts live in defaults.js and in the dashboard as before.
    - The built-in translations below are used for every text the owner has not changed;
      a text the owner changed in Arabic shows in Arabic until its translation is written
@@ -11,10 +11,11 @@
   var LANGS = {
     ar: { name: "العربية", short: "ع", dir: "rtl", locale: "ar-IQ" },
     en: { name: "English", short: "EN", dir: "ltr", locale: "en-US" },
+    fa: { name: "فارسی", short: "فا", dir: "rtl", locale: "fa-IR" },
     ur: { name: "اردو", short: "اردو", dir: "rtl", locale: "ur-PK-u-nu-latn" },
     de: { name: "Deutsch", short: "DE", dir: "ltr", locale: "de-DE" }
   };
-  var ORDER = ["ar", "en", "ur", "de"];
+  var ORDER = ["ar", "en", "fa", "ur", "de"];
 
   var T = {};
   /* ======================================================================= English */
@@ -145,6 +146,70 @@
     seo: { title: "معرضِ رقیہ (علیہا السلام) — چاندی اور قیمتی پتھر · کربلا", description: "مردانہ اور زنانہ چاندی کی انگوٹھیاں، قیمتی پتھر، تسبیحیں، گھڑیاں، عطر اور بخور، جائے نماز اور مقدس روضوں کے تحائف۔ پورے عراق میں ڈیلیوری اور دنیا بھر میں انٹرنیشنل شپنگ۔" }
   };
 
+  /* ======================================================================= Persian */
+  T.fa = {
+    brand: { name: "نمایشگاه رقیه", full: "نمایشگاه رقیه (سلام‌الله‌علیها)", tagline: "نقره و سنگ‌های قیمتی · کربلای معلی", sub: "سلام‌الله‌علیها" },
+    intro: { subtitle: "نقره و سنگ‌های قیمتی · کربلای معلی" },
+    announcement: { items: ["ارسال به همه‌ی استان‌های عراق", "ارسال بین‌المللی به سراسر جهان", "همه‌ی قطعه‌ها با مُهر عیار ۹۲۵", "بسته‌بندی هدیه‌ی فاخر"] },
+    hero: {
+      eyebrow: "نقره‌ی عیار ۹۲۵ · دست‌ساز", title1: "نقره", title2: "با نقش کربلایی", flip_more: ["با سنگ‌های قیمتی", "با جلوه‌ای فاخر"],
+      text: "از جوار حرم مطهر امام حسین (ع)، انگشترهای عقیق و فیروزه و دُرّ نجف، تسبیح، عطر و هدایای عتبات عالیات را تقدیم می‌کنیم؛ ساخته‌شده به دست استادکارانی که این هنر را به ارث برده‌اند.",
+      cta1: "همین حالا خرید کنید", cta2: "بخش‌های نمایشگاه", stats: [{ value: "۹۲۵", label: "عیار نقره" }]
+    },
+    sections: {
+      departments: { title: "بخش‌های نمایشگاه", text: "هر بخش در محراب خودش؛ از انگشتر تا سجاده‌ی نماز." },
+      featured: { eyebrow: "قطعه‌ی فصل", button: "همین حالا سفارش دهید" },
+      collection: { title: "مجموعه‌ی برگزیده", text: "قطعه‌هایی که با دقت از همه‌ی بخش‌های نمایشگاه انتخاب شده‌اند." },
+      showroom: { eyebrow: "گشتی در نمایشگاه", title: "قطعه‌هایی با داستان", hint: "برای دیدن قطعه‌ها به پایین بروید", hint_touch: "برای دیدن قطعه‌ها بکشید", end_title: "همه‌ی قطعه‌ها" },
+      about: {
+        title: "از کربلا، با عشق رقیه (س)",
+        text: "نمایشگاه رقیه (سلام‌الله‌علیها) خانه‌ی نقره‌ی اصیل و سنگ‌های قیمتی در کربلای معلی است.\nهر قطعه را با دقت انتخاب می‌کنیم تا روح این شهر و زیبایی هنرش را با خود داشته باشد؛ هدیه‌ای ماندگار و یادگاری همیشگی.",
+        values: [{ title: "اصالت تضمین‌شده", text: "نقره‌ی عیار ۹۲۵ مهرشده و سنگ‌های طبیعی" }, { title: "بسته‌بندی فاخر", text: "آماده‌ی هدیه دادن" }, { title: "از کربلا تا سراسر جهان", text: "ارسال به سراسر عراق و ارسال بین‌المللی" }],
+        button: "دیدن فروشگاه"
+      },
+      globe: { title: "از کربلا تا سراسر جهان", text: "هر قطعه را با دقت بسته‌بندی می‌کنیم و برای دوستداران رقیه (س) در هر کجای جهان می‌فرستیم و مراحل سفارش را قدم‌به‌قدم در واتس‌اپ خبر می‌دهیم.", stat_cities: "استان‌های عراق", stat_countries: "کشورهای مقصد ارسال", stat_pack: "بسته‌بندی ایمن و بیمه‌شده", pin: "کربلای معلی", hint: "برای چرخاندن کره بکشید", hint_touch: "با انگشت کره را بچرخانید" },
+      testimonials: { title: "نظر مشتریان ما" },
+      visit: { title: "به ما سر بزنید", form_title: "برای ما بنویسید", form_text: "سؤال یا درخواست ویژه‌ی خود را بنویسید تا با شما تماس بگیریم." }
+    },
+    ui: {
+      nav_home: "خانه", nav_shop: "فروشگاه", nav_departments: "بخش‌ها", nav_contact: "تماس با ما",
+      menu_title: "منو", menu_all: "همه‌ی محصولات", search_placeholder: "جست‌وجوی انگشتر، تسبیح، عطر…", intro_skip: "رد شدن",
+      soon: "به‌زودی", filter_all: "همه", filter_all_sub: "همه‌ی {name}", collection_empty: "نخستین قطعه‌های نمایشگاه در راه‌اند؛ به‌زودی ان‌شاءالله.", collection_more: "دیدن همه‌ی محصولات ({n})", featured_add: "افزودن به سبد",
+      shop_title: "همه‌ی محصولات", shop_count: "{n} محصول", shop_more: "نمایش بیشتر ({n})", sort_label: "مرتب‌سازی", sort_default: "پیشنهادی", sort_new: "جدیدترین", sort_low: "قیمت: کم به زیاد", sort_high: "قیمت: زیاد به کم",
+      empty_category: "فعلاً محصولی در این بخش نیست؛ به‌زودی ان‌شاءالله.", out_of_stock: "ناموجود",
+      spec_category: "بخش", spec_metal: "فلز", spec_stone: "سنگ", spec_weight: "وزن", spec_size: "اندازه", spec_stock: "موجودی", in_stock: "موجود", in_stock_n: "موجود ({n})",
+      qty: "تعداد", add_to_cart: "افزودن به سبد", buy_now: "همین حالا سفارش دهید", ask_whatsapp: "پرسیدن در واتس‌اپ", out_note: "این قطعه فعلاً ناموجود است؛ پیام بدهید تا به محض موجود شدن خبرتان کنیم.",
+      assure_1: "تضمین نقره‌ی اصل", assure_2: "ارسال به سراسر جهان", assure_2_local: "ارسال به همه‌ی استان‌ها", assure_3: "بسته‌بندی هدیه", related: "شاید این‌ها را هم بپسندید",
+      notfound_title: "این محصول در دسترس نیست", notfound_text: "شاید فروخته شده یا از نمایشگاه برداشته شده باشد.", notfound_btn: "بازگشت به فروشگاه",
+      cart_title: "سبد خرید", cart_empty: "سبد خرید شما خالی است", cart_browse: "دیدن محصولات", cart_remove: "حذف", cart_subtotal: "جمع جزء", cart_delivery: "ارسال داخل عراق",
+      cart_free_hint: "{amount} دیگر خرید کنید تا ارسال داخل عراق رایگان شود", cart_intl_hint: "به سراسر جهان هم ارسال می‌کنیم؛ کشورتان را هنگام ثبت سفارش انتخاب کنید", cart_total: "جمع کل", cart_checkout: "تکمیل سفارش",
+      added_toast: "«{name}» به سبد خرید اضافه شد", cart_is_empty: "سبد خرید خالی است", free: "رایگان", tbd: "بسته به کشور",
+      co_title: "تکمیل سفارش", co_name: "نام و نام خانوادگی", co_phone: "شماره‌ی تلفن (واتس‌اپ)", co_country: "کشور", co_other: "کشوری دیگر…", co_other_name: "نام کشور",
+      co_city: "استان", co_city_intl: "شهر", co_addr: "نشانی", co_addr_intl: "نشانی کامل", co_addr_ph: "محله، نزدیک‌ترین نشانه", co_addr_ph_intl: "خیابان، پلاک، کد پستی",
+      co_notes: "توضیحات (اختیاری)", co_notes_ph: "اندازه‌ی انگشتر، بسته‌بندی هدیه…", co_sub: "جمع جزء", co_delivery: "ارسال", co_intl_shipping: "ارسال بین‌المللی", co_total: "جمع کل", co_plus_shipping: "+ هزینه‌ی ارسال",
+      co_submit: "تأیید سفارش", co_sending: "در حال ارسال سفارش…",
+      co_err_name: "لطفاً نام خود را بنویسید", co_err_phone: "لطفاً شماره‌ی تلفن معتبر وارد کنید", co_err_country: "لطفاً نام کشور را بنویسید", co_err_city: "لطفاً نام شهر را بنویسید", co_err_addr: "لطفاً نشانی کامل ارسال را بنویسید",
+      co_err_stock: "یکی از قطعه‌ها تمام شده است؛ لطفاً سبد خرید را بررسی کنید", co_err_gone: "یکی از قطعه‌ها دیگر در دسترس نیست", co_err_failed: "ارسال سفارش انجام نشد؛ لطفاً دوباره تلاش کنید",
+      co_err_busy: "از این دستگاه یا شماره سفارش‌های زیادی رسیده است؛ کمی بعد دوباره تلاش کنید یا در واتس‌اپ پیام دهید", co_err_human: "تأیید سفارش ممکن نشد؛ لطفاً دوباره تلاش کنید",
+      ok_title: "سفارش شما ثبت شد", ok_text: "سپاس، {name}؛ به‌زودی برای تأیید سفارش با شما تماس می‌گیریم.", ok_no: "شماره‌ی سفارش شما", ok_wa: "ارسال جزئیات سفارش در واتس‌اپ", ok_continue: "ادامه‌ی خرید",
+      search_results: "{n} نتیجه", search_none: "نتیجه‌ای برای «{q}» پیدا نشد",
+      lbl_address: "نشانی", map_link: "موقعیت روی نقشه", lbl_hours: "ساعات کاری", lbl_phone: "تلفن", lbl_whatsapp: "واتس‌اپ", lbl_email: "ایمیل",
+      form_name: "نام", form_phone: "شماره‌ی تلفن", form_body: "پیام شما", form_send: "ارسال پیام", form_sending: "در حال ارسال…",
+      form_ok: "پیام شما به دست ما رسید؛ سپاسگزاریم", form_err: "ارسال نشد؛ لطفاً دوباره تلاش کنید", form_busy: "پیام‌های زیادی فرستاده‌اید؛ کمی بعد دوباره تلاش کنید", form_need_name: "لطفاً نام خود را بنویسید", form_need_body: "لطفاً پیام خود را بنویسید",
+      net_down: "اکنون دسترسی به فروشگاه ممکن نیست. اتصال اینترنت را بررسی کنید و دوباره تلاش کنید.", net_retry: "تلاش دوباره", net_retrying: "در حال تلاش…",
+      footer_departments: "بخش‌ها", footer_contact: "تماس", footer_shop: "فروشگاه",
+      wa_hello: "سلام علیکم", wa_inquiry: "سلام علیکم، سؤالی از {brand} دارم", wa_product: "سلام علیکم، می‌خواهم این را سفارش دهم: {name} — {price}",
+      wa_order: "سلام علیکم، سفارش تازه از وب‌سایت {brand}", wa_order_no: "شماره‌ی سفارش", wa_items: "محصولات", wa_notes: "توضیحات",
+      pieces_one: "{n} قطعه", pieces_other: "{n} قطعه", room_count: "{pieces} در فروشگاه", stat_depts_one: "بخش در نمایشگاه", stat_depts_other: "بخش در نمایشگاه", stat_pieces_one: "قطعه در فروشگاه", stat_pieces_other: "قطعه در فروشگاه",
+      lang_label: "زبان", theme_toggle: "حالت تیره / روشن", a11y_main_nav: "منوی اصلی", a11y_menu: "باز کردن منو", a11y_close: "بستن", a11y_theme: "تغییر حالت تیره و روشن", a11y_search: "جست‌وجو", a11y_search_input: "جست‌وجوی محصولات",
+      a11y_cart: "سبد خرید", a11y_cart_panel: "سبد خرید", a11y_whatsapp: "در واتس‌اپ به ما پیام دهید", a11y_logo: "نشان {brand}", a11y_photo: "تصویر {n}", a11y_less: "کم کردن", a11y_more: "افزودن"
+    },
+    contact: { address: "کربلای معلی" },
+    shop: { currency: "دینار عراق", payment_note: "پرداخت نقدی هنگام تحویل", intl_note: "هزینه‌ی ارسال بین‌المللی بر اساس کشور تعیین می‌شود و پیش از ارسال برای تأیید با شما تماس می‌گیریم", intl_payment_note: "پرداخت سفارش‌های بین‌المللی از طریق واتس‌اپ هماهنگ می‌شود" },
+    footer: { text: "نقره، سنگ‌های قیمتی و هدایای عتبات عالیات؛ از کربلا به عراق و سراسر جهان.", copyright: "همه‌ی حقوق برای نمایشگاه رقیه (سلام‌الله‌علیها) محفوظ است" },
+    seo: { title: "نمایشگاه رقیه (سلام‌الله‌علیها) — نقره و سنگ‌های قیمتی · کربلا", description: "انگشترهای نقره‌ی مردانه و زنانه، سنگ‌های قیمتی، تسبیح، ساعت، عطر و بخور، سجاده‌ی نماز و هدایای عتبات عالیات. ارسال به سراسر عراق و ارسال بین‌المللی به همه‌ی کشورها." }
+  };
+
   /* ======================================================================= German */
   T.de = {
     brand: { name: "Ruqayya Galerie", full: "Ruqayya Galerie (Friede sei mit ihr)", tagline: "Silber & Edelsteine · Heiliges Kerbela", sub: "Friede sei mit ihr" },
@@ -223,6 +288,12 @@
       "نيوزيلندا": "نیوزی لینڈ", "الهند": "بھارت", "باكستان": "پاکستان", "أذربيجان": "آذربائیجان", "روسيا": "روس", "ماليزيا": "ملائیشیا",
       "كربلاء": "کربلا", "بغداد": "بغداد", "النجف": "نجف", "بابل": "بابل", "البصرة": "بصرہ", "ذي قار": "ذی قار", "ميسان": "میسان", "واسط": "واسط", "الديوانية": "دیوانیہ", "المثنى": "مثنیٰ",
       "ديالى": "دیالہ", "صلاح الدين": "صلاح الدین", "كركوك": "کرکوک", "نينوى": "نینوا", "الأنبار": "انبار", "أربيل": "اربیل", "السليمانية": "سلیمانیہ", "دهوك": "دہوک" },
+    fa: { "العراق": "عراق", "السعودية": "عربستان سعودی", "الكويت": "کویت", "الإمارات": "امارات متحده‌ی عربی", "قطر": "قطر", "البحرين": "بحرین", "عُمان": "عمان", "عمان": "عمان", "الأردن": "اردن", "لبنان": "لبنان", "سوريا": "سوریه",
+      "إيران": "ایران", "تركيا": "ترکیه", "مصر": "مصر", "المملكة المتحدة": "بریتانیا", "بريطانيا": "بریتانیا", "ألمانيا": "آلمان", "السويد": "سوئد", "هولندا": "هلند", "فرنسا": "فرانسه", "الدنمارك": "دانمارک",
+      "النرويج": "نروژ", "بلجيكا": "بلژیک", "النمسا": "اتریش", "فنلندا": "فنلاند", "إيطاليا": "ایتالیا", "إسبانيا": "اسپانیا", "الولايات المتحدة": "ایالات متحده", "أمريكا": "ایالات متحده", "كندا": "کانادا", "أستراليا": "استرالیا",
+      "نيوزيلندا": "نیوزیلند", "الهند": "هند", "باكستان": "پاکستان", "أذربيجان": "جمهوری آذربایجان", "روسيا": "روسیه", "ماليزيا": "مالزی",
+      "كربلاء": "کربلا", "بغداد": "بغداد", "النجف": "نجف", "بابل": "بابل", "البصرة": "بصره", "ذي قار": "ذی‌قار", "ميسان": "میسان", "واسط": "واسط", "الديوانية": "دیوانیه", "المثنى": "مثنی",
+      "ديالى": "دیاله", "صلاح الدين": "صلاح‌الدین", "كركوك": "کرکوک", "نينوى": "نینوا", "الأنبار": "الانبار", "أربيل": "اربیل", "السليمانية": "سلیمانیه", "دهوك": "دهوک" },
     de: { "العراق": "Irak", "السعودية": "Saudi-Arabien", "الكويت": "Kuwait", "الإمارات": "Vereinigte Arabische Emirate", "قطر": "Katar", "البحرين": "Bahrain", "عُمان": "Oman", "عمان": "Oman", "الأردن": "Jordanien", "لبنان": "Libanon", "سوريا": "Syrien",
       "إيران": "Iran", "تركيا": "Türkei", "مصر": "Ägypten", "المملكة المتحدة": "Vereinigtes Königreich", "بريطانيا": "Vereinigtes Königreich", "ألمانيا": "Deutschland", "السويد": "Schweden", "هولندا": "Niederlande", "فرنسا": "Frankreich", "الدنمارك": "Dänemark",
       "النرويج": "Norwegen", "بلجيكا": "Belgien", "النمسا": "Österreich", "فنلندا": "Finnland", "إيطاليا": "Italien", "إسبانيا": "Spanien", "الولايات المتحدة": "Vereinigte Staaten", "أمريكا": "Vereinigte Staaten", "كندا": "Kanada", "أستراليا": "Australien",
@@ -233,25 +304,25 @@
 
   /* ---------- stones, metals and badges typed in Arabic in the dashboard ---------- */
   var TERMS = {
-    "فضه 925": ["925 sterling silver", "925 اسٹرلنگ چاندی", "925er Sterlingsilber"],
-    "فضه عيار 925": ["925 sterling silver", "925 اسٹرلنگ چاندی", "925er Sterlingsilber"],
-    "فضه": ["Silver", "چاندی", "Silber"], "ذهب": ["Gold", "سونا", "Gold"], "ذهب عيار 18": ["18 k gold", "18 قیراط سونا", "18-Karat-Gold"], "ذهب عيار 21": ["21 k gold", "21 قیراط سونا", "21-Karat-Gold"],
-    "فضه مطليه بالذهب": ["Gold-plated silver", "سونے کی پالش والی چاندی", "Vergoldetes Silber"], "ستيل": ["Stainless steel", "اسٹیل", "Edelstahl"], "نحاس": ["Copper", "تانبا", "Kupfer"],
-    "عقيق": ["Agate (Aqeeq)", "عقیق", "Achat (Aqiq)"], "عقيق يماني": ["Yemeni agate (Aqeeq)", "یمنی عقیق", "Jemenitischer Achat (Aqiq)"], "عقيق احمر": ["Red agate", "سرخ عقیق", "Roter Achat"],
-    "فيروز": ["Turquoise", "فیروزہ", "Türkis"], "فيروزج": ["Turquoise", "فیروزہ", "Türkis"], "فيروز نيشابوري": ["Nishapur turquoise", "نیشاپوری فیروزہ", "Nishapur-Türkis"],
-    "ياقوت": ["Ruby (Yaqoot)", "یاقوت", "Rubin"], "ياقوت احمر": ["Red ruby", "سرخ یاقوت", "Roter Rubin"],
-    "در النجف": ["Dur-e-Najaf", "دُرِ نجف", "Dur-e-Najaf"], "در نجف": ["Dur-e-Najaf", "دُرِ نجف", "Dur-e-Najaf"],
-    "شذر": ["Shathar", "شذر", "Schathar"], "شذر اصفر": ["Yellow shathar", "زرد شذر", "Gelber Schathar"],
-    "زمرد": ["Emerald", "زمرد", "Smaragd"], "زبرجد": ["Peridot", "زبرجد", "Peridot"], "جزع": ["Onyx (Jaza')", "جزع", "Onyx (Dschaza)"], "جزع يماني": ["Yemeni onyx (Jaza')", "یمنی جزع", "Jemenitischer Onyx"],
-    "سليماني": ["Sulaimani agate", "سلیمانی", "Sulaimani-Achat"], "حديد صيني": ["Hadid Sini (hematite)", "حدید چینی", "Hadid Sini (Hämatit)"], "حديد": ["Hadid (hematite)", "حدید", "Hadid (Hämatit)"],
-    "لؤلؤ": ["Pearl", "موتی", "Perle"], "لولو": ["Pearl", "موتی", "Perle"], "مرجان": ["Coral", "مرجان", "Koralle"], "زركون": ["Zircon", "زرقون", "Zirkon"], "يسر": ["Yusr (black coral)", "یسر", "Yusr (schwarze Koralle)"],
-    "يسر اسود": ["Black yusr", "سیاہ یسر", "Schwarzer Yusr"], "كهرب": ["Amber", "کہربا", "Bernstein"], "كهرمان": ["Amber", "کہربا", "Bernstein"], "اوبال": ["Opal", "اوپل", "Opal"], "ماس": ["Diamond", "ہیرا", "Diamant"],
-    "الماس": ["Diamond", "ہیرا", "Diamant"], "جمشت": ["Amethyst", "جمشت", "Amethyst"], "جمست": ["Amethyst", "جمشت", "Amethyst"], "عين النمر": ["Tiger's eye", "ٹائیگر آئی", "Tigerauge"], "كريستال": ["Crystal", "کرسٹل", "Kristall"],
-    "جديد": ["New", "نیا", "Neu"], "الاكثر طلبا": ["Bestseller", "سب سے مقبول", "Bestseller"], "الاكثر مبيعا": ["Bestseller", "سب سے زیادہ فروخت", "Bestseller"], "قطعه الموسم": ["Piece of the season", "سیزن کا خاص", "Stück der Saison"],
-    "خصم": ["Sale", "رعایت", "Angebot"], "عرض": ["Offer", "آفر", "Angebot"], "حصري": ["Exclusive", "خصوصی", "Exklusiv"], "محدود": ["Limited", "محدود", "Limitiert"], "قطعه نادره": ["Rare piece", "نایاب زیور", "Seltenes Stück"],
-    "هديه": ["Gift", "تحفہ", "Geschenk"], "صناعه يدويه": ["Handmade", "ہاتھ کا بنا", "Handarbeit"]
+    "فضه 925": ["925 sterling silver", "925 اسٹرلنگ چاندی", "925er Sterlingsilber", "نقره‌ی ۹۲۵"],
+    "فضه عيار 925": ["925 sterling silver", "925 اسٹرلنگ چاندی", "925er Sterlingsilber", "نقره‌ی عیار ۹۲۵"],
+    "فضه": ["Silver", "چاندی", "Silber", "نقره"], "ذهب": ["Gold", "سونا", "Gold", "طلا"], "ذهب عيار 18": ["18 k gold", "18 قیراط سونا", "18-Karat-Gold", "طلای ۱۸ عیار"], "ذهب عيار 21": ["21 k gold", "21 قیراط سونا", "21-Karat-Gold", "طلای ۲۱ عیار"],
+    "فضه مطليه بالذهب": ["Gold-plated silver", "سونے کی پالش والی چاندی", "Vergoldetes Silber", "نقره‌ی آب‌طلاکاری‌شده"], "ستيل": ["Stainless steel", "اسٹیل", "Edelstahl", "استیل"], "نحاس": ["Copper", "تانبا", "Kupfer", "مس"],
+    "عقيق": ["Agate (Aqeeq)", "عقیق", "Achat (Aqiq)", "عقیق"], "عقيق يماني": ["Yemeni agate (Aqeeq)", "یمنی عقیق", "Jemenitischer Achat (Aqiq)", "عقیق یمنی"], "عقيق احمر": ["Red agate", "سرخ عقیق", "Roter Achat", "عقیق سرخ"],
+    "فيروز": ["Turquoise", "فیروزہ", "Türkis", "فیروزه"], "فيروزج": ["Turquoise", "فیروزہ", "Türkis", "فیروزه"], "فيروز نيشابوري": ["Nishapur turquoise", "نیشاپوری فیروزہ", "Nishapur-Türkis", "فیروزه‌ی نیشابوری"],
+    "ياقوت": ["Ruby (Yaqoot)", "یاقوت", "Rubin", "یاقوت"], "ياقوت احمر": ["Red ruby", "سرخ یاقوت", "Roter Rubin", "یاقوت سرخ"],
+    "در النجف": ["Dur-e-Najaf", "دُرِ نجف", "Dur-e-Najaf", "دُرّ نجف"], "در نجف": ["Dur-e-Najaf", "دُرِ نجف", "Dur-e-Najaf", "دُرّ نجف"],
+    "شذر": ["Shathar", "شذر", "Schathar", "شذر"], "شذر اصفر": ["Yellow shathar", "زرد شذر", "Gelber Schathar", "شذر زرد"],
+    "زمرد": ["Emerald", "زمرد", "Smaragd", "زمرد"], "زبرجد": ["Peridot", "زبرجد", "Peridot", "زبرجد"], "جزع": ["Onyx (Jaza')", "جزع", "Onyx (Dschaza)", "جزع"], "جزع يماني": ["Yemeni onyx (Jaza')", "یمنی جزع", "Jemenitischer Onyx", "جزع یمنی"],
+    "سليماني": ["Sulaimani agate", "سلیمانی", "Sulaimani-Achat", "سلیمانی"], "حديد صيني": ["Hadid Sini (hematite)", "حدید چینی", "Hadid Sini (Hämatit)", "حدید چینی"], "حديد": ["Hadid (hematite)", "حدید", "Hadid (Hämatit)", "حدید"],
+    "لؤلؤ": ["Pearl", "موتی", "Perle", "مروارید"], "لولو": ["Pearl", "موتی", "Perle", "مروارید"], "مرجان": ["Coral", "مرجان", "Koralle", "مرجان"], "زركون": ["Zircon", "زرقون", "Zirkon", "زرکن"], "يسر": ["Yusr (black coral)", "یسر", "Yusr (schwarze Koralle)", "یُسر"],
+    "يسر اسود": ["Black yusr", "سیاہ یسر", "Schwarzer Yusr", "یُسر سیاه"], "كهرب": ["Amber", "کہربا", "Bernstein", "کهربا"], "كهرمان": ["Amber", "کہربا", "Bernstein", "کهربا"], "اوبال": ["Opal", "اوپل", "Opal", "اوپال"], "ماس": ["Diamond", "ہیرا", "Diamant", "الماس"],
+    "الماس": ["Diamond", "ہیرا", "Diamant", "الماس"], "جمشت": ["Amethyst", "جمشت", "Amethyst", "آمتیست (جمشت)"], "جمست": ["Amethyst", "جمشت", "Amethyst", "آمتیست (جمشت)"], "عين النمر": ["Tiger's eye", "ٹائیگر آئی", "Tigerauge", "چشم ببر"], "كريستال": ["Crystal", "کرسٹل", "Kristall", "کریستال"],
+    "جديد": ["New", "نیا", "Neu", "جدید"], "الاكثر طلبا": ["Bestseller", "سب سے مقبول", "Bestseller", "پرطرفدار"], "الاكثر مبيعا": ["Bestseller", "سب سے زیادہ فروخت", "Bestseller", "پرفروش"], "قطعه الموسم": ["Piece of the season", "سیزن کا خاص", "Stück der Saison", "قطعه‌ی فصل"],
+    "خصم": ["Sale", "رعایت", "Angebot", "تخفیف"], "عرض": ["Offer", "آفر", "Angebot", "پیشنهاد ویژه"], "حصري": ["Exclusive", "خصوصی", "Exklusiv", "انحصاری"], "محدود": ["Limited", "محدود", "Limitiert", "محدود"], "قطعه نادره": ["Rare piece", "نایاب زیور", "Seltenes Stück", "قطعه‌ی کمیاب"],
+    "هديه": ["Gift", "تحفہ", "Geschenk", "هدیه"], "صناعه يدويه": ["Handmade", "ہاتھ کا بنا", "Handarbeit", "دست‌ساز"]
   };
-  var TERM_COL = { en: 0, ur: 1, de: 2 };
+  var TERM_COL = { en: 0, ur: 1, de: 2, fa: 3 };
   // the database's private.ar_norm rules (أ/إ/آ → ا, ة → ه, ى → ي, no harakat, Latin digits)
   function norm(t) {
     return String(t == null ? "" : t).replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/[۰-۹]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); })
@@ -265,8 +336,15 @@
   }
   // "١٢ غرام" → "12 g", "١٠٠ مل" → "100 ml"; anything else stays as written
   var UNITS = [[/(غرامات|غرام|غم|جرام|جم|غ)(?=$|\s|[.,،])/g, "g"], [/(ملليلتر|مليلتر|ملل|مل)(?=$|\s|[.,،])/g, "ml"], [/(سنتيمتر|سم)(?=$|\s|[.,،])/g, "cm"], [/(مليمتر|ملم|مم)(?=$|\s|[.,،])/g, "mm"], [/(قيراط)(?=$|\s|[.,،])/g, "ct"], [/(لتر)(?=$|\s|[.,،])/g, "l"]];
+  var UNITS_FA = [[/(غرامات|غرام|غم|جرام|جم|غ)(?=$|\s|[.,،])/g, "گرم"], [/(ملليلتر|مليلتر|ملل|مل)(?=$|\s|[.,،])/g, "میلی‌لیتر"], [/(سنتيمتر|سم)(?=$|\s|[.,،])/g, "سانتی‌متر"],
+    [/(مليمتر|ملم|مم)(?=$|\s|[.,،])/g, "میلی‌متر"], [/(قيراط)(?=$|\s|[.,،])/g, "قیراط"], [/(لتر)(?=$|\s|[.,،])/g, "لیتر"]];
   function measure(v, lang) {
     if (!v || lang === "ar") return v;
+    if (lang === "fa") {
+      var fa = String(v).replace(/[٠-٩]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹"["٠١٢٣٤٥٦٧٨٩".indexOf(d)]; });
+      UNITS_FA.forEach(function (u) { fa = fa.replace(u[0], u[1]); });
+      return fa;
+    }
     var out = String(v).replace(/[٠-٩]/g, function (d) { return "٠١٢٣٤٥٦٧٨٩".indexOf(d); }).replace(/[۰-۹]/g, function (d) { return "۰۱۲۳۴۵۶۷۸۹".indexOf(d); }).replace(/٫/g, ".").replace(/،/g, ",");
     UNITS.forEach(function (u) { out = out.replace(u[0], u[1]); });
     return /[؀-ۿ]/.test(out) ? v : out.replace(/\s+/g, " ").trim();

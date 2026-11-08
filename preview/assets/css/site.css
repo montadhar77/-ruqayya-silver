@@ -717,7 +717,8 @@ html.lenis, html.lenis body { height: auto; }
 .net-note span{color:var(--soft);min-width:0}
 
 /* =========================================================================
-   Languages: Arabic and Urdu read right to left, English and German left to right.
+   Languages: Arabic, Persian and Urdu read right to left, English and German left to right.
+   Persian uses the Arabic fonts (they carry the Persian letters and digits).
    The layout uses logical properties (inline-start/end), so only the few physical
    effects below are mirrored; the fonts follow the script.
    ========================================================================= */
@@ -770,13 +771,13 @@ html.lenis, html.lenis body { height: auto; }
 .lang-wrap { position: relative; }
 .lang-btn .lang-code { position: absolute; bottom: -5px; inset-inline-end: -6px; min-width: 22px; height: 18px; padding: 0 5px; border-radius: 999px; font-size: 10px; font-weight: 600; line-height: 18px; text-align: center;
   background: var(--deep); color: var(--emerald); border: 1px solid color-mix(in srgb, var(--emerald) 55%, transparent); letter-spacing: .02em; }
-:root[lang="ar"] .lang-btn .lang-code, :root[lang="ur"] .lang-btn .lang-code { font-size: 11px; line-height: 16px; }
+:root[lang="ar"] .lang-btn .lang-code, :root[lang="fa"] .lang-btn .lang-code, :root[lang="ur"] .lang-btn .lang-code { font-size: 11px; line-height: 16px; }
 .lang-pop { position: absolute; top: calc(100% + 10px); inset-inline-end: 0; z-index: 45; min-width: 168px; padding: 6px; border-radius: 18px; display: grid; gap: 2px;
   background: color-mix(in srgb, var(--paper) 92%, var(--deep)); border: 1px solid var(--line-2); box-shadow: 0 24px 60px -20px rgba(0,0,0,.6); }
 .lang-pop[hidden] { display: none; }
 .lang-opt { display: block; padding: 9px 14px; border-radius: 12px; font-size: 15px; color: var(--soft); text-align: center; transition: background .25s, color .25s; }
 .lang-opt[lang="en"], .lang-opt[lang="de"] { font-family: "IBM Plex Sans", "Segoe UI", system-ui, sans-serif; }
-.lang-opt[lang="ar"], .lang-opt[lang="ur"] { font-family: "IBM Plex Sans Arabic", Tahoma, sans-serif; }
+.lang-opt[lang="ar"], .lang-opt[lang="fa"], .lang-opt[lang="ur"] { font-family: "IBM Plex Sans Arabic", Tahoma, sans-serif; }
 .lang-opt:hover, .lang-opt:focus-visible { background: color-mix(in srgb, var(--ink) 7%, transparent); color: var(--ink); }
 .lang-opt.on { color: var(--deep); background: var(--emerald); }
 .lang-row { display: flex; flex-wrap: wrap; gap: 6px; padding: 4px 0 14px; margin-bottom: 4px; border-bottom: 1px solid var(--line); }

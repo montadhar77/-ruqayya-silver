@@ -3,7 +3,7 @@
    - marks the page as script-enabled (animations start hidden, then reveal)
    - applies the saved light/dark choice so the page never flashes the wrong theme
    - picks the language (?lang=…, then the visitor's earlier choice, then the device
-     language: English, Urdu or German, otherwise Arabic) and sets the page direction
+     language: English, Persian, Urdu or German, otherwise Arabic) and sets the page direction
    - switches the web fonts on once their stylesheet has loaded (non-blocking) */
 (function () {
   var d = document.documentElement;
@@ -14,13 +14,13 @@
   if (t === "system") t = matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   d.setAttribute("data-theme", t === "light" ? "light" : "dark");
 
-  var LANGS = { ar: "rtl", en: "ltr", ur: "rtl", de: "ltr" };
-  var lang = "", m = /[?&]lang=(ar|en|ur|de)\b/.exec(location.search);
+  var LANGS = { ar: "rtl", en: "ltr", fa: "rtl", ur: "rtl", de: "ltr" };
+  var lang = "", m = /[?&]lang=(ar|en|fa|ur|de)\b/.exec(location.search);
   if (m) { lang = m[1]; try { localStorage.setItem("rq_lang", lang); } catch (e) { /* storage blocked */ } }
   if (!lang) { try { lang = localStorage.getItem("rq_lang") || ""; } catch (e) { lang = ""; } }
   if (!LANGS[lang]) {
     var first = String((navigator.languages && navigator.languages[0]) || navigator.language || "").toLowerCase().split("-")[0];
-    lang = first === "en" || first === "ur" || first === "de" ? first : "ar";
+    lang = first === "en" || first === "fa" || first === "ur" || first === "de" ? first : "ar";
   }
   window.RQ_LANG = lang;
   d.setAttribute("lang", lang);

@@ -164,9 +164,9 @@
   // departments and their sub-departments (0009); older databases have no parent_id
   const subsOK = () => state.cats.length > 0 && "parent_id" in state.cats[0];
   /* Translations (English, Urdu, German) of products and departments: column i18n (0010).
-     The dashboard stays in Arabic; every translated field is optional. */
+     The dashboard stays in Arabic; every translated field is optional. (English, Persian, Urdu, German) */
   const I18N = window.RQ_I18N;
-  const TR_LANGS = ["en", "ur", "de"];
+  const TR_LANGS = ["en", "fa", "ur", "de"];
   const i18nOK = () => !!I18N && state.cats.length > 0 && "i18n" in state.cats[0];
   const trVal = (o, lang, f) => ((o && o.i18n && o.i18n[lang]) || {})[f] || "";
   const autoTerm = (v, lang) => { const t = I18N ? I18N.term(v, lang) : v; return t && t !== v ? t : ""; };
@@ -525,7 +525,7 @@
           <div class="field"><label for="fSort">ترتيب الظهور</label><input type="text" inputmode="numeric" id="fSort" value="${d.sort ?? 0}" dir="ltr"><span class="hint">الرقم الأصغر يظهر أولاً</span></div>
         </div>
         <div style="display:flex;gap:24px;flex-wrap:wrap">${toggleHTML('id="fActive"', d.active, "ظاهر على الموقع")}${toggleHTML('id="fFeat"', d.featured, "منتج مميز (يظهر في الواجهة)")}</div>
-        ${i18nOK() ? `<details class="tr-box" id="pTr"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+        ${i18nOK() ? `<details class="tr-box" id="pTr"><summary>${I.globe} الترجمة: English · فارسی · اردو · Deutsch <small>(اختياري)</small></summary>
           <p class="hint">تظهر للزائر حسب لغته. اترك أي خانة فارغة ليظهر النص العربي — أما الحجر والمعدن والشارة فتُترجم تلقائياً (الظاهرة بلون باهت) إن كانت من الأحجار المعروفة.</p>
           ${trFields(d, [["name", "اسم المنتج"], ["description", "الوصف", true], ["stone", "الحجر", false, (l) => autoTerm(d.stone, l)], ["metal", "المعدن", false, (l) => autoTerm(d.metal, l)], ["badge", "الشارة", false, (l) => autoTerm(d.badge, l)]])}</details>` : ""}
       </form>
@@ -659,7 +659,7 @@
         <div class="field"><span class="lbl">الأيقونة</span><div class="icons" id="cIcons">${Object.keys(A.dep).map((k) => `<button type="button" data-ic="${k}" class="${d.icon === k ? "on" : ""}" aria-label="${A.depNames[k] || k}" title="${A.depNames[k] || k}">${A.depIcon(k)}</button>`).join("")}</div></div>
         <div class="field"><span class="lbl">صورة القسم (اختياري — تظهر بدل الأيقونة)</span><div class="media-field" id="cImg"></div></div>
         ${toggleHTML('id="cActive"', d.active, "ظاهر على الموقع")}
-        ${i18nOK() ? `<details class="tr-box" id="cTr" style="margin-top:14px"><summary>${I.globe} الترجمة: English · اردو · Deutsch <small>(اختياري)</small></summary>
+        ${i18nOK() ? `<details class="tr-box" id="cTr" style="margin-top:14px"><summary>${I.globe} الترجمة: English · فارسی · اردو · Deutsch <small>(اختياري)</small></summary>
           <p class="hint">اسم القسم ووصفه بلغة الزائر. اترك الخانة فارغة ليظهر بالعربية.</p>${trFields(d, [["name", "اسم القسم"], ["subtitle", "وصف قصير"]])}</details>` : ""}
       </div>
       <div class="modal-f"><button class="btn" type="button" id="cSave">${I.check} حفظ القسم</button><button class="btn light" type="button" data-x>إلغاء</button></div>`);
@@ -972,7 +972,7 @@
     }
   }
   /* =======================================================================
-     LANGUAGES — every text of the site in English, Urdu and German
+     LANGUAGES — every text of the site in English, Persian, Urdu and German
      Built from the same lists as the pages above. Each field shows the Arabic text;
      an empty field uses the built-in translation (shown faded) while the Arabic is
      unchanged. Saved in settings.data.i18n.<lang>.
@@ -1007,7 +1007,7 @@
     groups.push({ title: "أسماء الدول والمحافظات (في نموذج الطلب والكرة الأرضية)", fields: names.map((n) => ({ p: `i18n.${code}.places.${n}`, l: `<span class="ar-orig" dir="rtl" lang="ar" style="margin:0">${esc(n)}</span>`,
       ph: (I18N.places[code] || {})[n] || "", dir: LN.dir, lang: code })) });
     const tabs = `<div class="tabs" role="tablist">${TR_LANGS.map((c) => `<button class="tab ${c === code ? "on" : ""}" type="button" role="tab" aria-selected="${c === code}" data-lang="${c}" lang="${c}">${I18N.langs[c].name}</button>`).join("")}</div>
-      <div class="notice">${I.globe}<span>الموقع يظهر لكل زائر بلغة جهازه (العربية، English، اردو، Deutsch) ويستطيع تغييرها من زر اللغة. المنتجات والأقسام تُترجم من صفحة كل منتج وكل قسم. لوحة التحكم تبقى بالعربية.</span></div>`;
+      <div class="notice">${I.globe}<span>الموقع يظهر لكل زائر بلغة جهازه (العربية، English، فارسی، اردو، Deutsch) ويستطيع تغييرها من زر اللغة. المنتجات والأقسام تُترجم من صفحة كل منتج وكل قسم. لوحة التحكم تبقى بالعربية.</span></div>`;
     return { title: `الترجمة — ${LN.name}`, sub: "النصوص العامة للموقع بهذه اللغة. اترك أي خانة فارغة لتبقى الترجمة الجاهزة (الظاهرة بلون باهت).", search: true, open: 1, groups, top: tabs,
       preview: `${SITE}?lang=${code}` };
   }
