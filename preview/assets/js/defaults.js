@@ -26,6 +26,7 @@ window.RQ_DEFAULTS = {
     accent: "#5fae8a",
     ink: "#f3efe6",
     floral: true,
+    flowers: true,
     mode: "dark"
   },
   theme_light: {

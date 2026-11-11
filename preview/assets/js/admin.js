@@ -6,8 +6,22 @@
 (() => {
   "use strict";
   const cfg = window.RQ_CONFIG, A = window.RQ_ART, DEF = window.RQ_DEFAULTS;
+  /* After every saved change (product, photo, department, text…) note the time in this
+     browser: for the next minutes the shop, opened in the same browser, reads straight from
+     the database instead of the minute-long Cloudflare cache, so the owner sees his edit at
+     once (visitors see it within about a minute). */
+  const markFresh = () => { try { localStorage.setItem("rq_fresh", String(Date.now())); } catch (e) { /* storage blocked */ } };
+  const READ_ONLY_RPC = /\/rest\/v1\/rpc\/(am_i_admin|admin_gate|admin_stats|admin_orders|admin_unused_media)\b/;   // POST, but nothing changes
+  const trackedFetch = async (input, init) => {
+    const r = await fetch(input, init);
+    const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+    const url = String((input && input.url) || input);
+    if (r.ok && method !== "GET" && method !== "HEAD" && /\/(rest|storage)\/v1\//.test(url) && !READ_ONLY_RPC.test(url)) markFresh();
+    return r;
+  };
   const db = window.supabase.createClient(cfg.url, cfg.key, {
-    auth: { persistSession: true, autoRefreshToken: true, storageKey: "rq-admin", detectSessionInUrl: false }
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: "rq-admin", detectSessionInUrl: false },
+    global: { fetch: trackedFetch }
   });
   const SITE = new URL("../", location.href).href;
   const root = document.getElementById("root");
@@ -898,7 +912,8 @@
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
           SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
-          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" })
+          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" }),
+          SH("theme.flowers", "ورد أبيض ناعم في الصفحة الرئيسية", { t: "toggle", hint: "باقة ورد أبيض بأوراق خضراء حول صورة الواجهة وبجانب الشعار، مع بتلات تتساقط بهدوء." })
         ] },
         { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
         { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
@@ -1060,7 +1075,7 @@
       const h = e.target.closest(".collapsible > h2"); if (h) { h.parentElement.classList.toggle("open"); return; }
       const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],[data-reset]");
       if (!t) return;
-      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
+      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "flowers", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
       if (t.dataset.clear) { setPath(d, t.dataset.clear, ""); redraw(t.dataset.clear); dirty(); return; }
       const p = t.dataset.addstr || t.dataset.additem || t.dataset.del || t.dataset.move;
       const arr = Array.isArray(getPath(d, p)) ? getPath(d, p) : [];
