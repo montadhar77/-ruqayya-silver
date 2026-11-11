@@ -53,12 +53,14 @@ def until(page, js, timeout=10.0):
 def test_roses_are_on_the_home_page_only(tab, stk):
     t = tab(width=390, height=844)
     open_home(t, stk)
-    assert t.page.locator(".hero .bloom.bl-corner svg").count() == 1
-    assert t.page.locator(".hero .bloom.bl-sprig svg").count() == 1
+    assert t.page.locator(".hero .orn .orn-lines").count() == 1                  # the gold mihrab
+    assert t.page.locator(".hero .orn .orn-foot svg").count() == 2               # roses at its feet
+    assert t.page.locator(".hero .girih").count() == 1
+    assert t.page.evaluate("getComputedStyle(document.querySelector('.orbit')).display") == "none"
     assert t.page.locator("#about .bloom.bl-about svg").count() == 1
     assert t.page.locator(".hero .petals i").count() == 6
-    info = t.page.evaluate("""() => [...document.querySelectorAll('.bloom, .petals')].map((el) => ({
-        hidden: el.getAttribute('aria-hidden'), events: getComputedStyle(el).pointerEvents,
+    info = t.page.evaluate("""() => [...document.querySelectorAll('.bloom, .petals, .orn, .girih')].map((el) => ({
+        hidden: el.closest('[aria-hidden="true"]') ? 'true' : null, events: getComputedStyle(el).pointerEvents,
         focusable: el.querySelectorAll('a, button, input, [tabindex]').length }))""")
     assert info and all(i == {"hidden": "true", "events": "none", "focusable": 0} for i in info), info
     # the falling petals stay on the card's side of the hero (here: its top part, above the text)
@@ -68,9 +70,9 @@ def test_roses_are_on_the_home_page_only(tab, stk):
         t.page.goto(f"{stk['site']}/index.html{route}")
         t.page.wait_for_selector("#app h1, #app h2")
         time.sleep(0.3)
-        assert t.page.locator(".bloom, .petals").count() == 0, route
+        assert t.page.locator(".bloom, .petals, .orn, .girih").count() == 0, route
     t.page.goto(f"{stk['site']}/index.html#/")
-    t.page.wait_for_selector(".hero .bl-corner")
+    t.page.wait_for_selector(".hero .orn")
     assert not t.errors, t.errors
     assert not t.layout_problems()
 
@@ -90,10 +92,10 @@ def test_roses_never_paint_over_text(tab, stk, still_hero, lang, width, height):
         assert boxes
         scale = t.page.evaluate("devicePixelRatio")
         with_roses = Image.open(io.BytesIO(t.page.screenshot())).convert("RGB")
-        t.page.add_style_tag(content=".bloom, .petals { visibility: hidden !important; }")
+        t.page.add_style_tag(content=".bloom, .petals, .orn, .girih { visibility: hidden !important; }")
         time.sleep(0.15)
         without = Image.open(io.BytesIO(t.page.screenshot())).convert("RGB")
-        t.page.evaluate("document.querySelectorAll('style').forEach((s) => { if (s.textContent.includes('.bloom, .petals { visibility')) s.remove(); })")
+        t.page.evaluate("document.querySelectorAll('style').forEach((s) => { if (s.textContent.includes('.girih { visibility')) s.remove(); })")
         changed = ImageChops.difference(with_roses, without).convert("L").point(lambda v: 255 if v > 2 else 0)
         bad = []
         for b in boxes:
@@ -107,16 +109,18 @@ def test_roses_never_paint_over_text(tab, stk, still_hero, lang, width, height):
 def test_roses_follow_the_reading_direction_and_reduced_motion(tab, stk):
     t = tab(width=1440, height=900, locale="en-US")
     open_home(t, stk, "en")
-    ltr = t.page.evaluate("(() => { const c = document.querySelector('.bl-corner'), d = document.querySelector('#deck'); return [getComputedStyle(c.querySelector('.bl-in')).scale, c.getBoundingClientRect().left > d.getBoundingClientRect().left]; })()")
-    assert ltr == ["-1 1", True]                                                  # mirrored, on the right of the card
+    big = "(() => { const c = document.querySelector('.orn-a'), d = document.querySelector('#deck'); return [getComputedStyle(document.querySelector('.orn-frame')).scale, getComputedStyle(c.querySelector('.bl-in')).scale, c.getBoundingClientRect().left %s d.getBoundingClientRect().left]; })()"
+    assert t.page.evaluate(big % ">") == ["-1 1", "-1 1", True]                  # mirrored; the larger roses on the right
     open_home(t, stk, "ar")
-    rtl = t.page.evaluate("(() => { const c = document.querySelector('.bl-corner'), d = document.querySelector('#deck'); return [getComputedStyle(c.querySelector('.bl-in')).scale, c.getBoundingClientRect().left < d.getBoundingClientRect().left]; })()")
-    assert rtl == ["none", True]
+    assert t.page.evaluate(big % "<") == ["none", "none", True]
     calm = tab(width=390, height=844, reduced_motion="reduce")
     open_home(calm, stk)
     assert calm.page.evaluate("getComputedStyle(document.querySelector('.petals')).display") == "none"
-    assert calm.page.evaluate("getComputedStyle(document.querySelector('.bl-corner svg')).animationName") == "none"
-    assert calm.page.evaluate("getComputedStyle(document.querySelector('.bl-corner')).opacity") == "1"
+    assert calm.page.evaluate("getComputedStyle(document.querySelector('.orn-a svg')).animationName") == "none"
+    assert calm.page.evaluate("getComputedStyle(document.querySelector('.orn-a')).opacity") == "1"
+    # the arch is simply there, fully drawn, and the running light is off
+    assert calm.page.evaluate("getComputedStyle(document.querySelector('.orn-draw')).strokeDashoffset") in ("0", "0px")
+    assert calm.page.evaluate("getComputedStyle(document.querySelector('.orn-glint')).display") == "none"
     assert not t.errors and not calm.errors, t.errors + calm.errors
 
 
@@ -126,8 +130,9 @@ def test_owner_can_switch_the_roses_off(tab, stk):
         harness.admin_sql(stk["db"], """update public.settings set data = jsonb_set(data, '{theme}', coalesce(data->'theme', '{}') || '{"flowers": false}') where id = 1""")
         t = tab(width=390, height=844)
         open_home(t, stk)
-        until(t.page, "document.querySelector('.hero h1') && !document.querySelector('.bloom, .petals')")
-        assert t.page.locator(".bloom, .petals").count() == 0
+        until(t.page, "document.querySelector('.hero h1') && !document.querySelector('.bloom, .petals, .orn, .girih')")
+        assert t.page.locator(".bloom, .petals, .orn, .girih").count() == 0
+        assert t.page.evaluate("getComputedStyle(document.querySelector('.orbit')).display") != "none"
         assert not t.errors, t.errors
     finally:
         harness.admin_sql(stk["db"], "update public.settings set data = %s::jsonb where id = 1", (json.dumps(before, ensure_ascii=False),))
