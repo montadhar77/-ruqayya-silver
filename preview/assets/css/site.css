@@ -804,17 +804,49 @@ footer.site .f-langs a.on { color: var(--emerald); }
 .bloom { position: absolute; pointer-events: none; z-index: 0; }
 .bl-in { width: 100%; }
 .bloom svg { display: block; width: 100%; height: auto; overflow: visible; will-change: transform; }
-.showcase .deck { z-index: 1; }
-/* the corner of the card is at (15%, 93.75%) of the square showcase; the drawing's corner point is (175, 150) of 320 */
-.bl-corner { width: 62%; inset-inline-end: -18.9%; top: 64.7%; }
-.bl-sprig { width: 36%; inset-inline-start: 3%; top: -1%; }
-.bl-sprig .bl-in { rotate: 166deg; }
-@media (max-width: 560px) { .bl-corner { width: 52%; inset-inline-end: -13.4%; top: 69.4%; } .bl-sprig { width: 32%; } }
 :root[dir="ltr"] .bloom .bl-in { scale: -1 1; }
-:root[dir="ltr"] .bl-sprig .bl-in { rotate: -166deg; }
-.bl-corner svg { transform-origin: 55% 45%; animation: blSway 9s ease-in-out infinite alternate; }
-.bl-sprig svg { transform-origin: 50% 65%; animation: blSway 11s ease-in-out -4s infinite alternate; }
 @keyframes blSway { from { transform: rotate(-1.4deg); } to { transform: rotate(1.6deg); } }
+
+/* the mihrab round the hero card: one 1000-unit drawing laid exactly over the square showcase */
+.showcase .deck { z-index: 1; }
+.showcase.with-orn .orbit { display: none; }
+.orn { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
+.orn-frame { position: absolute; inset: 0; }
+.orn-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
+:root[dir="ltr"] .orn-frame { scale: -1 1; }
+.orn { --orn-gold-1: #f6e3ae; --orn-gold-2: #d6b26e; --orn-gold-3: #9c7a3a; --orn-glint: #fff6dc; }
+:root[data-theme="light"] .orn { --orn-gold-1: #c9a35a; --orn-gold-2: #a8823c; --orn-gold-3: #6e5422; --orn-glint: #fff; }
+/* drawn in once, after the opening (only when motion is on: otherwise it is simply there) */
+.orn-wait .orn-draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
+.orn-wait :is(.orn-fade, .orn-beads) { opacity: 0; }
+.orn-go .orn-draw { animation: ornDraw 2.8s cubic-bezier(.55, .05, .25, 1) forwards; }
+.orn-go .orn-beads { animation: ornBeads 1.2s ease 1.2s forwards; }
+.orn-go .orn-fade { animation: ornFade 1.6s ease 1.7s forwards; }
+@keyframes ornDraw { to { stroke-dashoffset: 0; } }
+@keyframes ornBeads { to { opacity: .6; } }
+@keyframes ornFade { to { opacity: 1; } }
+/* now and then a light runs along the arch */
+.orn-glint path { stroke-dashoffset: .05; opacity: .9; }
+.orn-go .orn-glint path { animation: ornGlint 11s ease-in-out 4.5s infinite; }
+@keyframes ornGlint { 0% { stroke-dashoffset: .05; } 38%, 100% { stroke-dashoffset: -1; } }
+/* the roses at the arch's feet: the larger bunch on the outer side, a smaller one opposite */
+.orn-a { width: 38%; inset-inline-end: -12%; top: 78%; }
+.orn-b { width: 27%; inset-inline-start: -6%; top: 82%; }
+.orn-a svg { transform-origin: 60% 70%; animation: blSway 9s ease-in-out infinite alternate; }
+.orn-b svg { transform-origin: 50% 70%; animation: blSway 11s ease-in-out -4s infinite alternate; }
+@media (max-width: 560px) { .orn-a { width: 30%; inset-inline-end: -8%; top: 75%; } .orn-b { width: 22%; inset-inline-start: -3%; top: 79%; } }
+/* room above the card for the star on stacked (phone/tablet) layouts */
+@media (max-width: 920px) { .hero.has-orn { padding-top: calc(clamp(30px, 6vw, 80px) + 40px); } }
+
+/* a faint eight-pointed star lattice behind the hero card, fading out towards the text */
+.girih { position: absolute; inset: 0; pointer-events: none; z-index: 0;
+  -webkit-mask-image: radial-gradient(circle var(--gr, 340px) at var(--gx, 27%) var(--gy, 50%), #000 0, rgba(0,0,0,.5) 45%, transparent 100%);
+          mask-image: radial-gradient(circle var(--gr, 340px) at var(--gx, 27%) var(--gy, 50%), #000 0, rgba(0,0,0,.5) 45%, transparent 100%); }
+.girih i { position: absolute; inset: 0; background: var(--gold); opacity: .13;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%22.7%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060L60%2077L43%2060L60%2043ZM72%2072L48%2072L48%2048L72%2048ZM17%200L0%2017L-17%200L0%20-17ZM12%2012L-12%2012L-12%20-12L12%20-12ZM137%200L120%2017L103%200L120%20-17ZM132%2012L108%2012L108%20-12L132%20-12ZM17%20120L0%20137L-17%20120L0%20103ZM12%20132L-12%20132L-12%20108L12%20108ZM137%20120L120%20137L103%20120L120%20103ZM132%20132L108%20132L108%20108L132%20108Z%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060H103M17%2060H43M60%2017V43M60%2077V103M72%2072L108%20108M48%2048L12%2012M72%2048L108%2012M48%2072L12%20108%22%20stroke-opacity%3D%22.7%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%224%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") 0 0 / 120px 120px repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%22.7%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060L60%2077L43%2060L60%2043ZM72%2072L48%2072L48%2048L72%2048ZM17%200L0%2017L-17%200L0%20-17ZM12%2012L-12%2012L-12%20-12L12%20-12ZM137%200L120%2017L103%200L120%20-17ZM132%2012L108%2012L108%20-12L132%20-12ZM17%20120L0%20137L-17%20120L0%20103ZM12%20132L-12%20132L-12%20108L12%20108ZM137%20120L120%20137L103%20120L120%20103ZM132%20132L108%20132L108%20108L132%20108Z%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060H103M17%2060H43M60%2017V43M60%2077V103M72%2072L108%20108M48%2048L12%2012M72%2048L108%2012M48%2072L12%20108%22%20stroke-opacity%3D%22.7%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%224%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") 0 0 / 120px 120px repeat; }
+:root[dir="ltr"] .girih { --gx: 73%; }
+:root[data-theme="light"] .girih i { opacity: .16; }
+@media (max-width: 920px) { .girih { --gx: 50%; --gy: calc(70px + min(230px, 50vw)); --gr: min(210px, 48vw); } :root[dir="ltr"] .girih { --gx: 50%; } }
 
 .about-pic { position: relative; max-width: 460px; width: 100%; margin-inline: auto; }
 .bl-about { width: 44%; top: -10%; inset-inline-start: -13%; z-index: 2; }
@@ -855,4 +887,5 @@ footer.site .f-langs a.on { color: var(--emerald); }
 @media (prefers-reduced-motion: reduce) {
   .petals { display: none; }
   .bloom svg { animation: none !important; }
+  .orn-glint { display: none; }
 }

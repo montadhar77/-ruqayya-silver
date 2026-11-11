@@ -545,18 +545,22 @@
     return slides;
   }
 
-  /* white roses on the home page (dashboard: Identity → "ورد أبيض ناعم في الصفحة الرئيسية"):
-     an arrangement and a sprig behind the hero card, a few petals falling slowly through the
-     hero, and a sprig at the corner of the About picture. Purely decorative: aria-hidden,
+  /* the hero ornament (dashboard: Identity → "زخرفة الواجهة"): a gold mihrab round the hero
+     card — pointed arch, cusps, an eight-pointed star, arabesque vines — with soft white roses
+     at its feet and crown, a faint girih star lattice behind, and a few petals falling slowly
+     on the card's side. A sprig of roses on the About picture. Purely decorative: aria-hidden,
      never clickable, never over text; still for visitors who prefer reduced motion. */
   // [lane %, seconds to fall, start offset, size, sway direction] — lanes kept to the sides of the card
   const PETALS = [[6, 21, -3, 0.9], [92, 25, -14, 0.75], [30, 19, -9, 1], [72, 24, -2, 0.8], [14, 27, -19, 0.7], [85, 22, -11, 0.85]];
-  const bloomsOn = () => state.s.theme.flowers !== false && !!(A.blooms);
+  const bloomsOn = () => state.s.theme.flowers !== false && !!(A.blooms && A.blooms.mihrab);
   function heroBlooms() {
-    if (!bloomsOn()) return { back: "", petals: "" };
+    if (!bloomsOn()) return { back: "", petals: "", cls: "" };
+    const B = A.blooms;
     return {
-      back: `<div class="bloom bl-corner" aria-hidden="true"><div class="bl-in">${A.blooms.corner()}</div></div><div class="bloom bl-sprig" aria-hidden="true"><div class="bl-in">${A.blooms.sprig()}</div></div>`,
-      petals: `<div class="petals" aria-hidden="true">${PETALS.map(([x, t, d, sc], k) => `<i style="--x:${x}%;--t:${t}s;--d:${d}s;--s:${sc};--r:${k % 2 ? -1 : 1}">${A.blooms.petal()}</i>`).join("")}</div>`
+      cls: " has-orn",
+      back: `<div class="orn" aria-hidden="true"><div class="orn-frame">${B.mihrab()}${B.glint()}</div>
+        <div class="bloom orn-foot orn-a"><div class="bl-in">${B.feet(true)}</div></div><div class="bloom orn-foot orn-b"><div class="bl-in">${B.feet(false)}</div></div></div>`,
+      petals: `<div class="girih" aria-hidden="true"><i></i></div><div class="petals" aria-hidden="true">${PETALS.map(([x, t, d, sc], k) => `<i style="--x:${x}%;--t:${t}s;--d:${d}s;--s:${sc};--r:${k % 2 ? -1 : 1}">${B.petal()}</i>`).join("")}</div>`
     };
   }
 
@@ -576,7 +580,7 @@
     const line2 = flips.length > 1
       ? `<span class="flip" data-flip>${flips.map((w, k) => `<span class="fw grad${k ? "" : " on"}">${esc(w)}</span>`).join("")}</span>`
       : splitWords(s.hero.title2, "grad");
-    let html = `<header class="hero" id="top"><span class="spotlight s1" aria-hidden="true"></span><span class="spotlight s2" aria-hidden="true"></span>${bl.petals}<div class="wrap hero-grid">
+    let html = `<header class="hero${bl.cls}" id="top"><span class="spotlight s1" aria-hidden="true"></span><span class="spotlight s2" aria-hidden="true"></span>${bl.petals}<div class="wrap hero-grid">
         <div class="hero-txt">
           <div class="pill" data-hero><span class="dot"></span>${esc(s.hero.eyebrow)}</div>
           <h1>${splitWords(s.hero.title1)}<span class="line2">${line2}</span></h1>
@@ -587,7 +591,7 @@
           </div>
           ${stats.length ? `<div class="hero-stats" data-hero>${stats.map((v) => `<div class="glass"><b data-count="${esc(v.value)}">${esc(v.value)}</b><span>${esc(v.label)}</span></div>`).join("")}</div>` : ""}
         </div>
-        <div class="showcase" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
+        <div class="showcase${bl.cls ? " with-orn" : ""}" data-show style="--slide-ms:${Math.round((Number(s.hero.slide_seconds) || 5.5) * 1000)}ms">
           <div class="orbit" data-orbit>${orbitSVG()}</div>
           ${bl.back}
           <div class="deck" id="deck" data-tilt>
@@ -1300,9 +1304,13 @@
       .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=1")
       .fromTo("#deck", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.6, ease: "expo.out" }, 0)
       .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1);
-    // the roses open behind the card a moment after it lands
-    const bls = $$(".hero .bloom");
-    if (bls.length) tl.fromTo(bls, { opacity: 0, scale: 0.84, y: 26 }, { opacity: 1, scale: 1, y: 0, duration: 2.1, ease: "expo.out", stagger: 0.28 }, 0.5);
+    // the mihrab draws itself in gold once the card has landed, then the roses open at its feet
+    const orn = $(".hero .orn");
+    if (orn) {
+      orn.classList.add("orn-wait");
+      introPromise.then(() => setTimeout(() => orn.classList.add("orn-go"), 350));
+      tl.fromTo($$(".orn-foot", orn), { opacity: 0, scale: 0.8, y: 24 }, { opacity: 1, scale: 1, y: 0, duration: 2.2, ease: "expo.out", stagger: 0.3 }, 1.1);
+    }
     // parallax
     G.to("[data-show]", { yPercent: -10, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
     G.to("[data-orbit]", { rotate: 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });

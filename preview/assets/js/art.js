@@ -101,8 +101,8 @@
   /* large corner ornament (arabesque flower) used in the hero */
   const ornament = `<svg viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width=".8">${Array.from({ length: 12 }, (_, k) => `<ellipse cx="100" cy="58" rx="16" ry="42" transform="rotate(${k * 30} 100 100)"/>`).join("")}${Array.from({ length: 8 }, (_, k) => `<ellipse cx="100" cy="76" rx="8" ry="24" transform="rotate(${k * 45 + 22.5} 100 100)"/>`).join("")}<circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="12"/></svg>`;
 
-  /* soft white roses with a touch of sage green, drawn here (no images): the arrangement round
-     the hero card, a small sprig and a loose petal. Home page only. Colours come from --bl-* (site.css). */
+  /* soft white roses with a touch of sage green, drawn here (no images): a gold mihrab with
+     roses round the hero card, a small sprig and a loose petal. Home page only. Colours come from --bl-* (site.css). */
   const blooms = (() => {
   let uid = 0;   // gradient ids are unique per drawing
   const f = (n) => (Math.round(n * 10) / 10).toString();
@@ -226,20 +226,128 @@
     return out;
   }
 
-  /* the hero corner: drawn round the bottom corner of the card, which sits at (175, 150) with the
-     card above and to the right of it; nothing grows out under the card, where the slide dots
-     and the text below them are (viewBox 320 x 320) */
-  function corner() {
+  /* ---- the mihrab: a modern Islamic frame round the hero card ----------------------------
+     One square drawing (0..1000) laid exactly over the hero showcase; the card sits at
+     x 150..850, y 62..938. A pointed arch in fine gold lines (outer, inner, a row of beads),
+     an eight-pointed star at its crown, arabesque (islimi) vines climbing its sides with
+     leaves and small white blossoms. The roses at its feet are separate drawings (feet()). */
+  const ARCH = { r: 560, cx: 130, spring: 515, base: 975 };   // arcs centred 130 inside each side
+  function archPath(inset) {
+    const r = ARCH.r - inset, x0 = 70 + inset, x1 = 930 - inset, s = ARCH.spring;
+    const apex = s - Math.sqrt(r * r - 130 * 130);
+    return `M${x0} ${ARCH.base}L${x0} ${s}A${r} ${r} 0 0 1 500 ${f(apex)}A${r} ${r} 0 0 1 ${x1} ${s}L${x1} ${ARCH.base}`;
+  }
+  // an eight-pointed star (two squares) of radius R at (x, y)
+  const star8 = (x, y, R) => {
+    const sq = (rot) => Array.from({ length: 4 }, (_, k) => { const t = rad(rot + k * 90); return `${f(x + R * Math.cos(t))} ${f(y + R * Math.sin(t))}`; });
+    return `M${sq(0).join("L")}ZM${sq(45).join("L")}Z`;
+  };
+  // a vine through a list of points, throwing arabesque scrolls: [point index, side, size]
+  function vine(pts, curls) {
+    const d = smooth(pts, false);
+    let tend = "";
+    const leaves = [], flowers = [];
+    curls.forEach(([k, side, size]) => {
+      const [x, y] = pts[k], [nx, ny] = pts[k + 1] || pts[k - 1];
+      const dir = Math.atan2(ny - y, nx - x) + side * Math.PI / 2;     // away from the stem
+      const cx = x + Math.cos(dir) * size, cy = y + Math.sin(dir) * size, a0 = dir + Math.PI, sp = [];
+      for (let j = 0; j <= 22; j++) {
+        const t = j / 22, a = a0 - side * t * Math.PI * 2.4, r = size * (1 - 0.72 * t);
+        sp.push([cx + Math.cos(a) * r, cy + Math.sin(a) * r]);
+      }
+      tend += smooth(sp, false);
+      // a leaf where the scroll leaves the stem, a blossom in its eye
+      leaves.push([x, y, (dir * 180) / Math.PI + 90 + side * 38, 0.62]);
+      leaves.push([sp[7][0], sp[7][1], (dir * 180) / Math.PI + 90 - side * 70, 0.42]);
+      flowers.push([cx + (sp[22][0] - cx) * 0.4, cy + (sp[22][1] - cy) * 0.4]);
+    });
+    return { d, tend, leaves, flowers };
+  }
+  // a row of small cusps (scallops) along the inner curve of the arch, as in a carved mihrab
+  function cusps(inset) {
+    const r = ARCH.r - inset, n = 13;
+    const side = (cx, from, to) => {
+      const pts = [];
+      for (let k = 0; k <= n; k++) { const t = rad(from + (to - from) * (k / n)); pts.push([cx + r * Math.cos(t), ARCH.spring + r * Math.sin(t)]); }
+      return pts;
+    };
+    const apexAng = (Math.atan2(-Math.sqrt(r * r - 130 * 130), -130) * 180) / Math.PI;     // left arc: from 180° up to the apex
+    const L = side(630, -180, apexAng), Rt = side(370, -(180 + apexAng), 0).map(([x, y]) => [x, y]);
+    let d = `M${f(L[0][0])} ${f(L[0][1])}`;
+    for (let k = 1; k < L.length; k++) { const c = Math.hypot(L[k][0] - L[k - 1][0], L[k][1] - L[k - 1][1]) * 0.56; d += `A${f(c)} ${f(c)} 0 0 0 ${f(L[k][0])} ${f(L[k][1])}`; }
+    d += `M${f(Rt[0][0])} ${f(Rt[0][1])}`;
+    for (let k = 1; k < Rt.length; k++) { const c = Math.hypot(Rt[k][0] - Rt[k - 1][0], Rt[k][1] - Rt[k - 1][1]) * 0.56; d += `A${f(c)} ${f(c)} 0 0 0 ${f(Rt[k][0])} ${f(Rt[k][1])}`; }
+    return d;
+  }
+  // an eight-petal rosette
+  const rosette = (x, y, R) => Array.from({ length: 8 }, (_, k) => `<ellipse cx="${x}" cy="${f(y - R * 0.55)}" rx="${f(R * 0.2)}" ry="${f(R * 0.45)}" transform="rotate(${k * 45} ${x} ${y})"/>`).join("");
+  function mihrab() {
     const i = ++uid;
-    return `<svg viewBox="0 0 320 320" aria-hidden="true" focusable="false">${defs(i)}
-      ${leaf(i, 196, 138, 1.05, 96)}${leaf(i, 150, 120, 0.95, -20)}${leaf(i, 128, 196, 1, -128)}${leaf(i, 158, 222, 0.92, 214)}
-      ${branch(i, [[112, 86], [104, 52], [112, 22], [128, -2]], [[0.4, 1, 0.8], [0.72, -1, 0.66]], 1.4)}
-      ${branch(i, [[96, 104], [70, 110], [44, 128], [22, 160]], [[0.45, -1, 0.82], [0.8, 1, 0.6]], 1.3)}
-      ${branch(i, [[160, 222], [150, 252], [132, 272], [104, 282]], [[0.5, 1, 0.74]], 1.1)}
-      ${bud(i, 128, -2, 0.74, 28)}${bud(i, 22, 160, 0.62, -120)}
-      ${blossom(104, 282, 1, 10)}${blossom(84, 266, 0.72, 40)}${blossom(44, 92, 0.8, 0)}${blossom(58, 210, 0.7, 20)}${blossom(150, 34, 0.62, 30)}
-      ${rose(i, 108, 100, 0.8, 16)}${rose(i, 168, 176, 1.06, -8)}
+    // left side: up the outside of the arch, then along its curve
+    const left = [];
+    for (let y = 955; y >= 545; y -= 82) left.push([38 + (left.length % 2 ? 9 : -9), y]);
+    for (let t = 181; t <= 209; t += 7) left.push([630 + 592 * Math.cos(rad(t)), 515 + 592 * Math.sin(rad(t))]);
+    const L = vine(left, [[1, -1, 30], [2, 1, 22], [3, -1, 34], [5, -1, 28], [7, -1, 22]]);
+    const right = left.slice(0, 6).map(([x, y]) => [1000 - x, y]);
+    const R = vine(right, [[1, 1, 28], [3, 1, 30], [4, -1, 20]]);
+    const leafs = [...L.leaves, ...R.leaves].map(([x, y, a, sc], k) => leaf(i, x, y, sc + (k % 3) * 0.04, a, 40, 14)).join("");
+    const blooms = [...L.flowers, ...R.flowers].map(([x, y], k) => blossom(x, y, 0.95 + (k % 2) * 0.3, k * 23)).join("");
+    const end = left[left.length - 1], endR = right[right.length - 1];
+    return `<svg class="orn-lines" viewBox="0 0 1000 1000" aria-hidden="true" focusable="false">${defs(i)}
+      <defs><linearGradient id="rqG${i}" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--orn-gold-1,#f6e3ae)"/><stop offset=".5" stop-color="var(--orn-gold-2,#d6b26e)"/><stop offset="1" stop-color="var(--orn-gold-3,#9c7a3a)"/></linearGradient></defs>
+      <g fill="none" stroke="url(#rqG${i})" stroke-linecap="round" stroke-linejoin="round">
+        <path class="orn-draw" pathLength="1" d="${archPath(0)}" stroke-width="2.6"/>
+        <path class="orn-draw" pathLength="1" d="${archPath(15)}" stroke-width="1.1" opacity=".8"/>
+        <path class="orn-draw" pathLength="1" d="${cusps(40)}" stroke-width="1.3" opacity=".85"/>
+        <path class="orn-beads" d="${archPath(27)}" stroke-width="3.6" stroke-dasharray="0 15" opacity=".6"/>
+        <path class="orn-draw" pathLength="1" d="${L.d}" stroke-width="1.9"/>
+        <path class="orn-draw" pathLength="1" d="${R.d}" stroke-width="1.9"/>
+        <path class="orn-draw" pathLength="1" d="${L.tend}${R.tend}" stroke-width="1.3"/>
+        <path class="orn-draw" pathLength="1" d="${star8(500, -96, 36)}" stroke-width="1.7"/>
+        <path class="orn-draw" pathLength="1" d="${star8(500, -96, 22)}" stroke-width="1" opacity=".7"/>
+        <path d="M500 -146V-164M58 515H96M904 515H942" stroke-width="1.6"/>
+      </g>
+      <g class="orn-fade">
+        <g fill="url(#rqG${i})" opacity=".85">${rosette(500, -96, 16)}</g>
+        <circle cx="500" cy="-96" r="4" fill="var(--orn-gold-1,#f6e3ae)"/><circle cx="500" cy="-170" r="3.6" fill="url(#rqG${i})"/>
+        <path d="${star8(77, 515, 9)}${star8(923, 515, 9)}" fill="url(#rqG${i})"/>
+        ${leafs}${blooms}
+        ${bud(i, end[0], end[1], 0.52, 44)}${bud(i, endR[0], endR[1], 0.48, -14)}
+        ${leaf(i, 486, -30, 0.62, -72, 40, 14)}${leaf(i, 514, -30, 0.62, 72, 40, 14)}${leaf(i, 474, -14, 0.5, -112, 40, 14)}${leaf(i, 526, -14, 0.5, 112, 40, 14)}
+        ${blossom(438, -22, 0.9, 0)}${blossom(562, -22, 0.9, 30)}
+        ${rose(i, 500, -26, 0.52, 10)}
+      </g>
     </svg>`;
+  }
+  // the light that runs along the arch now and then (its own small drawing, so it is cheap to animate)
+  const glint = () => `<svg class="orn-glint" viewBox="0 0 1000 1000" aria-hidden="true" focusable="false"><path pathLength="1" d="${archPath(0)}" fill="none" stroke="var(--orn-glint,#fff6dc)" stroke-width="3.4" stroke-linecap="round" stroke-dasharray=".05 .95"/></svg>`;
+
+  /* roses at the feet of the arch: the larger bunch (left) and a smaller one (right) */
+  function feet(big) {
+    const i = ++uid;
+    return big
+      ? `<svg viewBox="0 0 300 260" aria-hidden="true" focusable="false">${defs(i)}
+          ${leaf(i, 150, 150, 1, -58)}${leaf(i, 168, 130, 0.9, 12)}${leaf(i, 102, 170, 0.95, -112)}${leaf(i, 196, 178, 0.85, 102)}${leaf(i, 128, 196, 0.8, -160)}
+          ${branch(i, [[120, 140], [100, 110], [86, 80], [80, 44]], [[0.45, -1, 0.72], [0.78, 1, 0.58]], 1.3)}
+          ${bud(i, 80, 44, 0.66, -14)}${blossom(60, 120, 0.85, 10)}${blossom(226, 200, 0.8, 30)}${blossom(44, 156, 0.6, 50)}${blossom(240, 176, 0.6, 0)}
+          ${rose(i, 112, 150, 0.82, 12)}${rose(i, 184, 172, 1.05, -10)}
+        </svg>`
+      : `<svg viewBox="0 0 240 220" aria-hidden="true" focusable="false">${defs(i)}
+          ${leaf(i, 122, 130, 0.9, 58)}${leaf(i, 98, 146, 0.85, -84)}${leaf(i, 136, 160, 0.8, 150)}
+          ${branch(i, [[128, 120], [146, 96], [160, 70], [168, 40]], [[0.5, 1, 0.66]], 1.2)}
+          ${bud(i, 168, 40, 0.6, 18)}${blossom(70, 172, 0.8, 20)}${blossom(184, 168, 0.7, 40)}
+          ${rose(i, 118, 146, 0.86, 8)}
+        </svg>`;
+  }
+
+  /* a faint eight-pointed star lattice (girih) for the background of the hero, as a CSS image */
+  function girih(color) {
+    const c = color || "#d6b26e", st = (x, y) => star8(x, y, 17);
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="120" height="120" viewBox="0 0 120 120"><g fill="none" stroke="${c}" stroke-width=".7">
+      <path d="${st(60, 60)}${st(0, 0)}${st(120, 0)}${st(0, 120)}${st(120, 120)}"/>
+      <path d="M77 60H103M17 60H43M60 17V43M60 77V103M72 72L108 108M48 48L12 12M72 48L108 12M48 72L12 108" stroke-opacity=".7"/>
+      <circle cx="60" cy="60" r="4"/></g></svg>`;
+    return `url("data:image/svg+xml,${encodeURIComponent(svg)}")`;
   }
 
   /* a small sprig: one rose, a bud and leaves (viewBox 220 x 200) */
@@ -260,7 +368,7 @@
     return `<svg viewBox="-14 -27 28 30" aria-hidden="true" focusable="false"><defs><linearGradient id="rqF${i}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--bl-shade,#e3e9db)"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><path d="${petalPath(24, 11, 0.06)}" fill="url(#rqF${i})" ${EDGE}/></svg>`;
   }
 
-    return { corner, sprig, petal };
+    return { sprig, petal, mihrab, glint, feet, girih };
   })();
 
   window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, blooms };
