@@ -793,3 +793,66 @@ footer.site .f-langs a.on { color: var(--emerald); }
 .menu-theme { display: flex; align-items: center; gap: 12px; width: 100%; padding: 14px 4px; margin: 0; border: 0; border-bottom: 1px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 17px; cursor: pointer; text-align: start; }
 .menu-theme svg { width: 20px; height: 20px; flex: none; color: var(--emerald); }
 @media (max-width: 560px) { .nav-actions .theme-btn { display: none; } }
+
+/* ==========================================================================
+   White roses — home page only (art.js → blooms; site.js → heroBlooms).
+   Behind the hero card (never over its photo or text), a sprig on the About
+   picture, and a few petals falling slowly through the hero.
+   ========================================================================== */
+/* .bloom is placed (and faded in by the hero entrance); .bl-in holds the turn and the mirror
+   for left-to-right pages; the svg inside sways */
+.bloom { position: absolute; pointer-events: none; z-index: 0; }
+.bl-in { width: 100%; }
+.bloom svg { display: block; width: 100%; height: auto; overflow: visible; will-change: transform; }
+.showcase .deck { z-index: 1; }
+/* the corner of the card is at (15%, 93.75%) of the square showcase; the drawing's corner point is (175, 150) of 320 */
+.bl-corner { width: 62%; inset-inline-end: -18.9%; top: 64.7%; }
+.bl-sprig { width: 36%; inset-inline-start: 3%; top: -1%; }
+.bl-sprig .bl-in { rotate: 166deg; }
+@media (max-width: 560px) { .bl-corner { width: 52%; inset-inline-end: -13.4%; top: 69.4%; } .bl-sprig { width: 32%; } }
+:root[dir="ltr"] .bloom .bl-in { scale: -1 1; }
+:root[dir="ltr"] .bl-sprig .bl-in { rotate: -166deg; }
+.bl-corner svg { transform-origin: 55% 45%; animation: blSway 9s ease-in-out infinite alternate; }
+.bl-sprig svg { transform-origin: 50% 65%; animation: blSway 11s ease-in-out -4s infinite alternate; }
+@keyframes blSway { from { transform: rotate(-1.4deg); } to { transform: rotate(1.6deg); } }
+
+.about-pic { position: relative; max-width: 460px; width: 100%; margin-inline: auto; }
+.bl-about { width: 44%; top: -10%; inset-inline-start: -13%; z-index: 2; }
+.bl-about .bl-in { rotate: 8deg; }
+:root[dir="ltr"] .bl-about .bl-in { rotate: -8deg; }
+.bl-about svg { transform-origin: 40% 70%; animation: blSway 10s ease-in-out -2s infinite alternate; }
+@media (max-width: 860px) { .bl-about { width: 38%; top: -8%; inset-inline-start: -4%; } }
+
+/* falling petals: each <i> is a full-height lane that slides down the hero */
+.hero > .wrap { position: relative; z-index: 1; }
+/* the petals fall on the card's side of the hero only, never across the text */
+.petals { position: absolute; inset-block: 0; inset-inline-start: 50%; inset-inline-end: 0; overflow: hidden; pointer-events: none; z-index: 0; }
+@media (max-width: 920px) { .petals { inset-inline: 0; inset-block-end: auto; height: calc(min(400px, 100vw - 24px) + 70px); } }
+.petals i { position: absolute; top: 0; left: var(--x); height: 100%; width: 22px; opacity: 0;
+  animation: blFall var(--t) linear var(--d) infinite; }
+.petals svg { display: block; width: calc(17px * var(--s)); height: auto; overflow: visible;
+  animation: blDrift calc(var(--t) / 3.2) ease-in-out var(--d) infinite alternate; }
+@keyframes blFall {
+  0% { transform: translateY(-6%); opacity: 0; }
+  8% { opacity: .85; }
+  82% { opacity: .75; }
+  100% { transform: translateY(100%); opacity: 0; }
+}
+@keyframes blDrift {
+  from { transform: translateX(calc(-18px * var(--r))) rotate(calc(-40deg * var(--r))); }
+  to { transform: translateX(calc(26px * var(--r))) rotate(calc(160deg * var(--r))); }
+}
+@media (max-width: 620px) { .petals i:nth-child(n + 5) { display: none; } }
+
+/* colours: soft sage in the shadows of the petals, green leaves */
+.bloom, .petals { --bl-shade: #e3e9db; --bl-shade-2: #b9c7af; --bl-core: #9db293; --bl-edge: rgba(92,112,92,.3);
+  --bl-shadow: rgba(55,78,58,.15); --bl-leaf: #7f9e7c; --bl-leaf-2: #4d6c53; --bl-leaf-3: #a9c2a2; --bl-stem: #6c8a69; }
+:root[data-theme="light"] :is(.bloom, .petals) { --bl-shade: #dbe3d2; --bl-shade-2: #a9b99e; --bl-edge: rgba(62,88,66,.42);
+  --bl-shadow: rgba(40,64,46,.2); --bl-leaf: #6f906d; --bl-leaf-2: #3f5f46; }
+/* the shadow sits on the swaying svg itself, so it is drawn once and the sway stays a cheap GPU move */
+:root[data-theme="light"] .bloom svg { filter: drop-shadow(0 8px 16px rgba(24,48,34,.14)); }
+
+@media (prefers-reduced-motion: reduce) {
+  .petals { display: none; }
+  .bloom svg { animation: none !important; }
+}

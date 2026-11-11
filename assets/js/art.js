@@ -101,5 +101,167 @@
   /* large corner ornament (arabesque flower) used in the hero */
   const ornament = `<svg viewBox="0 0 200 200" aria-hidden="true" fill="none" stroke="currentColor" stroke-opacity=".14" stroke-width=".8">${Array.from({ length: 12 }, (_, k) => `<ellipse cx="100" cy="58" rx="16" ry="42" transform="rotate(${k * 30} 100 100)"/>`).join("")}${Array.from({ length: 8 }, (_, k) => `<ellipse cx="100" cy="76" rx="8" ry="24" transform="rotate(${k * 45 + 22.5} 100 100)"/>`).join("")}<circle cx="100" cy="100" r="96"/><circle cx="100" cy="100" r="12"/></svg>`;
 
-  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament };
+  /* soft white roses with a touch of sage green, drawn here (no images): the arrangement round
+     the hero card, a small sprig and a loose petal. Home page only. Colours come from --bl-* (site.css). */
+  const blooms = (() => {
+  let uid = 0;   // gradient ids are unique per drawing
+  const f = (n) => (Math.round(n * 10) / 10).toString();
+  const rad = (d) => (d * Math.PI) / 180;
+
+  // smooth closed/open curve through points (Catmull-Rom → cubic Bézier)
+  function smooth(pts, closed) {
+    const P = (k) => pts[closed ? (k + pts.length) % pts.length : Math.max(0, Math.min(pts.length - 1, k))];
+    let d = `M${f(pts[0][0])} ${f(pts[0][1])}`;
+    const n = closed ? pts.length : pts.length - 1;
+    for (let k = 0; k < n; k++) {
+      const p0 = P(k - 1), p1 = P(k), p2 = P(k + 1), p3 = P(k + 2);
+      d += `C${f(p1[0] + (p2[0] - p0[0]) / 6)} ${f(p1[1] + (p2[1] - p0[1]) / 6)} ${f(p2[0] - (p3[0] - p1[0]) / 6)} ${f(p2[1] - (p3[1] - p1[1]) / 6)} ${f(p2[0])} ${f(p2[1])}`;
+    }
+    return d + (closed ? "Z" : "");
+  }
+
+  // a rounded rose petal pointing up from (0,0): length l, half-width w, a soft dip at the rim
+  const petalPath = (l, w, dip = 0.05) =>
+    `M0 0C${f(-w * 0.95)} ${f(-l * 0.22)} ${f(-w * 1.08)} ${f(-l * 0.78)} ${f(-w * 0.52)} ${f(-l * 0.97)}` +
+    `C${f(-w * 0.26)} ${f(-l * 1.06)} ${f(-w * 0.08)} ${f(-l * (1 - dip))} 0 ${f(-l * (1 - dip))}` +
+    `C${f(w * 0.08)} ${f(-l * (1 - dip))} ${f(w * 0.26)} ${f(-l * 1.06)} ${f(w * 0.52)} ${f(-l * 0.97)}` +
+    `C${f(w * 1.08)} ${f(-l * 0.78)} ${f(w * 0.95)} ${f(-l * 0.22)} 0 0Z`;
+
+  // a cupped petal wrapped round the heart: a crescent on radius R from angle a over span degrees
+  function cup(R, a, span, thick) {
+    const out = [], inn = [], N = 9;
+    for (let k = 0; k <= N; k++) {
+      const t = k / N, th = rad(a + span * t);
+      const bulge = Math.sin(Math.PI * t);
+      out.push([(R + bulge * R * 0.06) * Math.cos(th), (R + bulge * R * 0.06) * Math.sin(th)]);
+      inn.push([(R - thick * Math.pow(bulge, 0.8)) * Math.cos(th), (R - thick * Math.pow(bulge, 0.8)) * Math.sin(th)]);
+    }
+    return smooth(out.concat(inn.slice(1, -1).reverse()), true);
+  }
+
+  const leafPath = (l, w) =>
+    `M0 0C${f(w)} ${f(-l * 0.18)} ${f(w * 0.95)} ${f(-l * 0.72)} 0 ${f(-l)}C${f(-w * 0.95)} ${f(-l * 0.72)} ${f(-w)} ${f(-l * 0.18)} 0 0Z`;
+
+  /* gradients shared by one drawing (ids are unique per drawing) */
+  function defs(i) {
+    return `<defs>
+      <radialGradient id="rqO${i}" gradientUnits="userSpaceOnUse" cx="0" cy="0" r="52">
+        <stop offset=".12" stop-color="var(--bl-shade-2,#aebda4)"/><stop offset=".45" stop-color="var(--bl-shade,#e3e9db)"/>
+        <stop offset=".82" stop-color="#fafbf7"/><stop offset="1" stop-color="#fff"/></radialGradient>
+      <radialGradient id="rqI${i}" gradientUnits="userSpaceOnUse" cx="0" cy="2" r="30">
+        <stop offset="0" stop-color="var(--bl-core,#9db293)"/><stop offset=".4" stop-color="var(--bl-shade-2,#c8d4bf)"/>
+        <stop offset=".72" stop-color="var(--bl-shade,#eaefe4)"/><stop offset="1" stop-color="#fff"/></radialGradient>
+      <linearGradient id="rqB${i}" x1="0" y1="1" x2="0" y2="0">
+        <stop offset="0" stop-color="var(--bl-shade-2,#b7c4ad)"/><stop offset=".5" stop-color="var(--bl-shade,#e6ece0)"/><stop offset="1" stop-color="#fff"/></linearGradient>
+      <linearGradient id="rqL${i}" x1="0" y1="1" x2="1" y2="0">
+        <stop offset="0" stop-color="var(--bl-leaf-2,#4d6c53)"/><stop offset=".55" stop-color="var(--bl-leaf,#7f9e7c)"/><stop offset="1" stop-color="var(--bl-leaf-3,#a9c2a2)"/></linearGradient>
+    </defs>`;
+  }
+  const EDGE = `stroke="var(--bl-edge,rgba(92,112,92,.3))" stroke-width=".55"`;
+
+  /* an open rose seen slightly from above */
+  function rose(i, x, y, s, rot = 0, tilt = 0.84) {
+    let out = "";
+    // outer open petals, two rings
+    [{ n: 6, l: 50, w: 27, off: 6 }, { n: 5, l: 40, w: 24, off: 40 }].forEach((L, k) => {
+      for (let j = 0; j < L.n; j++) {
+        const a = L.off + (j * 360) / L.n + (j % 2 ? 4 : -4);
+        const d = petalPath(L.l * (1 + ((j * 7) % 5) * 0.03), L.w, 0.04 + (j % 3) * 0.025);
+        if (k) out += `<path d="${d}" transform="rotate(${f(a + 5)}) scale(1.05)" fill="var(--bl-shadow,rgba(55,78,58,.15))"/>`;
+        out += `<path d="${d}" transform="rotate(${f(a)})" fill="url(#rqO${i})" ${EDGE}/>`;
+      }
+    });
+    // the cup: crescents wrapping round the heart, in a spiral
+    out += `<circle r="25" fill="var(--bl-shadow,rgba(55,78,58,.15))"/>`;
+    [[26, 200, 170, 10], [25, 20, 165, 10], [21, 120, 175, 9], [19.5, 290, 160, 8.5], [16, 40, 190, 7.5], [13, 200, 200, 6.5], [10, 330, 210, 5.5], [7, 110, 230, 4.5], [4.2, 250, 260, 3.2]].forEach(([R, a, sp, th]) => {
+      out += `<path d="${cup(R, a, sp, th)}" fill="url(#rqI${i})" ${EDGE}/>`;
+    });
+    out += `<circle r="1.8" fill="var(--bl-core,#8ea283)" fill-opacity=".8"/>`;
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)} ${f(s * tilt)})">${out}</g>`;
+  }
+
+  /* a bud, closed, with green sepals */
+  function bud(i, x, y, s, rot = 0) {
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})">
+      <path d="M0 0C-12-4-15-20-8-32C-5-37 0-40 0-40C0-40 5-37 8-32C15-20 12-4 0 0Z" fill="url(#rqB${i})" ${EDGE}/>
+      <path d="M0-40C-3-30 1-17 7-8" fill="none" stroke="var(--bl-edge,rgba(92,112,92,.34))" stroke-width=".7"/>
+      <path d="M0 0C-9-2-14-10-13-21C-9-12-5-8 0-6C5-8 9-12 13-21C14-10 9-2 0 0Z" fill="url(#rqL${i})"/>
+      <path d="M0 0C-3-7-10-13-16-15C-9-8-5-3 0 0ZM0 0C3-7 10-13 16-15C9-8 5-3 0 0Z" fill="var(--bl-leaf-2,#4d6c53)"/>
+      <ellipse cy="3" rx="3" ry="4" fill="var(--bl-leaf-2,#4d6c53)"/>
+    </g>`;
+  }
+
+  /* a leaf with a soft midrib and veins kept inside the blade */
+  function leaf(i, x, y, s, rot = 0, l = 44, w = 14) {
+    let v = "";
+    [0.28, 0.46, 0.64].forEach((t) => {
+      const hw = w * 0.52 * Math.sin(Math.PI * (t + 0.1)), dy = l * 0.13;
+      v += `M0 ${f(-l * t)}Q${f(hw * 0.5)} ${f(-l * t - dy * 0.4)} ${f(hw)} ${f(-l * t - dy)}M0 ${f(-l * t)}Q${f(-hw * 0.5)} ${f(-l * t - dy * 0.4)} ${f(-hw)} ${f(-l * t - dy)}`;
+    });
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})">
+      <path d="${leafPath(l, w)}" fill="url(#rqL${i})"/>
+      <path d="M0 0Q${f(w * 0.08)} ${f(-l * 0.5)} 0 ${f(-l * 0.9)}${v}" fill="none" stroke="var(--bl-vein,rgba(225,238,220,.4))" stroke-width=".7" stroke-linecap="round"/>
+    </g>`;
+  }
+
+  /* a tiny five-petal blossom (filler) */
+  function blossom(x, y, s, rot = 0) {
+    let p = "";
+    for (let k = 0; k < 5; k++) p += `<ellipse cy="-5.2" rx="3.5" ry="5.1" transform="rotate(${k * 72})"/>`;
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})"><g fill="#fff" ${EDGE}>${p}</g><circle r="2.2" fill="var(--bl-core-2,#b9c79a)"/></g>`;
+  }
+
+  // a cubic stem, with leaves set along it at fractions t (side ±1)
+  function branch(i, p, leaves, w = 1.5) {
+    const at = (t) => {
+      const u = 1 - t;
+      const x = u * u * u * p[0][0] + 3 * u * u * t * p[1][0] + 3 * u * t * t * p[2][0] + t * t * t * p[3][0];
+      const y = u * u * u * p[0][1] + 3 * u * u * t * p[1][1] + 3 * u * t * t * p[2][1] + t * t * t * p[3][1];
+      const dx = 3 * u * u * (p[1][0] - p[0][0]) + 6 * u * t * (p[2][0] - p[1][0]) + 3 * t * t * (p[3][0] - p[2][0]);
+      const dy = 3 * u * u * (p[1][1] - p[0][1]) + 6 * u * t * (p[2][1] - p[1][1]) + 3 * t * t * (p[3][1] - p[2][1]);
+      return [x, y, (Math.atan2(dy, dx) * 180) / Math.PI + 90];
+    };
+    let out = `<path d="M${p[0][0]} ${p[0][1]}C${p[1][0]} ${p[1][1]} ${p[2][0]} ${p[2][1]} ${p[3][0]} ${p[3][1]}" fill="none" stroke="var(--bl-stem,#6c8a69)" stroke-width="${w}" stroke-linecap="round"/>`;
+    leaves.forEach(([t, side, sc]) => { const [x, y, a] = at(t); out += leaf(i, x, y, sc, a + side * 52); });
+    return out;
+  }
+
+  /* the hero corner: drawn round the bottom corner of the card, which sits at (175, 150) with the
+     card above and to the right of it; nothing grows out under the card, where the slide dots
+     and the text below them are (viewBox 320 x 320) */
+  function corner() {
+    const i = ++uid;
+    return `<svg viewBox="0 0 320 320" aria-hidden="true" focusable="false">${defs(i)}
+      ${leaf(i, 196, 138, 1.05, 96)}${leaf(i, 150, 120, 0.95, -20)}${leaf(i, 128, 196, 1, -128)}${leaf(i, 158, 222, 0.92, 214)}
+      ${branch(i, [[112, 86], [104, 52], [112, 22], [128, -2]], [[0.4, 1, 0.8], [0.72, -1, 0.66]], 1.4)}
+      ${branch(i, [[96, 104], [70, 110], [44, 128], [22, 160]], [[0.45, -1, 0.82], [0.8, 1, 0.6]], 1.3)}
+      ${branch(i, [[160, 222], [150, 252], [132, 272], [104, 282]], [[0.5, 1, 0.74]], 1.1)}
+      ${bud(i, 128, -2, 0.74, 28)}${bud(i, 22, 160, 0.62, -120)}
+      ${blossom(104, 282, 1, 10)}${blossom(84, 266, 0.72, 40)}${blossom(44, 92, 0.8, 0)}${blossom(58, 210, 0.7, 20)}${blossom(150, 34, 0.62, 30)}
+      ${rose(i, 108, 100, 0.8, 16)}${rose(i, 168, 176, 1.06, -8)}
+    </svg>`;
+  }
+
+  /* a small sprig: one rose, a bud and leaves (viewBox 220 x 200) */
+  function sprig() {
+    const i = ++uid;
+    return `<svg viewBox="0 0 220 200" aria-hidden="true" focusable="false">${defs(i)}
+      ${leaf(i, 118, 150, 0.9, 150)}${leaf(i, 84, 134, 0.85, -70)}
+      ${branch(i, [[112, 120], [134, 104], [156, 80], [180, 50]], [[0.45, 1, 0.8], [0.75, -1, 0.62]], 1.4)}
+      ${branch(i, [[100, 134], [80, 150], [58, 160], [32, 160]], [[0.5, -1, 0.72]], 1.2)}
+      ${bud(i, 180, 50, 0.68, 36)}${blossom(32, 160, 1, 0)}${blossom(48, 180, 0.72, 30)}
+      ${rose(i, 104, 128, 0.82, -8)}
+    </svg>`;
+  }
+
+  /* one loose petal for the slow fall in the hero */
+  function petal() {
+    const i = ++uid;
+    return `<svg viewBox="-14 -27 28 30" aria-hidden="true" focusable="false"><defs><linearGradient id="rqF${i}" x1="0" y1="1" x2="0" y2="0"><stop offset="0" stop-color="var(--bl-shade,#e3e9db)"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><path d="${petalPath(24, 11, 0.06)}" fill="url(#rqF${i})" ${EDGE}/></svg>`;
+  }
+
+    return { corner, sprig, petal };
+  })();
+
+  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, blooms };
 })();

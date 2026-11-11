@@ -912,7 +912,8 @@
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
           SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),
-          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" })
+          SH("theme.floral", "إضاءة ناعمة في خلفية الموقع", { t: "toggle" }),
+          SH("theme.flowers", "ورد أبيض ناعم في الصفحة الرئيسية", { t: "toggle", hint: "باقة ورد أبيض بأوراق خضراء حول صورة الواجهة وبجانب الشعار، مع بتلات تتساقط بهدوء." })
         ] },
         { title: "ألوان الوضع الداكن", fields: [{ p: "theme", t: "colors" }] },
         { title: "ألوان الوضع الفاتح", fields: [{ p: "theme_light", t: "colors" }] },
@@ -1074,7 +1075,7 @@
       const h = e.target.closest(".collapsible > h2"); if (h) { h.parentElement.classList.toggle("open"); return; }
       const t = e.target.closest("[data-addstr],[data-additem],[data-del],[data-move],[data-clear],[data-reset]");
       if (!t) return;
-      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
+      if (t.dataset.reset) { const b = t.dataset.reset; const keep = getPath(d, b) || {}; const fresh = clone(getPath(DEF, b)); ["floral", "flowers", "mode"].forEach((k) => { if (k in keep) fresh[k] = keep[k]; }); setPath(d, b, fresh); pg.querySelector(`[data-fp="${b}-colors"]`).outerHTML = fieldHTML({ p: b, t: "colors" }, d); dirty(); return; }
       if (t.dataset.clear) { setPath(d, t.dataset.clear, ""); redraw(t.dataset.clear); dirty(); return; }
       const p = t.dataset.addstr || t.dataset.additem || t.dataset.del || t.dataset.move;
       const arr = Array.isArray(getPath(d, p)) ? getPath(d, p) : [];

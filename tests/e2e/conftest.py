@@ -59,11 +59,12 @@ def browser():
 class Page:
     """A browser tab pointed at the local stack, collecting JS errors."""
 
-    def __init__(self, browser, width=1366, height=860, theme="dark", intro=False, gateway=None, locale="ar-IQ"):
+    def __init__(self, browser, width=1366, height=860, theme="dark", intro=False, gateway=None, locale="ar-IQ", reduced_motion=None):
         mobile = width < 700
         # the site opens in the device language (English, Urdu, German, else Arabic): tests choose it
         self.ctx = browser.new_context(viewport={"width": width, "height": height}, is_mobile=mobile, has_touch=mobile,
-                                       device_scale_factor=2 if mobile else 1, locale=locale)
+                                       device_scale_factor=2 if mobile else 1, locale=locale,
+                                       **({"reduced_motion": reduced_motion} if reduced_motion else {}))
         self.ctx.add_init_script(
             "try{sessionStorage.setItem('rq_backend','local');localStorage.setItem('rq_theme','%s');%s}catch(e){}"
             % (theme, ("" if intro else "sessionStorage.setItem('rq_intro','1');")
