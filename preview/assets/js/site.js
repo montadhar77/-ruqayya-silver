@@ -335,6 +335,7 @@
     tv.textContent = `:root{${keys.filter((k) => ok(t[k])).map((k) => `--${k}:${t[k]}`).join(";")}}` +
       `:root[data-theme="light"]{${keys.filter((k) => ok(tl[k])).map((k) => `--${k}:${tl[k]}`).join(";")}}`;
     document.body.classList.toggle("no-aurora", t.floral === false);
+    embroidery();
     if (!safeLS(() => localStorage.getItem("rq_theme"), null)) setTheme(resolveMode(t.mode), false);
     document.title = s.seo.title || s.brand.full;
     const md = $('meta[name="description"]'); if (md) md.setAttribute("content", s.seo.description || "");
@@ -552,16 +553,30 @@
      never clickable, never over text; still for visitors who prefer reduced motion. */
   // [lane %, seconds to fall, start offset, size, sway direction] — lanes kept to the sides of the card
   const PETALS = [[6, 21, -3, 0.9], [92, 25, -14, 0.75], [30, 19, -9, 1], [72, 24, -2, 0.8], [14, 27, -19, 0.7], [85, 22, -11, 0.85]];
-  const bloomsOn = () => state.s.theme.flowers !== false && !!(A.blooms && A.blooms.mihrab);
+  const bloomsOn = () => state.s.theme.flowers !== false && !!(A.emb);
   function heroBlooms() {
     if (!bloomsOn()) return { back: "", petals: "", cls: "" };
-    const B = A.blooms;
+    const E = A.emb;
     return {
       cls: " has-orn",
-      back: `<div class="orn" aria-hidden="true"><div class="orn-frame">${B.mihrab()}${B.glint()}</div>
-        <div class="bloom orn-foot orn-a"><div class="bl-in">${B.feet(true)}</div></div><div class="bloom orn-foot orn-b"><div class="bl-in">${B.feet(false)}</div></div></div>`,
-      petals: `<div class="girih" aria-hidden="true"><i></i></div><div class="petals" aria-hidden="true">${PETALS.map(([x, t, d, sc], k) => `<i style="--x:${x}%;--t:${t}s;--d:${d}s;--s:${sc};--r:${k % 2 ? -1 : 1}">${B.petal()}</i>`).join("")}</div>`
+      back: `<div class="orn" aria-hidden="true"><div class="orn-frame"><div class="orn-in">${E.frame()}</div></div>
+        <div class="bloom orn-foot orn-a"><div class="bl-in">${E.bouquet(0)}</div></div><div class="bloom orn-foot orn-b"><div class="bl-in">${E.bouquet(1)}</div></div></div>`,
+      petals: `<div class="petals" aria-hidden="true">${PETALS.map(([x, t, d, sc], k) => `<i style="--x:${x}%;--t:${t}s;--d:${d}s;--s:${sc};--r:${k % 2 ? -1 : 1}">${E.fall()}</i>`).join("")}</div>`
     };
+  }
+  /* the embroidered roses that run through every page: scattered over the background, under
+     section titles, along the top of the footer (CSS images made once from art.js) */
+  let embDone = false;
+  function embroidery() {
+    const on = bloomsOn();
+    document.documentElement.classList.toggle("emb", on);
+    if (!on || embDone) return;
+    embDone = true;
+    const E = A.emb, st = document.documentElement.style;
+    st.setProperty("--emb-scatter", E.scatterTile(0.3));
+    st.setProperty("--emb-divider", E.dividerImg());
+    st.setProperty("--emb-garland", E.garlandImg());
+    st.setProperty("--emb-rose", E.roseImg("white"));
   }
 
   function renderHome(scrollTo) {
@@ -693,7 +708,7 @@
     if (sec.about.show) {
       const values = (sec.about.values || []).filter((v) => v && v.title);
       html += `<section class="block" id="about"><div class="wrap about">
-        <div class="about-pic"><div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img ${imgSrc(sec.about.image, SZ.half)} alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="${ui("a11y_logo", { brand: s.brand.full })}" loading="lazy"></div>`}</div>${bloomsOn() ? `<div class="bloom bl-about" aria-hidden="true" data-rv><div class="bl-in">${A.blooms.sprig()}</div></div>` : ""}</div>
+        <div class="about-pic"><div class="about-media glass edge lit" data-clip>${sec.about.image ? `<img ${imgSrc(sec.about.image, SZ.half)} alt="" loading="lazy">` : `<div class="logo-art"><img src="${esc(s.brand.logo || LOGO_FULL)}" alt="${ui("a11y_logo", { brand: s.brand.full })}" loading="lazy"></div>`}</div>${bloomsOn() ? `<div class="bloom bl-about" aria-hidden="true" data-rv><div class="bl-in">${A.emb.bouquet(1)}</div></div>` : ""}</div>
         <div><div data-rv>${eyebrow(sec.about.eyebrow)}</div><h2 data-split>${splitWords(sec.about.title)}</h2><p class="lit-text" data-lit>${String(sec.about.text || "").split("\n").map((line) => line.split(/\s+/).filter(Boolean).map((w) => `<span class="lw">${esc(w)}</span>`).join(" ")).join("<br>")}</p>
           ${values.length ? `<div class="values" data-stagger>${values.map((v) => `<div class="glass">${A.ui[v.icon] || A.ui.shield}<span><b>${esc(v.title)}</b>${esc(v.text || "")}</span></div>`).join("")}</div>` : ""}
           ${sec.about.button ? `<div class="cta" data-rv style="margin-top:26px"><a class="btn shine" href="#/shop" data-magnet>${esc(sec.about.button)} ${A.ui.arrow}</a></div>` : ""}</div>
@@ -1304,13 +1319,9 @@
       .fromTo("[data-hero]", { y: 30, opacity: 0 }, { y: 0, opacity: 1, duration: 1, ease: "expo.out", stagger: 0.1 }, "-=1")
       .fromTo("#deck", { y: 80, opacity: 0, rotateX: 18, scale: 0.92 }, { y: 0, opacity: 1, rotateX: 0, scale: 1, duration: 1.6, ease: "expo.out" }, 0)
       .fromTo("[data-orbit]", { scale: 0.6, opacity: 0, rotate: -90 }, { scale: 1, opacity: 1, rotate: 0, duration: 2.2, ease: "expo.out" }, 0.1);
-    // the mihrab draws itself in gold once the card has landed, then the roses open at its feet
+    // the embroidered frame and its roses open once the card has landed
     const orn = $(".hero .orn");
-    if (orn) {
-      orn.classList.add("orn-wait");
-      introPromise.then(() => setTimeout(() => orn.classList.add("orn-go"), 350));
-      tl.fromTo($$(".orn-foot", orn), { opacity: 0, scale: 0.8, y: 24 }, { opacity: 1, scale: 1, y: 0, duration: 2.2, ease: "expo.out", stagger: 0.3 }, 1.1);
-    }
+    if (orn) tl.fromTo([$(".orn-frame", orn), ...$$(".orn-foot", orn)], { opacity: 0, scale: 0.9, y: 20 }, { opacity: 1, scale: 1, y: 0, duration: 2, ease: "expo.out", stagger: 0.25 }, 0.9);
     // parallax
     G.to("[data-show]", { yPercent: -10, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
     G.to("[data-orbit]", { rotate: 60, ease: "none", scrollTrigger: { trigger: ".hero", start: "top top", end: "bottom top", scrub: true } });
