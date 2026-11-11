@@ -130,3 +130,23 @@ def test_site_runs_on_pages_build_through_the_proxy(pages, stk, tab):
     t.page.goto(f"{pages['site']}/index.html?backend=local#/p/6c96ae41-cd0b-40d5-bb79-79e309025b72")
     t.page.wait_for_selector("#addBtn")
     assert not t.errors, t.errors
+
+
+def test_owner_sees_his_edit_at_once_visitors_use_the_cache(pages, stk, tab):
+    """Right after a save in the dashboard, the same browser reads straight from the database
+    (no minute-long cache); ten minutes later, and for every other visitor, the cache is used."""
+    def catalogue_calls(fresh_at):
+        t = tab(width=390, height=844)
+        t.ctx.add_init_script("sessionStorage.setItem('rq_api', '/api/rpc');" +
+                              (f"localStorage.setItem('rq_fresh', String({fresh_at}));" if fresh_at is not None else ""))
+        seen = []
+        t.page.on("request", lambda r: seen.append(r.url) if "catalog_home" in r.url else None)
+        t.page.goto(f"{pages['site']}/index.html?backend=local#/shop")
+        t.page.wait_for_selector(".card")
+        t.page.wait_for_timeout(500)
+        assert not t.errors, t.errors
+        return ["proxy" if "/api/rpc/" in u else "database" for u in seen]
+    now_ms = int(time.time() * 1000)
+    assert set(catalogue_calls(now_ms)) == {"database"}                           # owner just saved
+    assert set(catalogue_calls(now_ms - 11 * 60 * 1000)) == {"proxy"}             # saved long ago
+    assert set(catalogue_calls(None)) == {"proxy"}                                # an ordinary visitor

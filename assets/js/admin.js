@@ -6,8 +6,22 @@
 (() => {
   "use strict";
   const cfg = window.RQ_CONFIG, A = window.RQ_ART, DEF = window.RQ_DEFAULTS;
+  /* After every saved change (product, photo, department, text…) note the time in this
+     browser: for the next minutes the shop, opened in the same browser, reads straight from
+     the database instead of the minute-long Cloudflare cache, so the owner sees his edit at
+     once (visitors see it within about a minute). */
+  const markFresh = () => { try { localStorage.setItem("rq_fresh", String(Date.now())); } catch (e) { /* storage blocked */ } };
+  const READ_ONLY_RPC = /\/rest\/v1\/rpc\/(am_i_admin|admin_gate|admin_stats|admin_orders|admin_unused_media)\b/;   // POST, but nothing changes
+  const trackedFetch = async (input, init) => {
+    const r = await fetch(input, init);
+    const method = String((init && init.method) || (input && input.method) || "GET").toUpperCase();
+    const url = String((input && input.url) || input);
+    if (r.ok && method !== "GET" && method !== "HEAD" && /\/(rest|storage)\/v1\//.test(url) && !READ_ONLY_RPC.test(url)) markFresh();
+    return r;
+  };
   const db = window.supabase.createClient(cfg.url, cfg.key, {
-    auth: { persistSession: true, autoRefreshToken: true, storageKey: "rq-admin", detectSessionInUrl: false }
+    auth: { persistSession: true, autoRefreshToken: true, storageKey: "rq-admin", detectSessionInUrl: false },
+    global: { fetch: trackedFetch }
   });
   const SITE = new URL("../", location.href).href;
   const root = document.getElementById("root");

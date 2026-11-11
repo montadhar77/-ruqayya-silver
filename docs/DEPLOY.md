@@ -49,9 +49,12 @@ Cloudflare ← Workers & Pages ← Create ← Pages ← Connect to Git ← `mont
   (أي `*.pages.dev` آخر = نسخة معاينة → تتصل بـ staging تلقائياً.)
 
 ### 4) ربط الأجزاء الأخرى بالنطاق الجديد
-- Supabase (الإنتاج) ← Authentication ← URL Configuration: Site URL = النطاق الجديد، وأضف `https://<النطاق>/admin/` إلى Redirect URLs.
-- أسرار الدوال: `ALLOWED_ORIGINS=https://ruqayya-silver.com,https://www.ruqayya-silver.com,https://ruqayya-silver.pages.dev`
-- Cloudflare Turnstile: أضف النطاق إلى قائمة نطاقات المفتاح.
+- Supabase (الإنتاج) ← Authentication ← URL Configuration: Site URL = النطاق الجديد، وأضف `https://<النطاق>/admin/` إلى Redirect URLs. (ترتيب فقط: الدخول باسم المستخدم وكلمة المرور والرمز لا يستعمل روابط بريد.)
+- فقط إن فُعّلت بوابة الطلبات `edge` (الإنتاج اليوم على `rpc`): أسرار الدوال `ALLOWED_ORIGINS=https://ruqayya-silver.com,https://www.ruqayya-silver.com,https://ruqayya-silver.pages.dev`، وأضف النطاق إلى مفتاح Cloudflare Turnstile.
+
+### متى تظهر تعديلات اللوحة في الموقع
+- **المالك:** فوراً. بعد كل حفظ في اللوحة (منتج، صورة، قسم، نص…) يقرأ الموقع في **المتصفح نفسه** من قاعدة البيانات مباشرة لمدة ١٠ دقائق، متجاوزاً التخزين المؤقت (`rq_fresh` في `admin.js` و`site.js`).
+- **الزوار:** خلال دقيقة تقريباً (مدة التخزين المؤقت لدالة الكتالوج ٦٠ ثانية، ثم تتجدد في الخلفية). على GitHub Pages لا يوجد تخزين مؤقت، فالتعديل فوري للجميع.
 
 ### 5) التحقق بعد النشر
 ```bash

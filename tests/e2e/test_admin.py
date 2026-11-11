@@ -68,11 +68,15 @@ def test_admin_edits_a_product_price(tab, stk):
     pid = t.page.get_attribute("[data-pid]", "data-pid")
     old = harness.admin_sql(stk["db"], "select price from public.products where id = %s", (pid,))[0][0]
     try:
+        assert t.page.evaluate("localStorage.getItem('rq_fresh')") is None           # signing in is not an edit
         t.page.click(f"[data-pid='{pid}'] [data-act=edit]")
         t.page.wait_for_selector("#fPrice")
         t.page.fill("#fPrice", "٢٥٠٬٠٠٠")
         t.page.click("#pSave")
         assert wait_db(stk, f"select price from public.products where id = '{pid}'", [(250000,)]) == [(250000,)]
+        # the shop in this browser now skips the Cloudflare cache, so the owner sees the new price at once
+        fresh = t.page.evaluate("Number(localStorage.getItem('rq_fresh'))")
+        assert abs(fresh - time.time() * 1000) < 60_000
         assert not t.errors, t.errors
     finally:   # other tests rely on the catalogue prices
         harness.admin_sql(stk["db"], "update public.products set price = %s where id = %s", (old, pid))

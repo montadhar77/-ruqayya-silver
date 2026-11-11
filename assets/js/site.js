@@ -73,11 +73,14 @@
      they use the site's own cached proxy (cfg.api, functions/api/rpc); anywhere else, or if
      that proxy is not deployed, they go straight to the database API. */
   let proxyMissing = false;
+  // the owner just saved something in the dashboard (same browser): skip the cache for a while
+  const FRESH_MS = 10 * 60 * 1000;
+  const ownerJustSaved = () => safeLS(() => Date.now() - Number(localStorage.getItem("rq_fresh") || 0) < FRESH_MS, false);
   async function rpcGet(fn, args = {}) {
     const qs = new URLSearchParams();
     Object.entries(args).forEach(([k, v]) => { if (v !== null && v !== undefined && v !== "") qs.set(k, String(v)); });
     const tail = fn + (qs.toString() ? "?" + qs : "");
-    if (cfg.api && !proxyMissing) {
+    if (cfg.api && !proxyMissing && !ownerJustSaved()) {
       try {
         const r = await fetch(`${cfg.api}/${tail}`, { headers: { Accept: "application/json" } });
         if (r.headers.get("x-rq-proxy")) {
