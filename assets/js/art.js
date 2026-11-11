@@ -371,5 +371,190 @@
     return { sprig, petal, mihrab, glint, feet, girih };
   })();
 
-  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, blooms };
+  /* ---- embroidery: roses, leaves and gold thread that look stitched (satin, woven-wheel, chain,
+     lazy-daisy, french knots). Used across the site; colours of the threads in T. ---- */
+  const emb = (() => {
+  let uid = 0;
+  const f = (n) => (Math.round(n * 10) / 10).toString();
+  const rad = (d) => (d * Math.PI) / 180;
+  const P = (o) => Object.entries(o).map(([k, v]) => `${k}="${v}"`).join(" ");
+
+  // thread palettes: [shadow, base, light, sheen]
+  const T = {
+    white: ["#c9cfc4", "#eef0ea", "#fbfbf8", "#ffffff"],
+    blush: ["#d9a6a2", "#efc9c3", "#f8e3de", "#fff4f1"],
+    cream: ["#d8c9a4", "#efe4c8", "#f8f1df", "#fffaf0"],
+    green: ["#2f6b4f", "#4a9c78", "#79bf9a", "#a9dcbf"],
+    sage: ["#4d6b52", "#7b9a7c", "#a6c2a4", "#cfe2cc"],
+    gold: ["#8f6f2c", "#c9a356", "#e6c983", "#fbe9b8"],
+  };
+
+  /* the stitches of one drawing share these definitions; ids are unique per drawing */
+  function kit() {
+    const i = ++uid, defs = [];
+    const hatch = {};
+    // fine parallel threads at a given angle (satin stitch); gaps show the thread colour below
+    function satin(angle, col) {
+      const a = Math.round(angle / 10) * 10, key = a + col;
+      if (!hatch[key]) {
+        const id = `st${i}_${Object.keys(hatch).length}`;
+        hatch[key] = id;
+        defs.push(`<pattern id="${id}" width="2.4" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(${a})">
+          <rect width="2.4" height="6" fill="${T[col][1]}"/><rect x="0" width="1.25" height="6" fill="${T[col][3]}" opacity=".85"/><rect x="1.9" width=".5" height="6" fill="${T[col][0]}" opacity=".55"/></pattern>`);
+      }
+      return `url(#${hatch[key]})`;
+    }
+    const grad = (col) => {
+      const id = `g${i}_${col}`;
+      if (!defs.some((d) => d.includes(`id="${id}"`))) defs.push(`<radialGradient id="${id}" cx=".5" cy=".55" r=".6"><stop offset="0" stop-color="${T[col][0]}"/><stop offset="1" stop-color="${T[col][1]}" stop-opacity="0"/></radialGradient>`);
+      return `url(#${id})`;
+    };
+    return { i, defs, satin, grad };
+  }
+
+  // a rounded petal pointing up from (0,0)
+  const petal = (l, w) => `M0 0C${f(-w)} ${f(-l * 0.25)} ${f(-w * 1.05)} ${f(-l * 0.8)} ${f(-w * 0.45)} ${f(-l)}Q0 ${f(-l * 1.12)} ${f(w * 0.45)} ${f(-l)}C${f(w * 1.05)} ${f(-l * 0.8)} ${f(w)} ${f(-l * 0.25)} 0 0Z`;
+  const leafD = (l, w) => `M0 0C${f(w)} ${f(-l * 0.2)} ${f(w * 0.9)} ${f(-l * 0.75)} 0 ${f(-l)}C${f(-w * 0.9)} ${f(-l * 0.75)} ${f(-w)} ${f(-l * 0.2)} 0 0Z`;
+
+  /* an embroidered rose: satin-stitched petals in rings, threads running out from the heart */
+  function rose(K, x, y, s, col = "white", rot = 0) {
+    let o = "";
+    const rings = [{ n: 6, l: 30, w: 16, off: 0 }, { n: 5, l: 23, w: 13, off: 36 }, { n: 5, l: 15, w: 9, off: 12 }];
+    rings.forEach((R, k) => {
+      for (let j = 0; j < R.n; j++) {
+        const a = R.off + (j * 360) / R.n;
+        const d = petal(R.l, R.w);
+        o += `<g transform="rotate(${f(a)})"><path d="${d}" fill="${T[col][0]}" transform="scale(1.04)"/><path d="${d}" fill="${K.satin(a + rot, col)}"/>
+          <path d="${d}" fill="none" stroke="${T[col][0]}" stroke-width=".7" stroke-dasharray="2.2 1.1" opacity=".9"/></g>`;
+      }
+      o += `<circle r="${f(R.l * 0.5)}" fill="${K.grad(col)}" opacity=".55"/>`;
+    });
+    // the heart: a tight spiral of thread
+    let sp = "";
+    for (let t = 0; t <= 1; t += 0.04) { const a = t * Math.PI * 5, r = 1 + t * 8; sp += `${t ? "L" : "M"}${f(Math.cos(a) * r)} ${f(Math.sin(a) * r)}`; }
+    o += `<path d="${sp}" fill="none" stroke="${T[col][0]}" stroke-width="2.6" stroke-linecap="round"/><path d="${sp}" fill="none" stroke="${T[col][2]}" stroke-width="1.5" stroke-linecap="round"/>`;
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})">${o}</g>`;
+  }
+
+  /* a small woven-wheel rose (ribbon embroidery): rings of short thread wraps, each one shaded */
+  function woven(x, y, s, col = "white") {
+    const c = T[col];
+    let o = `<circle r="13" fill="${c[0]}"/>`;
+    const rings = [[11, 9, 0], [8.2, 8, 20], [5.6, 7, 8], [3.4, 5, 40]];
+    rings.forEach(([r, n, off], k) => {
+      for (let j = 0; j < n; j++) {
+        const a1 = rad(off + (j * 360) / n), a2 = rad(off + ((j + 0.92) * 360) / n);
+        const p1 = [Math.cos(a1) * r, Math.sin(a1) * r], p2 = [Math.cos(a2) * r, Math.sin(a2) * r];
+        const arc = `M${f(p1[0])} ${f(p1[1])}A${r} ${r} 0 0 1 ${f(p2[0])} ${f(p2[1])}`;
+        const ro = r + 0.9, q1 = [Math.cos(a1 + 0.15) * ro, Math.sin(a1 + 0.15) * ro], q2 = [Math.cos(a2 - 0.25) * ro, Math.sin(a2 - 0.25) * ro];
+        o += `<path d="${arc}" fill="none" stroke="${k > 2 ? c[0] : c[1]}" stroke-width="${f(3.4 - k * 0.45)}" stroke-linecap="round"/>
+          <path d="M${f(q1[0])} ${f(q1[1])}A${ro} ${ro} 0 0 1 ${f(q2[0])} ${f(q2[1])}" fill="none" stroke="${c[3]}" stroke-width=".9" stroke-linecap="round" opacity=".95"/>`;
+      }
+    });
+    return `<g transform="translate(${f(x)} ${f(y)}) scale(${f(s)})">${o}<circle r="1.6" fill="${c[0]}"/></g>`;
+  }
+
+  /* a satin leaf: threads slanting from the midrib (fishbone stitch) */
+  function leaf(K, x, y, s, rot, col = "green", l = 34, w = 11) {
+    const d = leafD(l, w);
+    return `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})">
+      <path d="${d}" fill="${T[col][0]}" transform="scale(1.05)"/>
+      <clipPath id="lc${K.i}_${++uid}"><path d="M0 0H${-w * 2}V${-l * 1.2}H0Z"/></clipPath>
+      <path d="${d}" fill="${K.satin(rot + 40, col)}" clip-path="url(#lc${K.i}_${uid})"/>
+      <clipPath id="lc${K.i}_${++uid}"><path d="M0 0H${w * 2}V${-l * 1.2}H0Z"/></clipPath>
+      <path d="${d}" fill="${K.satin(rot - 40, col)}" clip-path="url(#lc${K.i}_${uid})"/>
+      <path d="M0 0V${f(-l * 0.95)}" stroke="${T[col][0]}" stroke-width=".9"/></g>`;
+  }
+
+  /* a lazy-daisy leaf: one chain-stitch loop */
+  const daisy = (x, y, s, rot, col = "green") => `<g transform="translate(${f(x)} ${f(y)}) rotate(${f(rot)}) scale(${f(s)})"><path d="${leafD(16, 5)}" fill="none" stroke="${T[col][1]}" stroke-width="2"/><path d="M0 ${f(-17)}l0 -3" stroke="${T[col][1]}" stroke-width="1.6" stroke-linecap="round"/></g>`;
+
+  /* a lazy-daisy flower: five chain-stitch petals round a gold knot */
+  const flower = (x, y, s, col = "white", rot = 0) => {
+    const c = T[col];
+    let p = "";
+    for (let k = 0; k < 5; k++) p += `<g transform="rotate(${rot + k * 72})"><path d="M0 -2.4C3.6 -4.5 3.4 -10.5 0 -12.2C-3.4 -10.5 -3.6 -4.5 0 -2.4Z" fill="${c[1]}" stroke="${c[0]}" stroke-width="1.1"/><path d="M0 -3.6C1.6 -5.6 1.5 -9.4 0 -10.6" fill="none" stroke="${c[3]}" stroke-width=".9" stroke-linecap="round"/></g>`;
+    return `<g transform="translate(${f(x)} ${f(y)}) scale(${f(s)})">${p}<circle r="2.6" fill="${T.gold[0]}"/><circle r="1.9" fill="${T.gold[1]}"/><circle cx="-.6" cy="-.6" r=".7" fill="${T.gold[3]}"/></g>`;
+  };
+
+  /* a french knot */
+  const knot = (x, y, s = 1, col = "gold") => `<g transform="translate(${f(x)} ${f(y)}) scale(${f(s)})"><circle r="2.3" fill="${T[col][0]}"/><circle r="1.7" fill="${T[col][1]}"/><circle cx="-.6" cy="-.6" r=".7" fill="${T[col][3]}"/></g>`;
+
+  /* a stem in stem stitch */
+  const stem = (d, col = "green", w = 2) => `<path d="${d}" fill="none" stroke="${T[col][0]}" stroke-width="${w + 0.8}" stroke-linecap="round"/><path d="${d}" fill="none" stroke="${T[col][1]}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="4 1.2"/><path d="${d}" fill="none" stroke="${T[col][3]}" stroke-width="${w * 0.35}" stroke-linecap="round" stroke-dasharray="2.4 2.8" opacity=".8"/>`;
+
+  /* a gold chain-stitch line along a path */
+  const chain = (d, col = "gold", w = 2.4) => `<path d="${d}" fill="none" stroke="${T[col][0]}" stroke-width="${w + 1}" stroke-linecap="round" stroke-dasharray="0.1 4.2"/><path d="${d}" fill="none" stroke="${T[col][1]}" stroke-width="${w}" stroke-linecap="round" stroke-dasharray="2.6 1.7"/><path d="${d}" fill="none" stroke="${T[col][3]}" stroke-width="${w * 0.35}" stroke-linecap="round" stroke-dasharray="1.2 3.1" opacity=".9"/>`;
+
+
+  /* ---- compositions ---- */
+  const svg = (vb, K, inner, attrs = "") => `<svg viewBox="${vb}" ${attrs} aria-hidden="true" focusable="false"><defs>${K.defs.join("")}</defs>${inner}</svg>`;
+  const tile = (w, h, K, inner, op = 1) => `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><defs>${K.defs.join("")}</defs><g opacity="${op}">${inner}</g></svg>`;
+  const url = (s) => `url("data:image/svg+xml,${encodeURIComponent(s.replace(/\s+/g, " "))}")`;
+
+  /* a bouquet: one big rose, small woven roses, leaves and gold knots (viewBox 200 x 170) */
+  function bouquet(v = 0) {
+    const K = kit();
+    return svg("0 0 200 170", K, `${stem("M100 120C96 140 90 152 80 166")}${stem("M100 120C120 132 140 138 160 136", "green", 1.6)}${stem("M96 112C76 104 58 90 46 70", "green", 1.6)}
+      ${leaf(K, 70, 98, 1, -70)}${leaf(K, 128, 128, 0.95, 68)}${leaf(K, 112, 92, 0.8, 30, "sage")}${leaf(K, 80, 126, 0.85, -130, "sage")}${leaf(K, 150, 136, 0.7, 100)}
+      ${daisy(54, 84, 1, -40)}${daisy(146, 124, 1, 70)}${daisy(40, 72, 0.9, -10)}
+      ${woven(46, 66, 0.9, v ? "blush" : "cream")}${woven(160, 134, 0.8, "white")}${woven(136, 80, 0.62, "blush")}
+      ${knot(30, 84)}${knot(36, 92, 0.8)}${knot(172, 120)}${knot(168, 148, 0.8)}${knot(124, 64, 0.8)}${knot(66, 50, 0.7)}
+      ${rose(K, 100, 108, 1, "white", 8)}`);
+  }
+
+  /* the frame round the hero card: a cusped arch like the outline of the logo, stitched in gold
+     chain stitch with a running stitch inside, small woven roses climbing it and a rose at its
+     crown (one 1000-unit square laid over the showcase; the card is at x 150..850, y 62..938) */
+  function arch(inset) {
+    const r = 560 - inset, x0 = 70 + inset, x1 = 930 - inset, s = 515, apex = s - Math.sqrt(r * r - 130 * 130);
+    return `M${x0} 975L${x0} ${s}A${r} ${r} 0 0 1 500 ${f(apex)}A${r} ${r} 0 0 1 ${x1} ${s}L${x1} 975`;
+  }
+  function frame() {
+    const K = kit();
+    let climb = "";
+    // flowers and leaves climbing both sides of the arch
+    [[70, 880, "w", 2.6], [70, 700, "f", 2.2], [74, 520, "w", 2.2], [104, 360, "f", 1.9]].forEach(([x, y, kind, sc], k) => {
+      [x, 1000 - x].forEach((xx, side) => {
+        const dir = side ? 1 : -1;
+        climb += `${daisy(xx + dir * 18, y - 16, 2.2, dir * (48 + k * 6))}${daisy(xx - dir * 16, y + 22, 2, dir * -132, "sage")}`;
+        climb += kind === "w" ? woven(xx, y, sc, (k + side) % 2 ? "blush" : "white") : flower(xx, y, sc, "white", k * 20);
+        climb += knot(xx + dir * 34, y + 30, 1.8);
+      });
+    });
+    const crown = `${leaf(K, 470, -26, 1.1, -64)}${leaf(K, 530, -26, 1.1, 64)}${leaf(K, 452, -6, 0.9, -110, "sage")}${leaf(K, 548, -6, 0.9, 110, "sage")}
+      ${daisy(430, -40, 1.1, -70)}${daisy(570, -40, 1.1, 70)}${woven(416, -12, 1.5, "blush")}${woven(584, -12, 1.5, "blush")}${flower(384, -54, 1.8)}${flower(616, -54, 1.8, "white", 30)}${knot(500, -88, 1.2)}${knot(470, -78, 0.8)}${knot(530, -78, 0.8)}
+      ${rose(K, 500, -30, 1.25, "white", 6)}`;
+    return svg("0 0 1000 1000", K, `${chain(arch(0), "gold", 4.2)}<path d="${arch(18)}" fill="none" stroke="${T.gold[1]}" stroke-width="1.4" stroke-dasharray="5 4" opacity=".75"/>${climb}${crown}`, 'class="emb-frame"');
+  }
+
+  /* repeating images (CSS backgrounds): roses scattered over the page, a divider, a garland */
+  function scatterTile(op = 0.5) {
+    const K = kit();
+    return url(tile(280, 280, K, `${stem("M58 92C62 76 72 64 88 58", "sage", 1.2)}${daisy(70, 74, 0.9, 40, "sage")}${daisy(78, 84, 0.8, 130, "sage")}${flower(56, 96, 0.95)}${knot(92, 52, 0.7)}
+      ${stem("M212 222C200 212 188 208 174 210", "sage", 1.2)}${daisy(194, 212, 0.9, -50, "sage")}${daisy(184, 222, 0.75, -140, "sage")}${flower(214, 224, 0.8, "blush", 15)}${knot(168, 202, 0.7)}
+      ${flower(210, 70, 0.62, "cream", 20)}${knot(222, 84, 0.55)}${flower(70, 212, 0.55, "white", 40)}${knot(80, 200, 0.5)}`, op));
+  }
+  function dividerImg() {
+    const K = kit();
+    let s = "";
+    [[-1], [1]].forEach(([d]) => {
+      s += `${stem(`M110 24C${110 + d * 26} 14 ${110 + d * 52} 30 ${110 + d * 84} 22`, "green", 1.5)}${daisy(110 + d * 34, 16, 0.9, d * 60)}${daisy(110 + d * 58, 30, 0.85, d * 140)}${woven(110 + d * 84, 22, 0.5, "blush")}${knot(110 + d * 70, 14, 0.7)}${knot(110 + d * 98, 28, 0.6)}`;
+    });
+    return url(tile(220, 48, K, `${s}${woven(110, 24, 0.95, "white")}`));
+  }
+  function garlandImg() {
+    const K = kit();
+    return url(tile(260, 56, K, `${stem("M0 30C40 12 90 12 130 30S220 48 260 30", "green", 1.6)}${daisy(34, 20, 0.9, 30)}${daisy(98, 18, 0.9, -40)}${daisy(160, 40, 0.9, 150)}${daisy(222, 42, 0.9, -150)}
+      ${woven(64, 18, 0.72, "white")}${woven(130, 30, 0.9, "white")}${woven(196, 42, 0.72, "blush")}${knot(84, 30, 0.7)}${knot(116, 14, 0.6)}${knot(176, 28, 0.7)}${knot(240, 36, 0.6)}${knot(16, 34, 0.6)}`));
+  }
+  const roseImg = (c = "white") => url(tile(30, 30, kit(), woven(15, 15, 1.02, c)));
+  /* a small falling blossom */
+  let falls = 0;
+  const fall = () => `<svg viewBox="-15 -15 30 30" aria-hidden="true" focusable="false">${flower(0, 0, 1.15, ++falls % 3 ? "white" : "blush", falls * 17)}</svg>`;
+
+  return { flower, frame, bouquet, scatterTile, dividerImg, garlandImg, roseImg, fall, rose, woven, leaf, daisy, knot, stem, chain, kit };
+  })();
+
+  window.RQ_ART = { ui, dep, depNames, depIcon, productArt, floral, ornament, blooms, emb };
 })();

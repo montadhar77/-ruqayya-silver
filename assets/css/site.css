@@ -8,13 +8,13 @@
    silver = metal / secondary text, ink = text.
    ========================================================================== */
 :root {
-  --deep: #0b0d0c;          /* onyx */
-  --pearl: #121614;         /* raised onyx */
-  --paper: #1b201e;         /* card tint */
-  --emerald: #d6b26e;       /* primary: champagne gold */
-  --silver: #b9c0bc;        /* sterling */
-  --accent: #5fae8a;        /* secondary: brand emerald */
-  --ink: #f3efe6;           /* warm ivory text */
+  --deep: #0c261d;          /* emerald velvet (the green of the logo, at night) */
+  --pearl: #113126;         /* raised velvet */
+  --paper: #173d30;         /* card tint */
+  --emerald: #dcc27a;       /* primary: the gold of the logo */
+  --silver: #bfcac2;        /* sterling */
+  --accent: #6cc29a;        /* secondary: the green of the logo */
+  --ink: #f6f1e4;           /* warm ivory text */
   --gold: var(--emerald);
   --green: var(--accent);
   --soft: color-mix(in srgb, var(--ink) 66%, var(--deep));
@@ -485,8 +485,8 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
    (The dashboard writes its own colors for both modes into #themeVars.)
    ========================================================================== */
 :root[data-theme="light"] {
-  --deep: #f4f4f1; --pearl: #e9eae5; --paper: #ffffff; --emerald: #134e3a;
-  --silver: #5d6a64; --accent: #a8823c; --ink: #111a16;
+  --deep: #f7f2e6; --pearl: #efe6d3; --paper: #fffcf5; --emerald: #2b7a58;
+  --silver: #5f6f66; --accent: #b48f45; --ink: #18281f;
   --gold: var(--accent); --green: var(--emerald);
   --soft: color-mix(in srgb, var(--ink) 72%, var(--deep));
   --faint: color-mix(in srgb, var(--ink) 55%, var(--deep));
@@ -807,46 +807,38 @@ footer.site .f-langs a.on { color: var(--emerald); }
 :root[dir="ltr"] .bloom .bl-in { scale: -1 1; }
 @keyframes blSway { from { transform: rotate(-1.4deg); } to { transform: rotate(1.6deg); } }
 
-/* the mihrab round the hero card: one 1000-unit drawing laid exactly over the square showcase */
+/* the embroidered frame round the hero card: one 1000-unit drawing laid exactly over the showcase */
 .showcase .deck { z-index: 1; }
 .showcase.with-orn .orbit { display: none; }
 .orn { position: absolute; inset: 0; z-index: 0; pointer-events: none; }
 .orn-frame { position: absolute; inset: 0; }
 .orn-frame svg { position: absolute; inset: 0; width: 100%; height: 100%; overflow: visible; }
-:root[dir="ltr"] .orn-frame { scale: -1 1; }
-.orn { --orn-gold-1: #f6e3ae; --orn-gold-2: #d6b26e; --orn-gold-3: #9c7a3a; --orn-glint: #fff6dc; }
-:root[data-theme="light"] .orn { --orn-gold-1: #c9a35a; --orn-gold-2: #a8823c; --orn-gold-3: #6e5422; --orn-glint: #fff; }
-/* drawn in once, after the opening (only when motion is on: otherwise it is simply there) */
-.orn-wait .orn-draw { stroke-dasharray: 1; stroke-dashoffset: 1; }
-.orn-wait :is(.orn-fade, .orn-beads) { opacity: 0; }
-.orn-go .orn-draw { animation: ornDraw 2.8s cubic-bezier(.55, .05, .25, 1) forwards; }
-.orn-go .orn-beads { animation: ornBeads 1.2s ease 1.2s forwards; }
-.orn-go .orn-fade { animation: ornFade 1.6s ease 1.7s forwards; }
-@keyframes ornDraw { to { stroke-dashoffset: 0; } }
-@keyframes ornBeads { to { opacity: .6; } }
-@keyframes ornFade { to { opacity: 1; } }
-/* now and then a light runs along the arch */
-.orn-glint path { stroke-dashoffset: .05; opacity: .9; }
-.orn-go .orn-glint path { animation: ornGlint 11s ease-in-out 4.5s infinite; }
-@keyframes ornGlint { 0% { stroke-dashoffset: .05; } 38%, 100% { stroke-dashoffset: -1; } }
-/* the roses at the arch's feet: the larger bunch on the outer side, a smaller one opposite */
-.orn-a { width: 38%; inset-inline-end: -12%; top: 78%; }
-.orn-b { width: 27%; inset-inline-start: -6%; top: 82%; }
-.orn-a svg { transform-origin: 60% 70%; animation: blSway 9s ease-in-out infinite alternate; }
-.orn-b svg { transform-origin: 50% 70%; animation: blSway 11s ease-in-out -4s infinite alternate; }
-@media (max-width: 560px) { .orn-a { width: 30%; inset-inline-end: -8%; top: 75%; } .orn-b { width: 22%; inset-inline-start: -3%; top: 79%; } }
-/* room above the card for the star on stacked (phone/tablet) layouts */
-@media (max-width: 920px) { .hero.has-orn { padding-top: calc(clamp(30px, 6vw, 80px) + 40px); } }
+.orn-in { position: absolute; inset: 0; }
+:root[dir="ltr"] .orn-in { scale: -1 1; }
+/* embroidered bouquets at the feet of the frame */
+.orn-a { width: 40%; inset-inline-end: -13%; top: 74%; }
+.orn-b { width: 30%; inset-inline-start: -8%; top: 80%; }
+.orn-b .bl-in { scale: -1 1; }
+:root[dir="ltr"] .orn-b .bl-in { scale: 1 1; }
+.orn-a svg { transform-origin: 50% 80%; animation: blSway 9s ease-in-out infinite alternate; }
+.orn-b svg { transform-origin: 50% 80%; animation: blSway 11s ease-in-out -4s infinite alternate; }
+@media (max-width: 560px) { .orn-a { width: 32%; inset-inline-end: -8%; top: 74%; } .orn-b { width: 24%; inset-inline-start: -4%; top: 79%; } }
+/* room above the card for the rose at the crown on stacked (phone/tablet) layouts */
+@media (max-width: 920px) { .hero.has-orn { padding-top: calc(clamp(30px, 6vw, 80px) + 34px); } }
 
-/* a faint eight-pointed star lattice behind the hero card, fading out towards the text */
-.girih { position: absolute; inset: 0; pointer-events: none; z-index: 0;
-  -webkit-mask-image: radial-gradient(circle var(--gr, 340px) at var(--gx, 27%) var(--gy, 50%), #000 0, rgba(0,0,0,.5) 45%, transparent 100%);
-          mask-image: radial-gradient(circle var(--gr, 340px) at var(--gx, 27%) var(--gy, 50%), #000 0, rgba(0,0,0,.5) 45%, transparent 100%); }
-.girih i { position: absolute; inset: 0; background: var(--gold); opacity: .13;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%22.7%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060L60%2077L43%2060L60%2043ZM72%2072L48%2072L48%2048L72%2048ZM17%200L0%2017L-17%200L0%20-17ZM12%2012L-12%2012L-12%20-12L12%20-12ZM137%200L120%2017L103%200L120%20-17ZM132%2012L108%2012L108%20-12L132%20-12ZM17%20120L0%20137L-17%20120L0%20103ZM12%20132L-12%20132L-12%20108L12%20108ZM137%20120L120%20137L103%20120L120%20103ZM132%20132L108%20132L108%20108L132%20108Z%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060H103M17%2060H43M60%2017V43M60%2077V103M72%2072L108%20108M48%2048L12%2012M72%2048L108%2012M48%2072L12%20108%22%20stroke-opacity%3D%22.7%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%224%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") 0 0 / 120px 120px repeat; mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20width%3D%22120%22%20height%3D%22120%22%20viewBox%3D%220%200%20120%20120%22%3E%3Cg%20fill%3D%22none%22%20stroke%3D%22%23000%22%20stroke-width%3D%22.7%22%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060L60%2077L43%2060L60%2043ZM72%2072L48%2072L48%2048L72%2048ZM17%200L0%2017L-17%200L0%20-17ZM12%2012L-12%2012L-12%20-12L12%20-12ZM137%200L120%2017L103%200L120%20-17ZM132%2012L108%2012L108%20-12L132%20-12ZM17%20120L0%20137L-17%20120L0%20103ZM12%20132L-12%20132L-12%20108L12%20108ZM137%20120L120%20137L103%20120L120%20103ZM132%20132L108%20132L108%20108L132%20108Z%22%2F%3E%0A%20%20%20%20%20%20%3Cpath%20d%3D%22M77%2060H103M17%2060H43M60%2017V43M60%2077V103M72%2072L108%20108M48%2048L12%2012M72%2048L108%2012M48%2072L12%20108%22%20stroke-opacity%3D%22.7%22%2F%3E%0A%20%20%20%20%20%20%3Ccircle%20cx%3D%2260%22%20cy%3D%2260%22%20r%3D%224%22%2F%3E%3C%2Fg%3E%3C%2Fsvg%3E") 0 0 / 120px 120px repeat; }
-:root[dir="ltr"] .girih { --gx: 73%; }
-:root[data-theme="light"] .girih i { opacity: .16; }
-@media (max-width: 920px) { .girih { --gx: 50%; --gy: calc(70px + min(230px, 50vw)); --gr: min(210px, 48vw); } :root[dir="ltr"] .girih { --gx: 50%; } }
+/* ---- embroidery through the whole site (html.emb, images set by site.js → embroidery()) ---- */
+/* the ground: fine linen weave by day, emerald velvet by night, roses scattered over it */
+:root.emb body { background-image: var(--emb-scatter), var(--emb-weave); background-size: 280px 280px, 6px 6px; background-attachment: scroll; }
+:root.emb { --emb-weave: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px); }
+:root.emb[data-theme="light"] { --emb-weave: repeating-linear-gradient(0deg, rgba(90,70,30,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(90,70,30,.03) 0 1px, transparent 1px 3px); }
+/* an embroidered sprig under every section title */
+:root.emb .title h2::after { content: ""; display: block; width: 190px; max-width: 70%; height: 42px; margin: 12px auto 0; background: var(--emb-divider) center / contain no-repeat; }
+:root.emb .sec-title .rule::after { width: 26px; height: 26px; margin-top: -13px; background: var(--emb-rose) center / contain no-repeat; transform: none; }
+:root.emb .sec-title .rule:first-child::after { left: -6px; }
+:root.emb .sec-title .rule:last-child::after { right: -6px; }
+/* a garland of roses along the top of the footer */
+:root.emb footer.site { border-top: 0; padding-top: 86px; }
+:root.emb footer.site::before { content: ""; position: absolute; top: 10px; inset-inline: 0; height: 56px; background: var(--emb-garland) center / auto 56px repeat-x; pointer-events: none; }
 
 .about-pic { position: relative; max-width: 460px; width: 100%; margin-inline: auto; }
 .bl-about { width: 44%; top: -10%; inset-inline-start: -13%; z-index: 2; }
@@ -887,5 +879,4 @@ footer.site .f-langs a.on { color: var(--emerald); }
 @media (prefers-reduced-motion: reduce) {
   .petals { display: none; }
   .bloom svg { animation: none !important; }
-  .orn-glint { display: none; }
 }
