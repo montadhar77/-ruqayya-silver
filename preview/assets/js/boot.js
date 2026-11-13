@@ -4,7 +4,8 @@
    - applies the saved light/dark choice so the page never flashes the wrong theme
    - picks the language (?lang=…, then the visitor's earlier choice, then the device
      language: English, Persian, Urdu or German, otherwise Arabic) and sets the page direction
-   - switches the web fonts on once their stylesheet has loaded (non-blocking) */
+   - switches the web fonts on once their stylesheet has loaded (non-blocking)
+   - starts the opening screen's logo (see below) */
 (function () {
   var d = document.documentElement;
   d.classList.add("js");
@@ -34,6 +35,39 @@
     l.href = "https://fonts.googleapis.com/css2?" + extra + "&display=swap";
     document.head.appendChild(l);
   }
+
+  /* the opening screen (the Ruqayya logo):
+     - already seen in this visit (and not set to show every time) → hidden before it paints,
+       so later pages never flash it;
+     - its logo starts rising the moment the picture has loaded, without waiting for the
+       site's scripts; if the picture cannot load, the shop's name takes its place;
+     - «تخطّي» works even while the site's scripts are still arriving. */
+  var seen = null, ic = null;
+  try { seen = sessionStorage.getItem("rq_intro"); } catch (e) { /* storage blocked */ }
+  try { var cc = JSON.parse(localStorage.getItem("rq_cache") || "null"); ic = cc && cc.settings && cc.settings.intro; } catch (e) { /* none */ }
+  if ((ic && ic.enabled === false) || (seen && !(ic && ic.every_visit))) d.classList.add("no-intro");
+  var onLogo = function (e) {
+    var t = e.target;
+    if (!t || t.id !== "introLogo") return;
+    document.removeEventListener("load", onLogo, true);
+    document.removeEventListener("error", onLogo, true);
+    if (e.type === "error") {
+      t.parentNode.style.display = "none";
+      var n = document.getElementById("introName");
+      if (n) n.hidden = false;
+      return;
+    }
+    t.setAttribute("data-at", String(Math.round(performance.now())));
+    t.classList.add("in");
+  };
+  document.addEventListener("load", onLogo, true);
+  document.addEventListener("error", onLogo, true);
+  document.addEventListener("click", function (e) {
+    var b = e.target && e.target.closest ? e.target.closest("#introSkip") : null, i = document.getElementById("intro");
+    if (!b || !i || i.hasAttribute("data-live")) return;      // once the site is running, its own button handles it
+    try { sessionStorage.setItem("rq_intro", "1"); } catch (er) { /* storage blocked */ }
+    d.classList.add("no-intro");
+  });
 
   var fonts = document.querySelectorAll("link[data-fonts]");
   for (var i = 0; i < fonts.length; i++) {
