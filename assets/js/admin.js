@@ -916,8 +916,8 @@
         { title: "الاسم والشعار", fields: [SH("brand.name", "الاسم المختصر (في الشريط العلوي)"), SH("brand.full", "الاسم الكامل"), SH("brand.tagline", "الشعار النصي"), SH("brand.sub", "السطر الصغير تحت الاسم في الشريط العلوي"), SH("brand.logo", "الشعار (يفضّل PNG بخلفية شفافة)", { t: "image", folder: "brand", logo: true, fallback: "../assets/img/logo.webp", hint: "يُستخدم شعار معرض رقية الحالي إذا لم ترفع شعاراً آخر." }), SH("brand.favicon", "أيقونة المتصفح (اختياري — مربعة)", { t: "image", folder: "brand", logo: true })] },
         { title: "الافتتاحية (عند فتح الموقع)", fields: [
           SH("intro.enabled", "تشغيل الافتتاحية", { t: "toggle" }),
-          SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو يظهر الشعار بحركة ناعمة." }),
-          SH("intro.subtitle", "السطر تحت الاسم (في الحركة بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
+          SH("intro.video", "فيديو ظهور الشعار", { t: "video", folder: "intro", hint: "MP4 بحجم أقل من ٥٠ ميغابايت. يُشغَّل صامتاً ثم ينتقل للموقع. بدون فيديو يظهر الشعار بحركة ناعمة ولمعة ضوء." }),
+          SH("intro.subtitle", "السطر تحت الشعار (في الافتتاحية بدون فيديو)"), SH("intro.max_seconds", "أقصى مدة بالثواني", { t: "number" }), SH("intro.every_visit", "إظهارها في كل زيارة (وليس مرة واحدة لكل جلسة)", { t: "toggle" })
         ] },
         { title: "الوضع الداكن والفاتح", fields: [
           SH("theme.mode", "الوضع الذي يظهر للزائر أول مرة", { t: "select", options: [["dark", "داكن"], ["light", "فاتح"], ["system", "حسب جهاز الزائر"]], hint: "يستطيع الزائر التبديل بنفسه من زر الشمس/القمر أعلى الموقع." }),

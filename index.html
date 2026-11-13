@@ -37,17 +37,16 @@
 <div class="grain" aria-hidden="true"></div>
 <div class="cursor-light" id="cursorLight" aria-hidden="true"></div>
 
-<!-- opening: logo-reveal video (uploaded from the dashboard) or animated logo -->
+<!-- opening: the Ruqayya logo (on screen from the first paint), or the logo-reveal video
+     uploaded from the dashboard -->
 <div class="intro" id="intro">
-  <div class="bloom" id="introBloom"></div>
+  <div class="intro-glow" aria-hidden="true"></div>
   <div class="intro-mark" id="introMark">
-    <svg class="intro-ring" viewBox="0 0 200 200" id="introArch">
-      <circle cx="100" cy="100" r="92"/>
-      <circle cx="100" cy="100" r="74"/>
-      <path d="M100 52l10 26 26 10-26 10-10 26-10-26-26-10 26-10z"/>
-    </svg>
-    <img class="intro-logo" id="introLogo" src="assets/img/logo.webp" alt="" hidden>
-    <div class="intro-name grad" id="introName">معرض رقية</div>
+    <div class="intro-logo-box">
+      <img class="intro-logo" id="introLogo" src="assets/img/logo.webp" alt="" width="476" height="740" fetchpriority="high">
+      <i class="intro-gleam" id="introGleam" aria-hidden="true"></i>
+    </div>
+    <div class="intro-name grad" id="introName" hidden>معرض رقية</div>
     <div class="intro-sub" id="introSub"></div>
   </div>
   <button class="intro-skip" id="introSkip" type="button" data-t="intro_skip">تخطّي</button>

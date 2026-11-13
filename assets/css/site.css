@@ -112,17 +112,48 @@ body.no-aurora .aurora { display: none; }
 .icon-btn svg { width: 20px; height: 20px; }
 .badge-count { position: absolute; top: -4px; inset-inline-start: -4px; min-width: 21px; height: 21px; padding: 0 6px; border-radius: 999px; background: var(--emerald); color: var(--deep); font-size: 12px; font-weight: 600; line-height: 21px; text-align: center; box-shadow: 0 0 16px var(--glow); }
 
-/* ---------- intro ---------- */
-.intro { position: fixed; inset: 0; z-index: 100; background: var(--deep); display: grid; place-items: center; overflow: hidden; }
+/* ---------- intro: the Ruqayya logo ----------
+   On screen from the first paint (no waiting for the scripts): the logo rises out of a soft
+   blur once its picture has loaded, a single gleam of light passes over it, then the line
+   under it. Hidden at once on later pages of the same visit (boot.js adds .no-intro). */
+.intro { position: fixed; inset: 0; z-index: 100; background: var(--deep); display: grid; place-items: center; overflow: hidden;
+  --intro-shadow: 0 22px 46px rgba(0, 0, 0, .42); }
+:root.no-intro .intro { display: none; }
 .intro video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
-.intro .bloom { position: absolute; width: 120vmax; height: 120vmax; border-radius: 50%; background: radial-gradient(closest-side, color-mix(in srgb, var(--emerald) 26%, transparent), color-mix(in srgb, var(--emerald) 8%, transparent) 45%, transparent 70%); transform: scale(0); }
-.intro .intro-mark { position: relative; text-align: center; padding: 24px; }
-.intro .intro-ring { width: min(220px, 54vw); margin: 0 auto 18px; overflow: visible; }
-.intro .intro-ring circle, .intro .intro-ring path { fill: none; stroke: var(--emerald); stroke-width: 1.2; }
-.intro .intro-logo { width: min(210px, 50vw); margin: 0 auto 14px; opacity: 0; }
-.intro .intro-name { font-family: var(--display); font-size: clamp(52px, 12vw, 104px); line-height: 1.25; font-weight: 700; opacity: 0; }
-.intro .intro-sub { color: var(--soft); font-size: clamp(14px, 3.4vw, 18px); opacity: 0; }
-.intro-skip { position: absolute; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); inset-inline-start: 24px; min-height: 44px; padding: 8px 22px; border-radius: 999px; cursor: pointer; background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); border: 1px solid var(--line-2); font-size: 14px; }
+.intro .intro-glow { position: absolute; width: 120vmax; height: 120vmax; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, color-mix(in srgb, var(--emerald) 22%, transparent), color-mix(in srgb, var(--emerald) 7%, transparent) 45%, transparent 70%);
+  animation: introGlow 2.2s cubic-bezier(.16, 1, .3, 1) both; }
+@keyframes introGlow { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+.intro.is-video .intro-glow, .intro.is-video .intro-mark, .intro.is-video::after { display: none; }
+/* a fine grain over the glow (under the logo) so the soft gradients never show steps or rings */
+.intro::after { content: ""; position: absolute; inset: 0; z-index: 1; pointer-events: none; opacity: .05; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E"); }
+:root[data-theme="light"] .intro::after { opacity: .04; }
+.intro .intro-mark { position: relative; z-index: 2; display: grid; justify-items: center; gap: 16px; padding: 24px; text-align: center; }
+.intro .intro-logo-box { position: relative; line-height: 0; }
+/* sized by height (the logo is tall): 370 px at most, half the screen height, never wider than 56% of a phone */
+.intro .intro-logo { display: block; width: auto; height: min(370px, 50vh, 87vw); opacity: 0; }
+@supports (height: 1dvh) { .intro .intro-logo { height: min(370px, 50dvh, 87vw); } }
+.intro .intro-logo.in { animation: introLogo 1.9s cubic-bezier(.22, .75, .25, 1) both; }
+@keyframes introLogo {
+  from { opacity: 0; transform: translateY(20px) scale(.9); filter: blur(12px) brightness(1.45) drop-shadow(0 0 0 transparent); }
+  to { opacity: 1; transform: none; filter: blur(0) brightness(1) drop-shadow(var(--intro-shadow)); }
+}
+/* the gleam: a band of light clipped to the logo's own shape, crossing it once in the reading direction */
+.intro .intro-gleam { position: absolute; inset: 0; pointer-events: none; opacity: 0;
+  background: linear-gradient(105deg, transparent 37%, rgba(255, 252, 240, .82) 50%, transparent 63%) no-repeat;
+  background-size: 260% 100%; background-position: -40% 0;
+  -webkit-mask: url(../img/logo.webp) center / 100% 100% no-repeat; mask: url(../img/logo.webp) center / 100% 100% no-repeat; }
+.intro .intro-logo.in + .intro-gleam { animation: introGleam 1.5s cubic-bezier(.45, 0, .2, 1) 1.15s both; }
+@keyframes introGleam { from { opacity: 1; background-position: -40% 0; } to { opacity: 1; background-position: 140% 0; } }
+:root[dir="ltr"] .intro .intro-logo.in + .intro-gleam { animation-name: introGleamLtr; }
+@keyframes introGleamLtr { from { opacity: 1; background-position: 140% 0; } to { opacity: 1; background-position: -40% 0; } }
+/* only when the logo picture cannot load: the shop's name in its place */
+.intro .intro-name { font-family: var(--display); font-size: clamp(52px, 12vw, 104px); line-height: 1.25; font-weight: 700; animation: introLogo 1.4s cubic-bezier(.16, 1, .3, 1) both; }
+.intro .intro-sub { color: var(--soft); font-size: clamp(14px, 3.4vw, 18px); max-width: 30ch; opacity: 0; transform: translateY(10px); transition: opacity .8s var(--ease), transform .8s var(--ease); }
+.intro .intro-sub:empty { display: none; }
+.intro .intro-sub.in { opacity: 1; transform: none; }
+@media (prefers-reduced-motion: reduce) { .intro .intro-gleam { display: none; } }
+.intro-skip { position: absolute; z-index: 3; bottom: calc(26px + env(safe-area-inset-bottom, 0px)); inset-inline-start: 24px; min-height: 44px; padding: 8px 22px; border-radius: 999px; cursor: pointer; background: color-mix(in srgb, var(--ink) 8%, transparent); color: var(--ink); border: 1px solid var(--line-2); font-size: 14px; }
 
 /* ---------- topbar + nav ---------- */
 .topbar { position: relative; z-index: 41; font-size: 13px; color: var(--soft); border-bottom: 1px solid var(--line); background: color-mix(in srgb, var(--deep) 80%, transparent); text-align: center; padding-block: 9px; letter-spacing: .01em; }
@@ -520,7 +551,8 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
 :root[data-theme="light"] .card .ph, :root[data-theme="light"] .g-main { background: radial-gradient(ellipse at 50% 38%, #ffffff, color-mix(in srgb, var(--emerald) 9%, var(--pearl)) 80%); }
 :root[data-theme="light"] .card .ph::after { background: radial-gradient(closest-side, rgba(0,0,0,.18), transparent); }
 :root[data-theme="light"] .tile .t-img::after { background: linear-gradient(180deg, transparent 15%, color-mix(in srgb, var(--paper) 92%, transparent)); }
-:root[data-theme="light"] .intro { background: radial-gradient(circle at 50% 45%, #ffffff, var(--deep) 70%); }
+:root[data-theme="light"] .intro { background: radial-gradient(circle at 50% 45%, #ffffff, var(--deep) 70%); --intro-shadow: 0 16px 30px rgba(24, 40, 31, .1); }
+:root[data-theme="light"] .intro .intro-glow { background: radial-gradient(closest-side, color-mix(in srgb, var(--accent) 16%, transparent), color-mix(in srgb, var(--accent) 5%, transparent) 45%, transparent 70%); }
 :root[data-theme="light"] .drawer-bg, :root[data-theme="light"] .modal-bg { background: color-mix(in srgb, var(--ink) 30%, transparent); }
 
 /* theme switch: circular reveal (View Transitions) */
@@ -536,7 +568,6 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
 @media (max-width: 920px) { .brand .mark-img { height: 40px; } }
 @media (max-width: 380px) { .brand .brand-txt { display: none; } }
 footer.site .f-logo { height: 110px; }
-.intro .intro-logo { width: min(240px, 56vw); filter: drop-shadow(0 20px 50px rgba(0,0,0,.35)); }
 .about-media .logo-art { position: absolute; inset: 0; display: grid; place-items: center; padding: 14%; background: radial-gradient(circle, color-mix(in srgb, var(--emerald) 20%, transparent), transparent 66%); }
 .about-media .logo-art img { width: 100%; height: 100%; object-fit: contain; filter: drop-shadow(0 30px 40px rgba(0,0,0,.35)); }
 

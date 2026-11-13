@@ -492,6 +492,7 @@
   /* ---------- intro ---------- */
   function intro() {
     const el = $("#intro");
+    if (!el) return Promise.resolve();
     const s = state.s.intro;
     const seen = safeLS(() => sessionStorage.getItem("rq_intro"), null);
     return new Promise((resolve) => {
@@ -503,16 +504,20 @@
         else el.remove();
         setTimeout(resolve, G ? 320 : 0);
       };
-      if (!s.enabled || (seen && !s.every_visit)) { el.remove(); resolve(); return; }
+      // boot.js already hid it (seen in this visit, switched off, or skipped before the scripts arrived)
+      if (!s.enabled || (seen && !s.every_visit) || document.documentElement.classList.contains("no-intro")) { el.remove(); resolve(); return; }
+      el.setAttribute("data-live", "");
       if (G) G.set(el, { clipPath: "circle(150% at 50% 50%)" });
       $("#introSkip").addEventListener("click", finish);
       const max = Math.max(3, Math.min(30, Number(s.max_seconds) || 9)) * 1000;
       if (s.video) {
-        $("#introMark").hidden = true;
+        // the logo stays on screen until the video really plays, so there is never an empty screen
         const v = document.createElement("video");
         Object.assign(v, { src: s.video, muted: true, playsInline: true, autoplay: true, preload: "auto" });
         v.setAttribute("playsinline", ""); v.setAttribute("muted", "");
-        const fallback = () => { v.remove(); $("#introMark").hidden = false; logoReveal(finish); };
+        let fell = false;
+        const fallback = () => { if (fell) return; fell = true; v.remove(); el.classList.remove("is-video"); logoReveal(finish); };
+        v.addEventListener("playing", () => el.classList.add("is-video"), { once: true });
         v.addEventListener("ended", finish);
         v.addEventListener("error", fallback);
         el.prepend(v);
@@ -524,19 +529,35 @@
       setTimeout(finish, max);
     });
   }
+  /* The logo is already on screen (index.html + boot.js start it at the first paint): here the
+     shop's own logo from the dashboard takes its place if there is one, the line under it
+     appears, and the opening closes about 2.8 s after the logo appeared. */
   function logoReveal(finish) {
     const s = state.s;
-    const logo = $("#introLogo");
-    $("#introName").textContent = s.brand.name;
-    $("#introSub").textContent = s.intro.subtitle || s.brand.tagline;
-    logo.src = s.brand.logo || LOGO_FULL; logo.hidden = false; $("#introArch").style.display = "none"; $("#introName").hidden = true;
-    if (!G) { $$("#introMark > *").forEach((e) => (e.style.opacity = 1)); setTimeout(finish, 1200); return; }
-    const paths = $$("#introArch circle, #introArch path");
-    paths.forEach((p) => { const l = p.getTotalLength(); p.style.strokeDasharray = l; p.style.strokeDashoffset = l; });
-    const tl = G.timeline({ onComplete: () => setTimeout(finish, 250) });
-    tl.to("#introBloom", { scale: 1, duration: 1.6, ease: "expo.out" }, 0);
-    tl.fromTo(logo, { opacity: 0, scale: 0.7, filter: "brightness(2.4)" }, { opacity: 1, scale: 1, filter: "brightness(1)", duration: 1.1, ease: "expo.out" }, 0.1);
-    tl.fromTo("#introSub", { opacity: 0, y: 12 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, "-=0.55");
+    const logo = $("#introLogo"), gleam = $("#introGleam"), name = $("#introName"), sub = $("#introSub");
+    name.textContent = s.brand.name;
+    sub.textContent = s.intro.subtitle || s.brand.tagline;
+    const own = s.brand.logo;
+    if (own && logo.getAttribute("src") !== own) {
+      const im = new Image();
+      im.onload = () => { logo.src = own; gleam.style.webkitMaskImage = gleam.style.maskImage = `url("${own.replace(/"/g, "%22")}")`; };
+      im.src = own;
+    }
+    const shown = new Promise((r) => {
+      const on = () => {
+        if (!logo.classList.contains("in")) { logo.setAttribute("data-at", String(Math.round(performance.now()))); logo.classList.add("in"); }
+        r();
+      };
+      const failed = () => { logo.parentNode.style.display = "none"; name.hidden = false; r(); };   // the shop's name in its place
+      if (logo.classList.contains("in") || (logo.complete && logo.naturalWidth)) on();      // (boot.js normally does this)
+      else if (logo.complete) failed();
+      else { logo.addEventListener("load", on, { once: true }); logo.addEventListener("error", failed, { once: true }); }
+    });
+    shown.then(() => {
+      const since = performance.now() - (Number(logo.getAttribute("data-at")) || performance.now());
+      setTimeout(() => sub.classList.add("in"), Math.max(0, (reduce ? 0 : 1000) - since));
+      setTimeout(finish, Math.max(1200, (reduce ? 1500 : 2800) - since));
+    });
   }
 
   /* ---------- small renderers ---------- */
