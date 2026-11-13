@@ -116,7 +116,7 @@
 
   /* ---------- data ---------- */
   async function q(promise) { const { data, error } = await promise; if (error) throw error; return data; }
-  async function loadSettings() { const d = await q(db.from("settings").select("data").eq("id", 1).maybeSingle()); state.raw = (d && d.data) || {}; state.s = window.rqMerge(DEF, state.raw); }
+  async function loadSettings() { const d = await q(db.from("settings").select("data").eq("id", 1).maybeSingle()); state.raw = (d && d.data) || {}; state.s = window.rqMerge(DEF, window.rqCleanColours(state.raw)); }
   async function loadCats() { state.cats = await q(db.from("categories").select("*").order("sort").order("created_at")); }
   /* Products: the list needs only these columns (the editor loads the full row). Fetched
      1000 at a time, because the database API returns at most 1000 rows per request. */
@@ -412,6 +412,15 @@
     scrollTo(0, 0);
   }
   addEventListener("hashchange", () => route());
+  // rows of tabs that scroll sideways on a phone: the far edge fades, so the row reads as swipeable
+  const markTabs = () => $$(".tabs").forEach((el) => {
+    const max = el.scrollWidth - el.clientWidth;
+    el.classList.toggle("scrolls", max > 2); el.classList.toggle("at-end", max > 2 && Math.abs(el.scrollLeft) >= max - 2);
+    if (!el.dataset.edge) { el.dataset.edge = "1"; el.addEventListener("scroll", markTabs, { passive: true }); }
+  });
+  let tabsRaf = 0;
+  new MutationObserver(() => { cancelAnimationFrame(tabsRaf); tabsRaf = requestAnimationFrame(markTabs); }).observe(document.body, { childList: true, subtree: true });
+  addEventListener("resize", markTabs, { passive: true });
   addEventListener("beforeunload", (e) => { if (state.dirty) { e.preventDefault(); e.returnValue = ""; } });
   const page = () => $("#page");
 
@@ -1124,7 +1133,9 @@
   function showSave(on) { const b = $("#savebar"); if (b) b.classList.toggle("show", on); }
   async function saveSettings() {
     const btn = $("#saveBtn"); btn.disabled = true;
-    const data = state.draft || state.s;
+    // colours still at their default are not stored, so a future default palette reaches the site
+    const data = JSON.parse(JSON.stringify(state.draft || state.s));
+    ["theme", "theme_light"].forEach((g) => { if (data[g] && DEF[g]) Object.keys(DEF[g]).forEach((k) => { if (/^#/.test(String(DEF[g][k])) && String(data[g][k]).toLowerCase() === String(DEF[g][k]).toLowerCase()) delete data[g][k]; }); });
     try {
       await q(db.from("settings").upsert({ id: 1, data }));
       state.s = window.rqMerge(DEF, data); state.raw = data; state.dirty = false; showSave(false);

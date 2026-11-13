@@ -133,8 +133,18 @@
     return vars ? String(v).replace(/\{(\w+)\}/g, (m, n) => (n in vars ? vars[n] : m)) : String(v);
   };
   const ui = (k, vars) => esc(uiRaw(k, vars));
-  // counted text: "{n} products" / "{n} product" in languages with a singular form
+  // counted text: "{n} products" / "{n} product" in languages with a singular form.
+  // Arabic counts agree with the number (منتج واحد · منتجان · ٣ منتجات · ١١ منتجاً · ١٠٠ منتج)
+  // unless the owner wrote his own wording for that text in the dashboard.
+  const AR_COUNT = {
+    shop_count: { zero: "لا منتجات", one: "منتج واحد", two: "منتجان", few: "{n} منتجات", many: "{n} منتجاً", other: "{n} منتج" },
+    search_results: { zero: "لا نتائج", one: "نتيجة واحدة", two: "نتيجتان", few: "{n} نتائج", many: "{n} نتيجة", other: "{n} نتيجة" }
+  };
+  const arCat = (n) => { n = Math.abs(Math.trunc(Number(n) || 0)); const r = n % 100;
+    return n === 0 ? "zero" : n === 1 ? "one" : n === 2 ? "two" : r >= 3 && r <= 10 ? "few" : r >= 11 ? "many" : "other"; };
   const uiN = (k, n, vars = {}) => {
+    const own = ((state.s && state.s.ui) || {})[k];
+    if (L === "ar" && AR_COUNT[k] && (!own || own === (window.RQ_DEFAULTS.ui || {})[k])) return esc(AR_COUNT[k][arCat(n)].replace("{n}", num(n)));
     const one = L !== "ar" && plural(n) === "one" && (((state.s && state.s.ui) || {})[k + "_one"] || builtInUi(k + "_one"));
     return ui(one ? k + "_one" : k, { n: num(n), ...vars });
   };
@@ -195,14 +205,64 @@
   };
   const inStock = (p) => p.stock === null || p.stock === undefined || p.stock > 0;
   let toastT;
+  /* The floating WhatsApp button never sits on top of text or of anything you can press:
+     whenever the page settles (after a scroll, a resize, a new page), it looks at what is
+     under it and steps aside (slides down out of sight) if a word, a button or a field is
+     there, coming back as soon as the spot under it is clear. */
+  let fabT = 0;
+  const caretAt = (x, y) => {
+    if (document.caretRangeFromPoint) return document.caretRangeFromPoint(x, y);
+    const c = document.caretPositionFromPoint && document.caretPositionFromPoint(x, y);
+    if (!c || !c.offsetNode) return null;
+    const r = document.createRange(); r.setStart(c.offsetNode, c.offset); return r;
+  };
+  function fabCheck() {
+    clearTimeout(fabT);
+    fabT = setTimeout(() => {
+      const wa = $("#waFloat");
+      if (!wa || wa.hidden) return;
+      const x0 = wa.offsetLeft, y0 = wa.offsetTop, w = wa.offsetWidth, h = wa.offsetHeight, pad = 6;
+      if (!w) return;
+      const prev = wa.style.visibility; wa.style.visibility = "hidden";
+      let covered = !!$(".drawer.open, .modal-bg.open, .search-bg.open");
+      for (let i = 0; i <= 2 && !covered; i++) for (let j = 0; j <= 2 && !covered; j++) {
+        const x = x0 - pad + ((w + pad * 2) * i) / 2, y = y0 - pad + ((h + pad * 2) * j) / 2;
+        if (x < 0 || y < 0 || x >= innerWidth || y >= innerHeight) continue;
+        const el = document.elementFromPoint(x, y);
+        if (!el) continue;
+        if (el.closest("a, button, input, select, textarea, label, [role='button'], .chip")) { covered = true; break; }
+        const r = caretAt(x, y);
+        const n = r && r.startContainer;
+        if (n && n.nodeType === 3 && n.textContent.trim()) {
+          const rg = document.createRange(), k = Math.min(r.startOffset, n.length - 1);
+          rg.setStart(n, Math.max(0, k)); rg.setEnd(n, Math.max(0, k) + 1);
+          for (const b of rg.getClientRects()) if (x >= b.left - pad && x <= b.right + pad && y >= b.top - pad && y <= b.bottom + pad) covered = true;
+          // any line of the same text block running under the button
+          const blk = n.parentElement && n.parentElement.closest("p, h1, h2, h3, h4, li, dd, dt, span, div");
+          if (!covered && blk) {
+            const all = document.createRange(); all.selectNodeContents(blk);
+            for (const b of all.getClientRects()) if (x >= b.left && x <= b.right && y >= b.top - 2 && y <= b.bottom + 2) { covered = true; break; }
+          }
+        }
+      }
+      wa.style.visibility = prev;
+      wa.classList.toggle("away", covered);
+    }, 140);
+  }
+  addEventListener("scroll", fabCheck, { passive: true });
+  addEventListener("resize", fabCheck, { passive: true });
+
   function toast(msg) {
     const t = $("#toast");
     t.textContent = msg;
+    // with the cart, menu or order form open, the message shows at the top, clear of their buttons
+    t.classList.toggle("at-top", !!$(".drawer.open, .modal-bg.open"));
     t.classList.add("show");
     clearTimeout(toastT);
     toastT = setTimeout(() => t.classList.remove("show"), 2400);
   }
   function lock(on) {
+    fabCheck();
     const locked = on || !!$(".drawer.open, .modal-bg.open, .search-bg.open");
     document.body.classList.toggle("locked", locked);
     if (lenis) { if (locked) lenis.stop(); else lenis.start(); }
@@ -214,7 +274,7 @@
   const PAGE = 24;        // larger catalogues: products per page in the shop
   function applyData(settings, cats, prods, meta = {}) {
     state.raw = settings || {};
-    state.s = I18N ? I18N.localize(state.raw, L) : window.rqMerge(window.RQ_DEFAULTS, state.raw);
+    state.s = I18N ? I18N.localize(state.raw, L) : window.rqMerge(window.RQ_DEFAULTS, window.rqCleanColours(state.raw));
     // departments, and the sub-departments inside them (e.g. men's rings → agate rings)
     state.cats = (cats || []).filter((c) => !c.parent_id).map(locCat);
     state.subs = (cats || []).filter((c) => c.parent_id).sort((a, b) => (a.sort || 0) - (b.sort || 0)).map(locCat);
@@ -360,6 +420,7 @@
     // whatsapp float
     const wa = $("#waFloat"), wl = waLink(uiRaw("wa_inquiry", { brand: s.brand.full }));
     if (wl) { wa.href = wl; wa.innerHTML = A.ui.whatsapp; wa.hidden = false; } else wa.hidden = true;
+    fabCheck();
 
     // mobile menu
     $("#menuList").innerHTML = `<div class="lang-row" role="group" aria-label="${ui("lang_label")}">${langLinks("chip")}</div>` +
@@ -574,7 +635,6 @@
     embDone = true;
     const E = A.emb, st = document.documentElement.style;
     st.setProperty("--emb-scatter", E.scatterTile(0.3));
-    st.setProperty("--emb-scatter-dark", E.scatterTile(0.12));      // quieter at night, so text stays clear
     st.setProperty("--emb-divider", E.dividerImg());
     st.setProperty("--emb-garland", E.garlandImg());
     st.setProperty("--emb-rose", E.roseImg("white"));
@@ -742,7 +802,7 @@
     ].filter(Boolean);
     return `<section class="block" id="visit"><div class="wrap">${titleBlock(sec.eyebrow, sec.title, "")}
       <div class="visit">
-        <div class="visit-card glass spot info-card" data-rv>${sec.image ? `<img class="card-photo" ${imgSrc(sec.image, SZ.half)} alt="" loading="lazy">` : `<img class="watermark" src="${esc(s.brand.logo || LOGO_MARK)}" alt="" aria-hidden="true" loading="lazy">`}<h3>${esc(s.brand.full)}</h3>
+        <div class="visit-card glass spot info-card" data-rv>${sec.image ? `<img class="card-photo" ${imgSrc(sec.image, SZ.half)} alt="" loading="lazy">` : ""}<h3>${esc(s.brand.full)}</h3>
           ${rows.map(([ic, k, v]) => `<div class="info-row"><span class="ic">${ic}</span><div><small>${k}</small>${v}</div></div>`).join("")}
           <div class="socials">${socialLinks()}</div>
         </div>
@@ -764,7 +824,8 @@
       let top = 0, timer, moving = false;
       const ms = Math.round((Number(state.s.hero.slide_seconds) || 5.5) * 1000);
       const place = (el, k, instant) => { // k = position in the stack, 0 = front
-        const v = { y: -k * 18, scale: 1 - k * 0.06, rotate: k ? (k % 2 ? -4 : 3) * Math.min(k, 2) : 0, opacity: k > 2 ? 0 : 1 - k * 0.22, zIndex: 10 - k };
+        // a neat stack: the next card waits straight behind, its top edge just showing
+        const v = { y: -k * 16, scale: 1 - k * 0.05, rotate: 0, opacity: k > 1 ? 0 : 1 - k * 0.45, zIndex: 10 - k };
         el.classList.toggle("top", k === 0);
         el.setAttribute("aria-hidden", k ? "true" : "false"); el.tabIndex = k ? -1 : 0;
         if (G && !instant) G.to(el, { ...v, duration: 0.9, ease: "expo.out" }); else if (G) G.set(el, v);
@@ -873,6 +934,14 @@
           </select></label></div>
         ${paged ? `<div id="shopGrid">${skeletons(8)}</div><div class="more" id="shopMore" hidden><button class="btn glass-btn" type="button" id="moreBtn"></button></div>` : grid(list)}
       </div></section>`;
+    // the row of sub-departments on a phone: show the chosen one, and mark the row when it scrolls
+    const segSub = $(".seg-sub");
+    if (segSub) {
+      const edge = () => { const max = segSub.scrollWidth - segSub.clientWidth; segSub.classList.toggle("scrolls", max > 2); segSub.classList.toggle("at-end", max > 2 && Math.abs(segSub.scrollLeft) >= max - 2); };
+      const on = $(".chip.on", segSub);
+      if (on && segSub.scrollWidth > segSub.clientWidth + 2) segSub.scrollLeft += on.getBoundingClientRect().left + on.offsetWidth / 2 - (segSub.getBoundingClientRect().left + segSub.clientWidth / 2);
+      edge(); segSub.addEventListener("scroll", edge, { passive: true });
+    }
     const sel = $("#sortSel"); sel.value = sort;
     sel.addEventListener("change", () => { killMotion(); renderShop(slug, sel.value, subSlug); });
     const onSub = $(".seg-sub .chip.on");
@@ -1091,6 +1160,7 @@
 
   /* ---------- panels ---------- */
   function openPanel(name) {
+    $("#toast").classList.remove("show");      // a message from before does not sit on the panel
     $("#" + name).classList.add("open"); $("#" + name).setAttribute("aria-hidden", "false");
     $("#" + name + "Bg").classList.add("open"); lock(true);
     const f = $("#" + name + " .icon-btn"); if (f) setTimeout(() => f.focus(), 50);
@@ -1107,7 +1177,7 @@
 
   /* ---------- checkout ---------- */
   function openCheckout() {
-    closePanel("cart");
+    closePanel("cart"); $("#toast").classList.remove("show");
     const lines = cartLines(), s = state.s, sh = s.shop;
     if (!lines.length) { toast(uiRaw("cart_is_empty")); return; }
     const countries = sh.intl_enabled ? (sh.countries || []).filter((c) => c && c !== LOCAL) : [];
@@ -1513,11 +1583,14 @@
     else if (parts[0] === "p") renderProduct(decodeURIComponent(parts[1] || ""));
     else renderHome();
     if (window.ScrollTrigger) requestAnimationFrame(() => window.ScrollTrigger.refresh());
+    fabCheck(); setTimeout(fabCheck, 900);
   }
   let busy = false;
   function navigate() {
     const { parts, to } = parse();
-    closePanel("menu"); closePanel("cart"); closeSearch();
+    closePanel("menu"); closePanel("cart"); closeSearch(); toggleLangPop(false);
+    // the browser's Back button while the order form is open: close the form with the page
+    if ($("#checkoutBg").classList.contains("open")) closeCheckout();
     if (!parts.length && state.view === "home" && to) { scrollToId(to); return; }
     if (!G || busy) { render(); jumpTop(); if (to) setTimeout(() => scrollToId(to), 60); return; }
     busy = true;

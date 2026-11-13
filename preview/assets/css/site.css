@@ -8,20 +8,20 @@
    silver = metal / secondary text, ink = text.
    ========================================================================== */
 :root {
-  --deep: #0c261d;          /* emerald velvet (the green of the logo, at night) */
-  --pearl: #113126;         /* raised velvet */
-  --paper: #173d30;         /* card tint */
-  --emerald: #dcc27a;       /* primary: the gold of the logo */
-  --silver: #bfcac2;        /* sterling */
-  --accent: #6cc29a;        /* secondary: the green of the logo */
-  --ink: #f6f1e4;           /* warm ivory text */
+  --deep: #0f1211;          /* night: soft onyx (a breath of the logo's green in it) */
+  --pearl: #151a18;         /* raised onyx */
+  --paper: #1b211f;         /* card */
+  --emerald: #d9bd78;       /* primary: the gold of the logo */
+  --silver: #c3cbc6;        /* sterling */
+  --accent: #5cb98c;        /* secondary: the green of the logo */
+  --ink: #f5f1e6;           /* warm ivory text */
   --gold: var(--emerald);
   --green: var(--accent);
-  --soft: color-mix(in srgb, var(--ink) 84%, var(--deep));      /* secondary text: clear on velvet and on cards */
+  --soft: color-mix(in srgb, var(--ink) 84%, var(--deep));      /* secondary text: clear on the page and on cards */
   --faint: color-mix(in srgb, var(--ink) 70%, var(--deep));     /* small print: still 4.5:1 or better */
   --line: color-mix(in srgb, var(--ink) 11%, transparent);
   --line-2: color-mix(in srgb, var(--ink) 20%, transparent);
-  --glass: color-mix(in srgb, var(--paper) 90%, transparent);   /* nearly solid, so the pattern never shows through text */
+  --glass: color-mix(in srgb, var(--paper) 92%, transparent);   /* nearly solid: nothing ever shows through text */
   --glow: color-mix(in srgb, var(--emerald) 38%, transparent);
   --on-primary: #17130a;
   --display: "Reem Kufi", "IBM Plex Sans Arabic", Tahoma, sans-serif;
@@ -297,6 +297,10 @@ section.block { padding-block: clamp(64px, 9vw, 130px); position: relative; }
 .seg.seg-sub .chip.on { background: var(--emerald); color: var(--deep); }
 @media (max-width: 700px) {   /* phones: one swipeable row instead of a tall block */
   .seg.seg-sub { flex-wrap: nowrap; justify-content: flex-start; overflow-x: auto; width: 100%; scrollbar-width: none; overscroll-behavior-x: contain; }
+  /* more chips than fit: the far edge fades, so the row reads as one you can swipe */
+  .seg.seg-sub.scrolls { -webkit-mask-image: linear-gradient(to left, transparent 0, #000 34px); mask-image: linear-gradient(to left, transparent 0, #000 34px); }
+  :root[dir="ltr"] .seg.seg-sub.scrolls { -webkit-mask-image: linear-gradient(to right, transparent 0, #000 34px); mask-image: linear-gradient(to right, transparent 0, #000 34px); }
+  .seg.seg-sub.scrolls.at-end { -webkit-mask-image: none; mask-image: none; }
   .seg.seg-sub::-webkit-scrollbar { display: none; }
   .seg.seg-sub .chip { flex: none; white-space: nowrap; }
 }
@@ -382,9 +386,10 @@ section.block { padding-block: clamp(64px, 9vw, 130px); position: relative; }
 /* footer */
 footer.site { position: relative; margin-top: clamp(30px, 6vw, 80px); padding-block: 60px calc(28px + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--line); overflow: hidden; }
 footer.site .mark { font-family: var(--display); font-weight: 700; font-size: clamp(64px, 15vw, 210px); line-height: 1.15; text-align: center; margin: 0 auto 40px; width: fit-content; max-width: 100%;
-  /* engraved wordmark: metal at the top, fading into the page */
-  color: transparent; -webkit-text-fill-color: transparent; -webkit-background-clip: text; background-clip: text;
-  background-image: linear-gradient(180deg, color-mix(in srgb, var(--ink) 52%, transparent) 0%, color-mix(in srgb, var(--emerald) 42%, transparent) 50%, color-mix(in srgb, var(--emerald) 6%, transparent) 95%); }
+  /* the wordmark in clean gold leaf (green and gold by day): solid letters, no fade into the page */
+  color: var(--emerald); -webkit-text-fill-color: transparent; -webkit-background-clip: text; background-clip: text;
+  background-image: linear-gradient(180deg, color-mix(in srgb, var(--emerald) 70%, #fff8e6) 0%, var(--emerald) 48%, color-mix(in srgb, var(--emerald) 78%, #3a2a0c) 100%); }
+:root[data-theme="light"] footer.site .mark { background-image: linear-gradient(180deg, color-mix(in srgb, var(--emerald) 82%, #fff) 0%, var(--emerald) 50%, color-mix(in srgb, var(--emerald) 60%, var(--accent)) 100%); }
 footer.site .cols { display: grid; grid-template-columns: 1.4fr 1fr 1fr; gap: 30px; }
 footer.site h4 { font-weight: 500; margin: 0 0 12px; font-size: 15px; color: var(--emerald); }
 footer.site p, footer.site li { color: var(--soft); }
@@ -467,10 +472,15 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
 .search-res .seg { margin: 0 0 20px; }
 .toast { position: fixed; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); inset-inline: 0; margin-inline: auto; width: max-content; max-width: calc(100% - 32px); z-index: 95; padding: 12px 24px; border-radius: 999px; font-size: 14px; color: var(--deep); background: var(--emerald); box-shadow: 0 10px 40px -10px var(--glow); opacity: 0; transform: translateY(14px); transition: .4s var(--ease); pointer-events: none; }
 .toast.show { opacity: 1; transform: none; }
+.toast.at-top { bottom: auto; top: calc(16px + env(safe-area-inset-top, 0px)); transform: translateY(-14px); }
+.toast.at-top.show { transform: none; }
 .wa-float { position: fixed; bottom: calc(20px + env(safe-area-inset-bottom, 0px)); inset-inline-end: 20px; z-index: 50; width: 58px; height: 58px; border-radius: 50%; display: grid; place-items: center; background: #1f9d63; color: #fff; box-shadow: 0 14px 30px -12px rgba(0,0,0,.5); }
 .wa-float::after { content: ""; position: absolute; inset: -5px; border-radius: 50%; border: 1px solid color-mix(in srgb, #1f9d63 45%, transparent); pointer-events: none; }
-.wa-float { transition: transform .3s cubic-bezier(.2,.8,.2,1); }
-@media (hover: hover) { .wa-float:hover { transform: translateY(-3px); } }
+.wa-float { transition: transform .45s var(--ease), opacity .3s; }
+/* steps aside (slides down out of sight) when text or a control is under it — see fabCheck() */
+.wa-float.away { transform: translateY(calc(100% + 34px)); opacity: 0; pointer-events: none; }
+@media (max-width: 900px) { .wa-float { width: 52px; height: 52px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); inset-inline-end: 14px; } .wa-float svg { width: 25px; height: 25px; } }
+@media (hover: hover) { .wa-float:not(.away):hover { transform: translateY(-3px); } }
 .wa-float svg { width: 28px; height: 28px; }
 
 .skeleton { background: linear-gradient(90deg, var(--paper) 25%, color-mix(in srgb, var(--paper) 70%, var(--ink)) 50%, var(--paper) 75%); background-size: 200% 100%; animation: sk 1.4s infinite; border-radius: 22px; }
@@ -828,10 +838,9 @@ footer.site .f-langs a.on { color: var(--emerald); }
 @media (max-width: 920px) { .hero.has-orn { padding-top: calc(clamp(30px, 6vw, 80px) + 34px); } }
 
 /* ---- embroidery through the whole site (html.emb, images set by site.js → embroidery()) ---- */
-/* the ground: fine linen weave by day, emerald velvet by night, roses scattered over it */
-:root.emb body { background-image: var(--emb-scatter-dark), var(--emb-weave); background-size: 280px 280px, 6px 6px; background-attachment: scroll; }
-:root.emb { --emb-weave: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px); }
-:root.emb[data-theme="light"] body { background-image: var(--emb-scatter), var(--emb-weave); }
+/* by day the roses are scattered over a fine linen weave; at night the ground stays clean and
+   dark, and the roses live only where they are drawn on purpose (hero, titles, footer, About) */
+:root.emb[data-theme="light"] body { background-image: var(--emb-scatter), var(--emb-weave); background-size: 280px 280px, 6px 6px; }
 :root.emb[data-theme="light"] { --emb-weave: repeating-linear-gradient(0deg, rgba(90,70,30,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(90,70,30,.03) 0 1px, transparent 1px 3px); }
 /* an embroidered sprig under every section title */
 :root.emb .title h2::after { content: ""; display: block; width: 190px; max-width: 70%; height: 42px; margin: 12px auto 0; background: var(--emb-divider) center / contain no-repeat; }

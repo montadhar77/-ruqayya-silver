@@ -18,13 +18,13 @@ window.RQ_DEFAULTS = {
     subtitle: "فضيات وأحجار كريمة · كربلاء المقدسة"
   },
   theme: {
-    deep: "#0c261d",
-    pearl: "#113126",
-    paper: "#173d30",
-    emerald: "#dcc27a",
-    silver: "#bfcac2",
-    accent: "#6cc29a",
-    ink: "#f6f1e4",
+    deep: "#0f1211",
+    pearl: "#151a18",
+    paper: "#1b211f",
+    emerald: "#d9bd78",
+    silver: "#c3cbc6",
+    accent: "#5cb98c",
+    ink: "#f5f1e6",
     floral: true,
     flowers: true,
     mode: "dark"
@@ -148,6 +148,33 @@ window.RQ_DEFAULTS = {
     title: "معرض رقية (عليها السلام) — فضيات وأحجار كريمة · كربلاء",
     description: "خواتم فضة رجالية ونسائية، أحجار كريمة، مسابح، ساعات، عطور وبخور، سجاد صلاة وهدايا العتبات المقدسة. توصيل لكل محافظات العراق وشحن دولي لكل دول العالم."
   }
+};
+
+/* Colours the site used to ship with. Saving in the dashboard stores every setting, defaults
+   included, so a saved colour that is exactly one of these is an old default, not the owner's
+   choice: it is dropped, and the current default shows instead. A colour the owner picked
+   himself (anything else) is kept. */
+window.RQ_RETIRED_COLOURS = {
+  theme: {                       // night: onyx (first launch), emerald velvet (Nov 2026)
+    deep: ["#0b0d0c", "#0c261d"], pearl: ["#121614", "#113126"], paper: ["#1b201e", "#173d30"], emerald: ["#d6b26e", "#dcc27a"],
+    silver: ["#b9c0bc", "#bfcac2"], accent: ["#5fae8a", "#6cc29a"], ink: ["#f3efe6", "#f6f1e4"]
+  },
+  theme_light: {                 // day: pearl (first launch), ivory linen (Nov 2026)
+    deep: ["#f4f4f1"], pearl: ["#e9eae5"], paper: ["#ffffff"], emerald: ["#134e3a", "#2b7a58"],
+    silver: ["#5d6a64", "#5f6f66"], accent: ["#a8823c"], ink: ["#111a16"]
+  }
+};
+window.rqCleanColours = function (saved) {
+  if (!saved || typeof saved !== "object") return saved || {};
+  var out = Object.assign({}, saved), R = window.RQ_RETIRED_COLOURS;
+  Object.keys(R).forEach(function (group) {
+    var g = saved[group];
+    if (!g || typeof g !== "object") return;
+    var c = Object.assign({}, g);
+    Object.keys(R[group]).forEach(function (k) { if (typeof c[k] === "string" && R[group][k].indexOf(c[k].toLowerCase()) !== -1) delete c[k]; });
+    out[group] = c;
+  });
+  return out;
 };
 
 /* deep merge: saved values win, defaults fill any gaps (arrays are replaced, not merged) */
