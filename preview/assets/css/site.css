@@ -17,11 +17,11 @@
   --ink: #f6f1e4;           /* warm ivory text */
   --gold: var(--emerald);
   --green: var(--accent);
-  --soft: color-mix(in srgb, var(--ink) 66%, var(--deep));
-  --faint: color-mix(in srgb, var(--ink) 46%, var(--deep));
+  --soft: color-mix(in srgb, var(--ink) 84%, var(--deep));      /* secondary text: clear on velvet and on cards */
+  --faint: color-mix(in srgb, var(--ink) 70%, var(--deep));     /* small print: still 4.5:1 or better */
   --line: color-mix(in srgb, var(--ink) 11%, transparent);
   --line-2: color-mix(in srgb, var(--ink) 20%, transparent);
-  --glass: color-mix(in srgb, var(--paper) 55%, transparent);
+  --glass: color-mix(in srgb, var(--paper) 90%, transparent);   /* nearly solid, so the pattern never shows through text */
   --glow: color-mix(in srgb, var(--emerald) 38%, transparent);
   --on-primary: #17130a;
   --display: "Reem Kufi", "IBM Plex Sans Arabic", Tahoma, sans-serif;
@@ -485,11 +485,11 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
    (The dashboard writes its own colors for both modes into #themeVars.)
    ========================================================================== */
 :root[data-theme="light"] {
-  --deep: #f7f2e6; --pearl: #efe6d3; --paper: #fffcf5; --emerald: #2b7a58;
-  --silver: #5f6f66; --accent: #b48f45; --ink: #18281f;
+  --deep: #f7f2e6; --pearl: #efe6d3; --paper: #fffcf5; --emerald: #226447;
+  --silver: #4c5a52; --accent: #b48f45; --ink: #18281f;
   --gold: var(--accent); --green: var(--emerald);
-  --soft: color-mix(in srgb, var(--ink) 72%, var(--deep));
-  --faint: color-mix(in srgb, var(--ink) 55%, var(--deep));
+  --soft: color-mix(in srgb, var(--ink) 84%, var(--deep));
+  --faint: color-mix(in srgb, var(--ink) 72%, var(--deep));
   --line: color-mix(in srgb, var(--ink) 10%, transparent);
   --line-2: color-mix(in srgb, var(--ink) 18%, transparent);
   --glass: color-mix(in srgb, var(--paper) 70%, transparent);
@@ -500,7 +500,8 @@ footer.site .copy { border-top: 1px solid var(--line); margin-top: 36px; padding
 :root[data-theme="light"] .grain { opacity: .035; }
 :root[data-theme="light"] .glass { background: linear-gradient(160deg, color-mix(in srgb, var(--paper) 92%, transparent), color-mix(in srgb, var(--paper) 62%, transparent)); box-shadow: 0 20px 50px -34px color-mix(in srgb, var(--ink) 35%, transparent); }
 :root[data-theme="light"] .grad { background-image: linear-gradient(100deg, var(--emerald) 0%, color-mix(in srgb, var(--emerald) 55%, var(--accent)) 38%, var(--accent) 58%, color-mix(in srgb, var(--emerald) 70%, var(--accent)) 82%, var(--emerald) 100%); }
-:root[data-theme="light"] .btn.shine { color: #fff; background-image: linear-gradient(110deg, var(--emerald) 0%, color-mix(in srgb, var(--emerald) 65%, #ffffff) 45%, var(--emerald) 55%, color-mix(in srgb, var(--emerald) 80%, #000) 100%); }
+:root[data-theme="light"] .btn.shine { color: #fff; background-image: linear-gradient(110deg, var(--emerald) 0%, color-mix(in srgb, var(--emerald) 86%, #ffffff) 45%, var(--emerald) 55%, color-mix(in srgb, var(--emerald) 80%, #000) 100%); }
+:root[data-theme="light"] .btn.shine::after { background: linear-gradient(105deg, transparent 30%, rgba(255,255,255,.28) 48%, rgba(255,255,255,.05) 56%, transparent 70%); }
 :root[data-theme="light"] .tag, :root[data-theme="light"] .badge-count, :root[data-theme="light"] .toast, :root[data-theme="light"] .success .ok { color: #fff; }
 :root[data-theme="light"] .add:hover, :root[data-theme="light"] .tile:hover .t-go { color: #fff; }
 :root[data-theme="light"] .show-card { box-shadow: 0 40px 80px -40px color-mix(in srgb, var(--ink) 45%, transparent), 0 0 70px -24px var(--glow); }
@@ -828,8 +829,9 @@ footer.site .f-langs a.on { color: var(--emerald); }
 
 /* ---- embroidery through the whole site (html.emb, images set by site.js → embroidery()) ---- */
 /* the ground: fine linen weave by day, emerald velvet by night, roses scattered over it */
-:root.emb body { background-image: var(--emb-scatter), var(--emb-weave); background-size: 280px 280px, 6px 6px; background-attachment: scroll; }
+:root.emb body { background-image: var(--emb-scatter-dark), var(--emb-weave); background-size: 280px 280px, 6px 6px; background-attachment: scroll; }
 :root.emb { --emb-weave: repeating-linear-gradient(0deg, rgba(255,255,255,.018) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(0,0,0,.05) 0 1px, transparent 1px 3px); }
+:root.emb[data-theme="light"] body { background-image: var(--emb-scatter), var(--emb-weave); }
 :root.emb[data-theme="light"] { --emb-weave: repeating-linear-gradient(0deg, rgba(90,70,30,.035) 0 1px, transparent 1px 3px), repeating-linear-gradient(90deg, rgba(90,70,30,.03) 0 1px, transparent 1px 3px); }
 /* an embroidered sprig under every section title */
 :root.emb .title h2::after { content: ""; display: block; width: 190px; max-width: 70%; height: 42px; margin: 12px auto 0; background: var(--emb-divider) center / contain no-repeat; }
