@@ -378,7 +378,8 @@
     return base;
   }
   function localize(saved, lang) {
-    var DEF = window.RQ_DEFAULTS, base = window.rqMerge(DEF, saved || {});
+    saved = window.rqCleanColours ? window.rqCleanColours(saved || {}) : (saved || {});
+    var DEF = window.RQ_DEFAULTS, base = window.rqMerge(DEF, saved);
     if (!lang || lang === "ar" || !T[lang]) return base;
     var own = (saved && saved.i18n && saved.i18n[lang]) || {};
     var out = overlay(base, T[lang], own, DEF, saved || {});

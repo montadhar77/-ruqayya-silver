@@ -56,7 +56,11 @@ def test_roses_are_on_the_home_page_only(tab, stk):
     assert t.page.locator(".hero .orn .orn-frame svg").count() == 1              # the embroidered frame
     assert t.page.locator(".hero .orn .orn-foot svg").count() == 2               # roses at its feet
     # the embroidery runs through the whole site: scattered roses, title sprigs, footer garland
-    assert t.page.evaluate("document.documentElement.classList.contains('emb') && getComputedStyle(document.body).backgroundImage.includes('svg')")
+    # at night the ground stays clean (nothing behind the text); by day roses are scattered over linen
+    assert t.page.evaluate("document.documentElement.classList.contains('emb') && getComputedStyle(document.body).backgroundImage === 'none'")
+    t.page.evaluate("document.documentElement.setAttribute('data-theme', 'light')")
+    assert t.page.evaluate("getComputedStyle(document.body).backgroundImage.includes('svg')")
+    t.page.evaluate("document.documentElement.setAttribute('data-theme', 'dark')")
     assert "svg" in t.page.evaluate("getComputedStyle(document.querySelector('.title h2'), '::after').backgroundImage")
     assert t.page.evaluate("getComputedStyle(document.querySelector('.orbit')).display") == "none"
     assert t.page.locator("#about .bloom.bl-about svg").count() == 1
