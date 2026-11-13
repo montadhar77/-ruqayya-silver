@@ -33,8 +33,8 @@ window.RQ_DEFAULTS = {
     deep: "#f7f2e6",
     pearl: "#efe6d3",
     paper: "#fffcf5",
-    emerald: "#2b7a58",
-    silver: "#5f6f66",
+    emerald: "#226447",
+    silver: "#4c5a52",
     accent: "#b48f45",
     ink: "#18281f"
   },

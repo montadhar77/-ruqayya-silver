@@ -574,6 +574,7 @@
     embDone = true;
     const E = A.emb, st = document.documentElement.style;
     st.setProperty("--emb-scatter", E.scatterTile(0.3));
+    st.setProperty("--emb-scatter-dark", E.scatterTile(0.16));      // quieter at night, so text stays clear
     st.setProperty("--emb-divider", E.dividerImg());
     st.setProperty("--emb-garland", E.garlandImg());
     st.setProperty("--emb-rose", E.roseImg("white"));
@@ -1331,7 +1332,8 @@
     if (feat) G.fromTo(feat, { scale: 0.94, opacity: 0.5 }, { scale: 1, opacity: 1, ease: "none", scrollTrigger: { trigger: feat, start: "top 95%", end: "top 50%", scrub: true } });
     // about text: each word lights up as it scrolls through the viewport
     const lit = $("[data-lit]");
-    if (lit) G.fromTo($$(".lw", lit), { opacity: 0.16 }, { opacity: 1, ease: "none", stagger: 0.08, scrollTrigger: { trigger: lit, start: "top 82%", end: "bottom 45%", scrub: true } });
+    // words light up as the reader scrolls, but are never too faint to read
+    if (lit) G.fromTo($$(".lw", lit), { opacity: 0.5 }, { opacity: 1, ease: "none", stagger: 0.08, scrollTrigger: { trigger: lit, start: "top 88%", end: "center 55%", scrub: true } });
     // showroom: vertical scroll drives a horizontal walk through the pieces (desktop)
     const track = $("#roomTrack");
     if (track && innerWidth > 920) {
